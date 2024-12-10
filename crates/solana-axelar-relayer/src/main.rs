@@ -234,6 +234,6 @@ mod tests {
             FAbbOyAg51Xklqm2Q954WWFmu3lluHCWUGB9eSHshIurTmDd+8o15A==
             -----END PRIVATE KEY-----
         "}
-        .to_string()
+        .to_owned()
     }
 }
