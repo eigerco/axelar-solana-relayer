@@ -15,6 +15,7 @@ toml.workspace = true
 tokio.workspace = true
 serde.workspace = true
 relayer-amplifier-api-integration.workspace = true
+rest-service.workspace = true
 solana-listener.workspace = true
 solana-event-forwarder.workspace = true
 solana-gateway-task-processor.workspace = true

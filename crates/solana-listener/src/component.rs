@@ -12,6 +12,7 @@ mod log_processor;
 mod signature_batch_scanner;
 mod signature_realtime_scanner;
 
+pub use log_processor::fetch_logs;
 /// Typical message with the produced work.
 /// Contains the handle to a task that resolves into a
 /// [`SolanaTransaction`].

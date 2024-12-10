@@ -1,7 +1,7 @@
-use std::net::SocketAddrV4;
-
+//! This crate provides a REST service component for the relayer.
 pub mod component;
+mod config;
+pub mod endpoints;
 
-pub struct Config {
-    pub socket_addr: SocketAddrV4,
-}
+pub use component::RestService;
+pub use config::Config;
