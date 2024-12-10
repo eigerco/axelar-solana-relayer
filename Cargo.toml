@@ -79,10 +79,10 @@ relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-cor
 core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core.git", package = "common-serde-utils", branch = "main" }
 
 # Solana Gateway
-gmp-gateway = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main", features = ["no-entrypoint"] }
-axelar-rkyv-encoding = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
-axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
-axelar-executable = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
+axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", rev = "91c8cf2", features = ["no-entrypoint"] }
+axelar-solana-encoding = { git = "https://github.com/eigerco/solana-axelar.git", rev = "91c8cf2" }
+axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", rev = "91c8cf2" }
+axelar-executable = { git = "https://github.com/eigerco/solana-axelar.git", rev = "91c8cf2" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -130,12 +130,12 @@ color-eyre = "0.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls", "stream", "http2"] }
 
 # Solana
-solana-client = "2"
-solana-rpc-client = "2"
-solana-rpc-client-api = "2"
-solana-program = "2"
-solana-sdk = "2"
-solana-transaction-status = "2"
+solana-client = "=2.0.16"
+solana-rpc-client = "=2.0.16"
+solana-rpc-client-api = "=2.0.16"
+solana-program = "=2.0.16"
+solana-sdk = "=2.0.16"
+solana-transaction-status = "=2.0.16"
 
 # Async
 tokio = { version = "1", features = ["rt", "signal", "rt-multi-thread", "macros"] }

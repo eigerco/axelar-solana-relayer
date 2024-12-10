@@ -18,7 +18,9 @@ serde.workspace = true
 relayer-engine.workspace = true
 chrono.workspace = true
 
-gmp-gateway.workspace = true
+axelar-solana-gateway.workspace = true
+axelar-solana-encoding.workspace = true
+
 common-serde-utils = { workspace = true }
 core-common-serde-utils = { workspace = true }
 

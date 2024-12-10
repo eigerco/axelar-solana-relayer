@@ -12,13 +12,13 @@ futures.workspace = true
 relayer-amplifier-api-integration.workspace = true
 solana-listener.workspace = true
 relayer-engine.workspace = true
-gmp-gateway.workspace = true
 tracing.workspace = true
 eyre.workspace = true
 bs58.workspace = true
 solana-sdk.workspace = true
 axelar-message-primitives.workspace = true
-axelar-rkyv-encoding.workspace = true
+axelar-solana-gateway.workspace = true
+axelar-solana-encoding.workspace = true
 
 [dev-dependencies]
 base64.workspace = true

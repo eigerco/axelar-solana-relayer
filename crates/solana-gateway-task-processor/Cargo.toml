@@ -13,8 +13,8 @@ solana-sdk.workspace = true
 typed-builder.workspace = true
 solana-client.workspace = true
 serde.workspace = true
-gmp-gateway.workspace = true
-axelar-rkyv-encoding.workspace = true
+axelar-solana-gateway.workspace = true
+axelar-solana-encoding.workspace = true
 tracing.workspace = true
 futures.workspace = true
 common-serde-utils = { workspace = true }
