@@ -1,0 +1,18 @@
+[package]
+name = "rest-service"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum.workspace = true
+eyre.workspace = true
+futures.workspace = true
+relayer-engine.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

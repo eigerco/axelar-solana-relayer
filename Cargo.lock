@@ -812,6 +812,8 @@ dependencies = [
  "http 1.2.0",
  "http-body 1.0.1",
  "http-body-util",
+ "hyper 1.5.0",
+ "hyper-util",
  "itoa",
  "matchit",
  "memchr",
@@ -820,10 +822,15 @@ dependencies = [
  "pin-project-lite",
  "rustversion",
  "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_urlencoded",
  "sync_wrapper 1.0.2",
+ "tokio",
  "tower 0.5.1",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -844,6 +851,7 @@ dependencies = [
  "sync_wrapper 1.0.2",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -4655,6 +4663,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rest-service"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "eyre",
+ "futures",
+ "relayer-engine",
+ "tokio",
+]
+
+[[package]]
 name = "retrying-solana-http-sender"
 version = "0.1.0"
 dependencies = [
@@ -5162,6 +5181,16 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
+ "serde",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af99884400da37c88f5e9146b7f1fd0fbcae8f6eec4e9da38b67d05486f814a6"
+dependencies = [
+ "itoa",
  "serde",
 ]
 
@@ -7249,8 +7278,10 @@ dependencies = [
  "futures-util",
  "pin-project-lite",
  "sync_wrapper 0.1.2",
+ "tokio",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
