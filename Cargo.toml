@@ -67,6 +67,7 @@ solana-listener = { path = "crates/solana-listener" }
 common-serde-utils = { path = "crates/common-serde-utils" }
 solana-event-forwarder = { path = "crates/solana-event-forwarder" }
 solana-tx-pusher = { path = "crates/solana-tx-pusher" }
+rest-service = { path = "crates/rest-service" }
 retrying-solana-http-sender = { path = "crates/retrying-solana-http-sender" }
 solana-gateway-task-processor = { path = "crates/solana-gateway-task-processor" }
 effective-tx-sender = { path = "crates/effective-tx-sender" }
@@ -130,8 +131,9 @@ eyre = "0.6"
 color-eyre = "0.6"
 
 # HTTP
-reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls", "stream", "http2"] }
 axum = "0.7.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls", "stream", "http2"] }
+tower-http = { version = "0.6.2", features = ["trace"] }
 
 # Solana
 solana-client = "=2.0.16"

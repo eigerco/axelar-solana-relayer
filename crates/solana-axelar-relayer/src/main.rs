@@ -50,13 +50,22 @@ async fn main() {
     let solana_event_forwarder_component = solana_event_forwarder::SolanaEventForwarder::new(
         event_forwarder_config,
         solana_listener_client,
+        amplifier_client.clone(),
+    );
+
+    let rest_service_component = rest_service::RestService::new(
+        &config.rest_service,
+        name_on_amplifier,
+        Arc::clone(&rpc_client),
         amplifier_client,
     );
+
     let components: Vec<Box<dyn RelayerComponent>> = vec![
         Box::new(amplifier_component),
         Box::new(solana_listener_component),
         Box::new(solana_event_forwarder_component),
         Box::new(gateway_task_processor),
+        Box::new(rest_service_component),
     ];
     RelayerEngine::new(config.relayer_engine, components)
         .start_and_wait_for_shutdown()
@@ -86,6 +95,8 @@ pub struct Config {
     pub solana_rpc: retrying_solana_http_sender::Config,
     /// Path to the storage configuration file
     pub storage_path: std::path::PathBuf,
+    /// Configuration for the REST service
+    pub rest_service: rest_service::Config,
 }
 
 #[expect(
@@ -123,6 +134,9 @@ mod tests {
         let latest_processed_signature = Signature::new_unique().to_string();
         let identity = identity_fixture();
         let missed_signature_catchup_strategy = "until_beginning";
+        let rest_service_bind_addr = "127.0.0.1:80";
+        let call_contract_offchain_data_size_limit = 10 * 1024 * 1024;
+
         let input = indoc::formatdoc! {r#"
             storage_path = "./store"
 
@@ -151,6 +165,10 @@ mod tests {
             [solana_rpc]            
             max_concurrent_rpc_requests = {max_concurrent_rpc_requests}
             solana_http_rpc = "{solana_rpc}"
+
+            [rest_service]
+            bind_addr = "{rest_service_bind_addr}"
+            call_contract_offchain_data_size_limit = {call_contract_offchain_data_size_limit}
         "#};
 
         let parsed: Config = toml::from_str(&input)?;
@@ -181,6 +199,10 @@ mod tests {
                 solana_http_rpc: solana_rpc,
             },
             storage_path: "./store".parse().unwrap(),
+            rest_service: rest_service::Config {
+                bind_addr: SocketAddr::from_str(rest_service_bind_addr)?,
+                call_contract_offchain_data_size_limit,
+            },
         };
         assert_eq!(parsed, expected);
         Ok(())

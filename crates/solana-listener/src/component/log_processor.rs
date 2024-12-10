@@ -37,7 +37,15 @@ pub(crate) async fn fetch_and_send(
     Ok(())
 }
 
-pub(crate) async fn fetch_logs(
+/// Fetch the logs of a Solana transaction.
+///
+/// # Errors
+///
+/// - If request to the Solana RPC fails
+/// - If the metadata is not included with the logs
+/// - If the logs are not included
+/// - If the transaction was not successful
+pub async fn fetch_logs(
     signature: Signature,
     rpc_client: &RpcClient,
 ) -> eyre::Result<SolanaTransaction> {
