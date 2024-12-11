@@ -5410,8 +5410,6 @@ dependencies = [
 name = "solana-event-forwarder"
 version = "0.1.0"
 dependencies = [
- "axelar-message-primitives",
- "axelar-solana-encoding",
  "axelar-solana-gateway",
  "base64 0.22.1",
  "bs58",
@@ -5472,7 +5470,6 @@ dependencies = [
 name = "solana-listener"
 version = "0.1.0"
 dependencies = [
- "axelar-solana-encoding",
  "axelar-solana-gateway",
  "chrono",
  "common-serde-utils 0.1.0",

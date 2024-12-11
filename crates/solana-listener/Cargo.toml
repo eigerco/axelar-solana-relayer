@@ -17,13 +17,9 @@ url.workspace = true
 serde.workspace = true
 relayer-engine.workspace = true
 chrono.workspace = true
-
 axelar-solana-gateway.workspace = true
-axelar-solana-encoding.workspace = true
-
-common-serde-utils = { workspace = true }
-core-common-serde-utils = { workspace = true }
-
+common-serde-utils.workspace = true
+core-common-serde-utils.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status.workspace = true
