@@ -109,6 +109,9 @@ fn setup_subscriber(
         .add_directive("hyper=error".parse()?)
         .add_directive("tonic=error".parse()?)
         .add_directive("reqwest=error".parse()?)
+        .add_directive("rest-service=info".parse()?)
+        .add_directive("tower_http=info".parse()?)
+        .add_directive("axum=error".parse()?)
         .add_directive(EnvFilter::from_default_env().to_string().parse()?);
 
     let output_layer = tracing_subscriber::fmt::layer()
