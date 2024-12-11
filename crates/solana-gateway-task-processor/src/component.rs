@@ -66,7 +66,7 @@ impl<S: State> SolanaTxPusher<S> {
     }
 
     async fn process_internal(self) -> eyre::Result<()> {
-        let config_metadata = self.get_config_metadata().await.map(Arc::new)?;
+        let config_metadata = Arc::new(self.get_config_metadata());
         let state = self.state.clone();
 
         let keypair = Arc::new(self.config.signing_keypair.insecure_clone());
@@ -122,13 +122,12 @@ impl<S: State> SolanaTxPusher<S> {
         eyre::bail!("fatal error")
     }
 
-    async fn get_config_metadata(&self) -> Result<ConfigMetadata, eyre::Error> {
+    fn get_config_metadata(&self) -> ConfigMetadata {
         let gateway_root_pda = axelar_solana_gateway::get_gateway_root_config_pda().0;
-        let config_metadata = ConfigMetadata {
+        ConfigMetadata {
             gateway_root_pda,
             name_of_the_solana_chain: self.name_on_amplifier.clone(),
-        };
-        Ok(config_metadata)
+        }
     }
 }
 
@@ -137,7 +136,7 @@ struct ConfigMetadata {
     gateway_root_pda: Pubkey,
 }
 
-// #[instrument(skip_all)]
+#[instrument(skip_all)]
 async fn process_task(
     keypair: &Keypair,
     solana_rpc_client: &RpcClient,
@@ -204,9 +203,11 @@ async fn execute_task(
     match destination_address {
         axelar_solana_its::ID => {
             // todo ITS specific handling
+            tracing::error!("ITS program not yet supported");
         }
         axelar_solana_governance::ID => {
             // todo Governance specific handling
+            tracing::error!("governance program not yet supported");
         }
         _ => {
             // this is a security check, because the relayer is a signer, we don't want to
@@ -344,9 +345,9 @@ async fn send_tx_parse_error(
                         Some(TransactionError::InstructionError(_, InstructionError::Custom(err_code))),
                     ..
                 },
-            ) = &err
+            ) = err
             {
-                GatewayError::from_u32(*err_code)
+                GatewayError::from_u32(err_code)
                     .is_some_and(|gw_err| gw_err.should_relayer_proceed())
             } else {
                 false

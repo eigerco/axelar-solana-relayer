@@ -152,7 +152,7 @@ fn map_gateway_event_to_amplifier_event(
                             .payload_hash(call_contract.payload_hash.to_vec())
                             .build(),
                     )
-                    .destination_chain(call_contract.destination_chain.to_string())
+                    .destination_chain(call_contract.destination_chain)
                     .payload(call_contract.payload)
                     .build(),
             );
