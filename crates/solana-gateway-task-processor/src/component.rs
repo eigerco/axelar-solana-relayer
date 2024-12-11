@@ -6,17 +6,16 @@ use std::sync::Arc;
 
 use amplifier_api::types::TaskItem;
 use axelar_executable::AxelarMessagePayload;
-use axelar_solana_encoding::borsh::BorshDeserialize;
+use axelar_solana_encoding::borsh::BorshDeserialize as _;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
 use axelar_solana_gateway::state::incoming_message::command_id;
-use axelar_solana_gateway::state::{BytemuckedPda, GatewayConfig};
 use effective_tx_sender::ComputeBudgetError;
-use eyre::Context;
+use eyre::Context as _;
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
 use futures::StreamExt as _;
-use num_traits::FromPrimitive;
+use num_traits::FromPrimitive as _;
 use relayer_amplifier_state::State;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
@@ -277,7 +276,7 @@ async fn process_task(
                             let relayer_signer_acc_included = decoded_payload
                                 .account_meta()
                                 .iter()
-                                .find(|acc| acc.pubkey == signer).is_some();
+                                .any(|acc| acc.pubkey == signer);
                             if relayer_signer_acc_included {
                                 // this is a security check, because the relayer is a signer, we don't want to sign a tx
                                 // where a malicious destination contract could drain the account
@@ -294,7 +293,7 @@ async fn process_task(
                 }
 
 
-                return eyre::Result::<_, eyre::Report>::Ok(());
+                eyre::Result::<_, eyre::Report>::Ok(())
             }
             .instrument(info_span!("execute task"))
             .in_current_span()
@@ -327,8 +326,7 @@ async fn send_tx_parse_error(
             ) = &err
             {
                 GatewayError::from_u32(*err_code)
-                    .map(|gw_err| gw_err.should_relayer_proceed())
-                    .unwrap_or(false)
+                    .is_some_and(|gw_err| gw_err.should_relayer_proceed())
             } else {
                 false
             };
