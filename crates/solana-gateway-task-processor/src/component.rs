@@ -148,162 +148,183 @@ async fn process_task(
     let signer = keypair.pubkey();
     let gateway_root_pda = metadata.gateway_root_pda;
 
-    #[expect(
-        clippy::unreachable,
-        reason = "will be removed in the future, only there because of outdated gateway API"
-    )]
     match task.task {
         Verify(_verify_task) => {
             tracing::warn!("solana blockchain is not supposed to receive the `verify_task`");
         }
-        GatewayTx(gateway_transaction_task) => {
-            let execute_data_bytes = gateway_transaction_task.execute_data.as_slice();
-            let execute_data = ExecuteData::try_from_slice(execute_data_bytes)
-                .map_err(|_err| eyre::eyre!("cannot decode execute data"))?;
-
-            // start with the signing session
-            let (verification_session_tracker_pda, ..) =
-                axelar_solana_gateway::get_signature_verification_pda(
-                    &gateway_root_pda,
-                    &execute_data.payload_merkle_root,
-                );
-            let ix = axelar_solana_gateway::instructions::initialize_payload_verification_session(
-                signer,
-                gateway_root_pda,
-                execute_data.payload_merkle_root,
-            )?;
-            send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
-
-            // try to verify all signatures
-            let mut verifier_ver_future_set = execute_data
-                .signing_verifier_set_leaves
-                .into_iter()
-                .filter_map(|verifier_info| {
-                    let ix = axelar_solana_gateway::instructions::verify_signature(
-                        gateway_root_pda,
-                        verification_session_tracker_pda,
-                        execute_data.payload_merkle_root,
-                        verifier_info,
-                    )
-                    .ok()?;
-                    Some(send_tx_parse_error(solana_rpc_client, keypair, ix))
-                })
-                .collect::<FuturesUnordered<_>>();
-            while let Some(result) = verifier_ver_future_set.next().await {
-                result?;
-            }
-
-            // then process individual message types
-            match execute_data.payload_items {
-                MerkleisedPayload::VerifierSetRotation {
-                    new_verifier_set_merkle_root,
-                } => {
-                    let (new_verifier_set_tracker_pda, _) =
-                        axelar_solana_gateway::get_verifier_set_tracker_pda(
-                            new_verifier_set_merkle_root,
-                        );
-                    let ix = axelar_solana_gateway::instructions::rotate_signers(
-                        gateway_root_pda,
-                        verification_session_tracker_pda,
-                        verification_session_tracker_pda,
-                        new_verifier_set_tracker_pda,
-                        signer,
-                        None,
-                        new_verifier_set_merkle_root,
-                    )?;
-                    send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
-                }
-                MerkleisedPayload::NewMessages { messages } => {
-                    let mut merkelised_message_f_set = messages
-                        .into_iter()
-                        .filter_map(|merkelised_message| {
-                            let command_id = command_id(
-                                merkelised_message.leaf.message.cc_id.chain.as_str(),
-                                merkelised_message.leaf.message.cc_id.id.as_str(),
-                            );
-                            let (pda, _bump) =
-                                axelar_solana_gateway::get_incoming_message_pda(&command_id);
-                            let ix = axelar_solana_gateway::instructions::approve_messages(
-                                merkelised_message,
-                                execute_data.payload_merkle_root,
-                                gateway_root_pda,
-                                signer,
-                                verification_session_tracker_pda,
-                                pda,
-                            )
-                            .ok()?;
-                            Some(send_tx_parse_error(solana_rpc_client, keypair, ix))
-                        })
-                        .collect::<FuturesUnordered<_>>();
-                    while let Some(result) = merkelised_message_f_set.next().await {
-                        result?;
-                    }
-                }
-            }
+        GatewayTx(task) => {
+            gateway_tx_task(task, gateway_root_pda, signer, solana_rpc_client, keypair).await?;
         }
-        Execute(execute_task) => {
+        Execute(task) => {
             // communicate with the destination program
-            async {
-                let payload = execute_task.payload;
-                let message = Message {
-                    cc_id: CrossChainId {
-                        chain: execute_task.message.source_chain,
-                        id: execute_task.message.message_id.0,
-                    },
-                    source_address: execute_task.message.source_address,
-                    destination_chain: metadata.name_of_the_solana_chain.clone(),
-                    destination_address: execute_task.message.destination_address,
-                    payload_hash: execute_task
-                        .message
-                        .payload_hash
-                        .try_into()
-                        .unwrap_or_default(),
-                };
-                let command_id = command_id(&message.cc_id.chain, &message.cc_id.id);
-                let (gateway_incoming_message_pda, ..) =
-                    axelar_solana_gateway::get_incoming_message_pda(&command_id);
-
-                let destination_address = message.destination_address.parse::<Pubkey>()?;
-                match destination_address {
-                    axelar_solana_its::ID => {
-                        // todo ITS specific handling
-                    }
-                    axelar_solana_governance::ID => {
-                        // todo governance specific handling
-                    }
-                    _ => {
-                        if let Ok(decoded_payload) = AxelarMessagePayload::decode(&payload) {
-                            let relayer_signer_acc_included = decoded_payload
-                                .account_meta()
-                                .iter()
-                                .any(|acc| acc.pubkey == signer);
-                            if relayer_signer_acc_included {
-                                // this is a security check, because the relayer is a signer, we don't want to sign a tx
-                                // where a malicious destination contract could drain the account
-                                eyre::bail!("relayer will not execute a transaction where its own key is included");
-                            }
-                        }
-                        let ix = axelar_executable::construct_axelar_executable_ix(
-                            message,
-                            &payload,
-                            gateway_incoming_message_pda,
-                        )?;
-                        send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
-                    }
-                }
-
-
-                eyre::Result::<_, eyre::Report>::Ok(())
-            }
-            .instrument(info_span!("execute task"))
-            .in_current_span()
-            .await?;
+            execute_task(task, metadata, signer, solana_rpc_client, keypair)
+                .instrument(info_span!("execute task"))
+                .in_current_span()
+                .await?;
         }
         Refund(_refund_task) => {
             tracing::error!("refund task not implemented");
         }
     };
 
+    Ok(())
+}
+
+async fn execute_task(
+    execute_task: amplifier_api::types::ExecuteTask,
+    metadata: &ConfigMetadata,
+    signer: Pubkey,
+    solana_rpc_client: &RpcClient,
+    keypair: &Keypair,
+) -> Result<(), eyre::Error> {
+    let payload = execute_task.payload;
+
+    // compose the message
+    let message = Message {
+        cc_id: CrossChainId {
+            chain: execute_task.message.source_chain,
+            id: execute_task.message.message_id.0,
+        },
+        source_address: execute_task.message.source_address,
+        destination_chain: metadata.name_of_the_solana_chain.clone(),
+        destination_address: execute_task.message.destination_address,
+        payload_hash: execute_task
+            .message
+            .payload_hash
+            .try_into()
+            .unwrap_or_default(),
+    };
+    let command_id = command_id(&message.cc_id.chain, &message.cc_id.id);
+    let (gateway_incoming_message_pda, ..) =
+        axelar_solana_gateway::get_incoming_message_pda(&command_id);
+
+    // For compatibility reasons with the rest of the Axelar protocol we need add custom handling
+    // for ITS & Governance programs
+    let destination_address = message.destination_address.parse::<Pubkey>()?;
+    match destination_address {
+        axelar_solana_its::ID => {
+            // todo ITS specific handling
+        }
+        axelar_solana_governance::ID => {
+            // todo Governance specific handling
+        }
+        _ => {
+            // this is a security check, because the relayer is a signer, we don't want to
+            // sign a tx where a malicious destination contract could drain the account. This is
+            // because the `AxelarMessagePayload` defines an interface where the accounts get
+            // dynamically appended, thus it could also include the relayers account.
+            if let Ok(decoded_payload) = AxelarMessagePayload::decode(&payload) {
+                let relayer_signer_acc_included = decoded_payload
+                    .account_meta()
+                    .iter()
+                    .any(|acc| acc.pubkey == signer);
+                if relayer_signer_acc_included {
+                    eyre::bail!(
+                        "relayer will not execute a transaction where its own key is included"
+                    );
+                }
+            }
+
+            // if security passed, we broadcast the tx
+            let ix = axelar_executable::construct_axelar_executable_ix(
+                message,
+                &payload,
+                gateway_incoming_message_pda,
+            )?;
+            send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn gateway_tx_task(
+    gateway_transaction_task: amplifier_api::types::GatewayTransactionTask,
+    gateway_root_pda: Pubkey,
+    signer: Pubkey,
+    solana_rpc_client: &RpcClient,
+    keypair: &Keypair,
+) -> Result<(), eyre::Error> {
+    // parse the ExecuteData
+    let execute_data_bytes = gateway_transaction_task.execute_data.as_slice();
+    let execute_data = ExecuteData::try_from_slice(execute_data_bytes)
+        .map_err(|_err| eyre::eyre!("cannot decode execute data"))?;
+
+    // Start a signing session
+    let (verification_session_tracker_pda, ..) =
+        axelar_solana_gateway::get_signature_verification_pda(
+            &gateway_root_pda,
+            &execute_data.payload_merkle_root,
+        );
+    let ix = axelar_solana_gateway::instructions::initialize_payload_verification_session(
+        signer,
+        gateway_root_pda,
+        execute_data.payload_merkle_root,
+    )?;
+    send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+
+    // verify each signature in the signing session
+    let mut verifier_ver_future_set = execute_data
+        .signing_verifier_set_leaves
+        .into_iter()
+        .filter_map(|verifier_info| {
+            let ix = axelar_solana_gateway::instructions::verify_signature(
+                gateway_root_pda,
+                verification_session_tracker_pda,
+                execute_data.payload_merkle_root,
+                verifier_info,
+            )
+            .ok()?;
+            Some(send_tx_parse_error(solana_rpc_client, keypair, ix))
+        })
+        .collect::<FuturesUnordered<_>>();
+    while let Some(result) = verifier_ver_future_set.next().await {
+        result?;
+    }
+
+    // determine whether we should do signer rotation or message approval
+    match execute_data.payload_items {
+        MerkleisedPayload::VerifierSetRotation {
+            new_verifier_set_merkle_root,
+        } => {
+            let (new_verifier_set_tracker_pda, _) =
+                axelar_solana_gateway::get_verifier_set_tracker_pda(new_verifier_set_merkle_root);
+            let ix = axelar_solana_gateway::instructions::rotate_signers(
+                gateway_root_pda,
+                verification_session_tracker_pda,
+                verification_session_tracker_pda,
+                new_verifier_set_tracker_pda,
+                signer,
+                None,
+                new_verifier_set_merkle_root,
+            )?;
+            send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+        }
+        MerkleisedPayload::NewMessages { messages } => {
+            let mut merkelised_message_f_set = messages
+                .into_iter()
+                .filter_map(|merkelised_message| {
+                    let command_id = command_id(
+                        merkelised_message.leaf.message.cc_id.chain.as_str(),
+                        merkelised_message.leaf.message.cc_id.id.as_str(),
+                    );
+                    let (pda, _bump) = axelar_solana_gateway::get_incoming_message_pda(&command_id);
+                    let ix = axelar_solana_gateway::instructions::approve_messages(
+                        merkelised_message,
+                        execute_data.payload_merkle_root,
+                        gateway_root_pda,
+                        signer,
+                        verification_session_tracker_pda,
+                        pda,
+                    )
+                    .ok()?;
+                    Some(send_tx_parse_error(solana_rpc_client, keypair, ix))
+                })
+                .collect::<FuturesUnordered<_>>();
+            while let Some(result) = merkelised_message_f_set.next().await {
+                result?;
+            }
+        }
+    };
     Ok(())
 }
 
@@ -320,7 +341,7 @@ async fn send_tx_parse_error(
             let should_continue = if let ComputeBudgetError::SimulationError(
                 RpcSimulateTransactionResult {
                     err:
-                        Some(TransactionError::InstructionError(1, InstructionError::Custom(err_code))),
+                        Some(TransactionError::InstructionError(_, InstructionError::Custom(err_code))),
                     ..
                 },
             ) = &err
