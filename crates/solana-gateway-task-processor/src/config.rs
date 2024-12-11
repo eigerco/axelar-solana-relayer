@@ -22,7 +22,7 @@ pub(crate) mod config_defaults {
     use solana_sdk::pubkey::Pubkey;
 
     pub(crate) const fn gateway_program_address() -> Pubkey {
-        gmp_gateway::id()
+        axelar_solana_gateway::id()
     }
 }
 

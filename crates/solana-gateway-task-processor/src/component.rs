@@ -5,7 +5,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use amplifier_api::types::TaskItem;
-use axelar_solana_encoding::borsh::{self, BorshDeserialize};
+use axelar_executable::AxelarMessagePayload;
+use axelar_solana_encoding::borsh::BorshDeserialize;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
@@ -124,11 +125,8 @@ impl<S: State> SolanaTxPusher<S> {
 
     async fn get_config_metadata(&self) -> Result<ConfigMetadata, eyre::Error> {
         let gateway_root_pda = axelar_solana_gateway::get_gateway_root_config_pda().0;
-        let data = self.rpc_client.get_account_data(&gateway_root_pda).await?;
-        let root_config = GatewayConfig::read(&data)?;
         let config_metadata = ConfigMetadata {
             gateway_root_pda,
-            domain_separator: root_config.domain_separator,
             name_of_the_solana_chain: self.name_on_amplifier.clone(),
         };
         Ok(config_metadata)
@@ -138,7 +136,6 @@ impl<S: State> SolanaTxPusher<S> {
 struct ConfigMetadata {
     name_of_the_solana_chain: String,
     gateway_root_pda: Pubkey,
-    domain_separator: [u8; 32],
 }
 
 // #[instrument(skip_all)]
@@ -150,7 +147,7 @@ async fn process_task(
 ) -> eyre::Result<()> {
     use amplifier_api::types::Task::{Execute, GatewayTx, Refund, Verify};
     let signer = keypair.pubkey();
-    let gateway_root_pda = axelar_solana_gateway::get_gateway_root_config_pda().0;
+    let gateway_root_pda = metadata.gateway_root_pda;
 
     #[expect(
         clippy::unreachable,
@@ -266,12 +263,36 @@ async fn process_task(
                 let command_id = command_id(&message.cc_id.chain, &message.cc_id.id);
                 let (gateway_incoming_message_pda, ..) =
                     axelar_solana_gateway::get_incoming_message_pda(&command_id);
-                let ix = axelar_executable::construct_axelar_executable_ix(
-                    message,
-                    &payload,
-                    gateway_incoming_message_pda,
-                )?;
-                send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+
+                let destination_address = message.destination_address.parse::<Pubkey>()?;
+                match destination_address {
+                    axelar_solana_its::ID => {
+                        // todo ITS specific handling
+                    }
+                    axelar_solana_governance::ID => {
+                        // todo governance specific handling
+                    }
+                    _ => {
+                        if let Ok(decoded_payload) = AxelarMessagePayload::decode(&payload) {
+                            let relayer_signer_acc_included = decoded_payload
+                                .account_meta()
+                                .iter()
+                                .find(|acc| acc.pubkey == signer).is_some();
+                            if relayer_signer_acc_included {
+                                // this is a security check, because the relayer is a signer, we don't want to sign a tx
+                                // where a malicious destination contract could drain the account
+                                eyre::bail!("relayer will not execute a transaction where its own key is included");
+                            }
+                        }
+                        let ix = axelar_executable::construct_axelar_executable_ix(
+                            message,
+                            &payload,
+                            gateway_incoming_message_pda,
+                        )?;
+                        send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+                    }
+                }
+
 
                 return eyre::Result::<_, eyre::Report>::Ok(());
             }

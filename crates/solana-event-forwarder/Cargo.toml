@@ -18,6 +18,7 @@ bs58.workspace = true
 solana-sdk.workspace = true
 axelar-message-primitives.workspace = true
 axelar-solana-gateway.workspace = true
+gateway-event-stack.workspace = true
 axelar-solana-encoding.workspace = true
 
 [dev-dependencies]

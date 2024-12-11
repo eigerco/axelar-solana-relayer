@@ -1,17 +1,17 @@
 use core::future::Future;
 use core::pin::Pin;
 
-use axelar_message_primitives::U256;
-use axelar_rkyv_encoding::rkyv::{self, Deserialize as _};
+use axelar_solana_gateway::processor::GatewayEvent;
 use futures::{SinkExt as _, StreamExt as _};
-use gmp_gateway::events::{EventContainer, GatewayEvent};
+use gateway_event_stack::{
+    build_program_event_stack, parse_gateway_logs, MatchContext, ProgramInvocationState,
+};
 use relayer_amplifier_api_integration::amplifier_api::types::{
     BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventId, EventMetadata,
     GatewayV2Message, MessageApprovedEvent, MessageApprovedEventMetadata, MessageId,
     PublishEventsRequest, SignersRotatedEvent, SignersRotatedMetadata, Token, TxEvent, TxId,
 };
 use relayer_amplifier_api_integration::AmplifierCommand;
-use solana_sdk::pubkey::Pubkey;
 
 /// The core component that is responsible for ingesting raw Solana events.
 ///
@@ -51,7 +51,8 @@ impl SolanaEventForwarder {
         let match_context = MatchContext::new(self.config.gateway_program_id.to_string().as_str());
 
         while let Some(message) = self.solana_listener_client.log_receiver.next().await {
-            let gateway_program_stack = build_program_event_stack(&match_context, &message.logs);
+            let gateway_program_stack =
+                build_program_event_stack(&match_context, &message.logs, parse_gateway_logs);
             let total_cost = message.cost_in_lamports;
 
             // Collect all successful events into a vector
@@ -79,7 +80,7 @@ impl SolanaEventForwarder {
                 .filter_map(|(log_index, event)| {
                     map_gateway_event_to_amplifier_event(
                         self.config.source_chain_name.as_str(),
-                        &event,
+                        event,
                         &message,
                         log_index,
                         price_for_event,
@@ -102,97 +103,6 @@ impl SolanaEventForwarder {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum ProgramInvocationState {
-    InProgress(Vec<(usize, EventContainer)>),
-    Succeeded(Vec<(usize, EventContainer)>),
-    Failed,
-}
-
-#[expect(clippy::struct_field_names, reason = "improves readability")]
-struct MatchContext {
-    /// the log prefix that indicates that we've entered the target program
-    expected_start: String,
-    /// the log prefix that indicates that the target program succeeded
-    expected_success: String,
-    /// the log prefix that indicates that the target program failed
-    expected_failure: String,
-}
-
-impl MatchContext {
-    pub(crate) fn new(gateway_program_id: &str) -> Self {
-        Self {
-            expected_start: format!("Program {gateway_program_id} invoke"),
-            expected_success: format!("Program {gateway_program_id} success"),
-            expected_failure: format!("Program {gateway_program_id} failed"),
-        }
-    }
-}
-
-fn build_program_event_stack<T>(ctx: &MatchContext, logs: &[T]) -> Vec<ProgramInvocationState>
-where
-    T: AsRef<str>,
-{
-    let logs = logs.iter().enumerate();
-    let mut program_stack: Vec<ProgramInvocationState> = Vec::new();
-
-    for (idx, log) in logs {
-        tracing::trace!(log =?log.as_ref(), "incoming log from Solana");
-        if log.as_ref().starts_with(ctx.expected_start.as_str()) {
-            // Start a new program invocation
-            program_stack.push(ProgramInvocationState::InProgress(Vec::new()));
-        } else if log.as_ref().starts_with(ctx.expected_success.as_str()) {
-            handle_success_log(&mut program_stack);
-        } else if log.as_ref().starts_with(ctx.expected_failure.as_str()) {
-            handle_failure_log(&mut program_stack);
-        } else {
-            // Process logs if inside a program invocation
-            parse_execution_log(&mut program_stack, log, idx);
-        }
-    }
-    program_stack
-}
-
-fn parse_execution_log<T>(program_stack: &mut [ProgramInvocationState], log: &T, idx: usize)
-where
-    T: AsRef<str>,
-{
-    let Some(&mut ProgramInvocationState::InProgress(ref mut events)) = program_stack.last_mut()
-    else {
-        return;
-    };
-    let Some(gateway_event) = GatewayEvent::parse_log(log.as_ref()) else {
-        return;
-    };
-    events.push((idx, gateway_event));
-}
-
-fn handle_failure_log(program_stack: &mut Vec<ProgramInvocationState>) {
-    // Mark the current program invocation as failed
-    if program_stack.pop().is_some() {
-        program_stack.push(ProgramInvocationState::Failed);
-    } else {
-        tracing::warn!("Program failure without matching invocation");
-    }
-}
-
-fn handle_success_log(program_stack: &mut Vec<ProgramInvocationState>) {
-    // Mark the current program invocation as succeeded
-    let Some(state) = program_stack.pop() else {
-        tracing::warn!("Program success without matching invocation");
-        return;
-    };
-    match state {
-        ProgramInvocationState::InProgress(events) => {
-            program_stack.push(ProgramInvocationState::Succeeded(events));
-        }
-        ProgramInvocationState::Succeeded(_) | ProgramInvocationState::Failed => {
-            // This should not happen
-            tracing::warn!("Unexpected state when marking program success");
-        }
-    }
-}
-
 #[expect(
     clippy::too_many_lines,
     clippy::cognitive_complexity,
@@ -200,14 +110,11 @@ fn handle_success_log(program_stack: &mut Vec<ProgramInvocationState>) {
 )]
 fn map_gateway_event_to_amplifier_event(
     source_chain: &str,
-    event: &EventContainer,
+    event: GatewayEvent,
     message: &solana_listener::SolanaTransaction,
     log_index: usize,
     price_per_event_in_lamports: u64,
 ) -> Option<Event> {
-    use gmp_gateway::events::ArchivedGatewayEvent::{
-        CallContract, MessageApproved, MessageExecuted, OperatorshipTransferred, SignersRotated,
-    };
     let signature = message.signature.to_string();
     let event_id = EventId::new(&signature, log_index);
     let tx_id = TxId(signature.clone());
@@ -216,10 +123,10 @@ fn map_gateway_event_to_amplifier_event(
         clippy::little_endian_bytes,
         reason = "we are guaranteed correct conversion"
     )]
-    match *event.parse() {
-        CallContract(ref call_contract) => {
+    match event {
+        GatewayEvent::CallContract(call_contract) => {
             let message_id = MessageId::new(&signature, log_index);
-            let source_address = Pubkey::new_from_array(call_contract.sender).to_string();
+            let source_address = call_contract.sender_key.to_string();
             let amplifier_event = Event::Call(
                 CallEvent::builder()
                     .base(
@@ -241,7 +148,7 @@ fn map_gateway_event_to_amplifier_event(
                             .message_id(message_id)
                             .source_chain(source_chain.to_owned())
                             .source_address(source_address)
-                            .destination_address(call_contract.destination_address.to_string())
+                            .destination_address(call_contract.destination_contract_address)
                             .payload_hash(call_contract.payload_hash.to_vec())
                             .build(),
                     )
@@ -251,14 +158,10 @@ fn map_gateway_event_to_amplifier_event(
             );
             Some(amplifier_event)
         }
-        SignersRotated(ref signers) => {
+        GatewayEvent::VerifierSetRotated(signers) => {
             tracing::info!(?signers, "Signers rotated");
 
-            let decoded_u256: U256 = signers
-                .new_epoch
-                .deserialize(&mut rkyv::Infallible)
-                .unwrap();
-            let le_bytes = decoded_u256.to_le_bytes();
+            let le_bytes = signers.epoch.to_le_bytes();
             let (le_u64, _) = le_bytes.split_first_chunk::<8>()?;
             let epoch = u64::from_le_bytes(*le_u64);
 
@@ -274,7 +177,7 @@ fn map_gateway_event_to_amplifier_event(
                                     .finalized(Some(true))
                                     .extra(
                                         SignersRotatedMetadata::builder()
-                                            .signer_hash(signers.new_signers_hash.to_vec())
+                                            .signer_hash(signers.verifier_set_hash.to_vec())
                                             .epoch(epoch)
                                             .build(),
                                     )
@@ -292,12 +195,12 @@ fn map_gateway_event_to_amplifier_event(
             );
             Some(amplifier_event)
         }
-        MessageApproved(ref approved_message) => {
+        GatewayEvent::MessageApproved(approved_message) => {
             let command_id = approved_message.command_id;
-            let message_id = TxEvent(
-                String::from_utf8(approved_message.message_id.to_vec())
-                    .expect("message id is not a valid String"),
-            );
+            let span = tracing::info_span!("message", message_id = ?approved_message.cc_id_id);
+            let _g = span.enter();
+
+            let message_id = TxEvent(approved_message.cc_id_id);
             let amplifier_event = Event::MessageApproved(
                 MessageApprovedEvent::builder()
                     .base(
@@ -307,10 +210,7 @@ fn map_gateway_event_to_amplifier_event(
                                 EventMetadata::builder()
                                     .tx_id(Some(tx_id))
                                     .timestamp(message.timestamp)
-                                    .from_address(Some(
-                                        String::from_utf8(approved_message.source_address.to_vec())
-                                            .expect("source address is not a valid string"),
-                                    ))
+                                    .from_address(Some(approved_message.source_address.clone()))
                                     .finalized(Some(true))
                                     .extra(
                                         MessageApprovedEventMetadata::builder()
@@ -326,18 +226,9 @@ fn map_gateway_event_to_amplifier_event(
                     .message(
                         GatewayV2Message::builder()
                             .message_id(message_id)
-                            .source_chain(
-                                String::from_utf8(approved_message.source_chain.to_vec())
-                                    .expect("invalid source chain"),
-                            )
-                            .source_address(
-                                String::from_utf8(approved_message.source_address.to_vec())
-                                    .expect("invalid source address"),
-                            )
-                            .destination_address(
-                                Pubkey::new_from_array(approved_message.destination_address)
-                                    .to_string(),
-                            )
+                            .source_chain(approved_message.cc_id_chain)
+                            .source_address(approved_message.source_address)
+                            .destination_address(approved_message.destination_address.to_string())
                             .payload_hash(approved_message.payload_hash.to_vec())
                             .build(),
                     )
@@ -348,182 +239,18 @@ fn map_gateway_event_to_amplifier_event(
                     )
                     .build(),
             );
-            tracing::info!(message_id = ?approved_message.message_id, "Message approved");
+            tracing::info!("message approved");
             Some(amplifier_event)
         }
-        MessageExecuted(ref _executed_message) => {
+        GatewayEvent::MessageExecuted(ref _executed_message) => {
             tracing::warn!(
                 "current gateway event does not produce enough artifacts to relay this message"
             );
             None
         }
-        OperatorshipTransferred(ref new_operatorship) => {
+        GatewayEvent::OperatorshipTransferred(ref new_operatorship) => {
             tracing::info!(?new_operatorship, "Operatorship transferred");
             None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use gmp_gateway::events::CallContract;
-    use pretty_assertions::assert_eq;
-    use test_log::test;
-
-    use super::*;
-
-    static GATEWAY_EXAMPLE_ID: &str = "gtwEpzTprUX7TJLx1hFXNeqCXJMsoxYQhQaEbnuDcj1";
-
-    // Include the test_call_data function
-    fn fixture_call_data() -> (String, EventContainer) {
-        use base64::prelude::*;
-        // Simple `CallContract` fixture
-        let event = gmp_gateway::events::GatewayEvent::CallContract(CallContract {
-            sender: Pubkey::new_unique().to_bytes(),
-            destination_chain: "ethereum".to_owned(),
-            destination_address: "0x9e3e785dD9EA3826C9cBaFb1114868bc0e79539a".to_owned(),
-            payload: vec![42, 42],
-            payload_hash: Pubkey::new_unique().to_bytes(),
-        });
-        let event = event.encode();
-        let event_container = EventContainer::new(event.to_vec()).unwrap();
-        let base64_data = BASE64_STANDARD.encode(&event);
-        (base64_data, event_container)
-    }
-
-    fn fixture_match_context() -> MatchContext {
-        MatchContext::new(GATEWAY_EXAMPLE_ID)
-    }
-
-    #[test]
-    fn test_simple_event() {
-        // Use the test_call_data fixture
-        let (base64_data, event) = fixture_call_data();
-
-        // Sample logs with multiple gateway calls, some succeed and some fail
-        let logs = vec![
-            format!("Program {GATEWAY_EXAMPLE_ID} invoke [1]"), // Invocation 1 starts
-            "Program log: Instruction: Call Contract".to_owned(),
-            format!("Program data: {}", base64_data),
-            format!("Program {GATEWAY_EXAMPLE_ID} success"), // Invocation 1 succeeds
-        ];
-
-        let result = build_program_event_stack(&fixture_match_context(), &logs);
-
-        // Expected result: two successful invocations with their events, one failed invocation
-        let expected = vec![ProgramInvocationState::Succeeded(vec![(2, event)])];
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_multiple_gateway_calls_some_succeed_some_fail() {
-        // Use the test_call_data fixture
-        let (base64_data, event) = fixture_call_data();
-
-        // Sample logs with multiple gateway calls, some succeed and some fail
-        let logs = vec![
-            format!("Program {GATEWAY_EXAMPLE_ID} invoke [1]"), // Invocation 1 starts
-            "Program log: Instruction: Call Contract".to_owned(),
-            format!("Program data: {}", base64_data),
-            format!("Program {GATEWAY_EXAMPLE_ID} success"), // Invocation 1 succeeds
-            format!("Program {GATEWAY_EXAMPLE_ID} invoke [2]"), // Invocation 2 starts
-            "Program log: Instruction: Call Contract".to_owned(),
-            format!("Program data: {}", base64_data),
-            format!("Program {GATEWAY_EXAMPLE_ID} failed"), // Invocation 2 fails
-            format!("Program {GATEWAY_EXAMPLE_ID} invoke [3]"), // Invocation 3 starts
-            "Program log: Instruction: Call Contract".to_owned(),
-            format!("Program data: {}", base64_data),
-            format!("Program {GATEWAY_EXAMPLE_ID} success"), // Invocation 3 succeeds
-        ];
-
-        let result = build_program_event_stack(&fixture_match_context(), &logs);
-
-        // Expected result: two successful invocations with their events, one failed invocation
-        let expected = vec![
-            ProgramInvocationState::Succeeded(vec![(2, event.clone())]),
-            ProgramInvocationState::Failed,
-            ProgramInvocationState::Succeeded(vec![(10, event)]),
-        ];
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_no_gateway_calls() {
-        // Logs with no gateway calls
-        let logs = vec![
-            "Program some_other_program invoke [1]".to_owned(),
-            "Program log: Instruction: Do something".to_owned(),
-            "Program some_other_program success".to_owned(),
-        ];
-
-        let result = build_program_event_stack(&fixture_match_context(), &logs);
-
-        // Expected result: empty stack
-        let expected: Vec<ProgramInvocationState> = Vec::new();
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_gateway_call_with_no_events() {
-        // Gateway call that succeeds but has no events
-        let logs = vec![
-            format!("Program {GATEWAY_EXAMPLE_ID} invoke [1]"),
-            "Program log: Instruction: Do something".to_owned(),
-            format!("Program {GATEWAY_EXAMPLE_ID} success"),
-        ];
-
-        let result = build_program_event_stack(&fixture_match_context(), &logs);
-
-        // Expected result: one successful invocation with no events
-        let expected = vec![ProgramInvocationState::Succeeded(vec![])];
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_gateway_call_failure_with_events() {
-        // Use the test_call_data fixture
-        let (base64_data, _event) = fixture_call_data();
-
-        // Gateway call that fails but has events (events should be discarded)
-        let logs = vec![
-            format!("Program {GATEWAY_EXAMPLE_ID} invoke [1]"),
-            format!("Program data: {}", base64_data),
-            format!("Program {GATEWAY_EXAMPLE_ID} failed"),
-        ];
-
-        let result = build_program_event_stack(&fixture_match_context(), &logs);
-
-        // Expected result: one failed invocation
-        let expected = vec![ProgramInvocationState::Failed];
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_real_life_data_set() {
-        let logs = vec![
-            "Program meme9s3tVXUYLLmPomrk36sEDodjKu4zjUuKn12tSic invoke [1] ",
-            "Program log: Instruction: Native ",
-            "Program log: Instruction: SendToGateway ",
-            "Program gtwEpzTprUX7TJLx1hFXNeqCXJMsoxYQhQaEbnuDcj1 invoke [2] ",
-            "Program log: Instruction: Call Contract ",
-            "Program data: YXZhbGFuY2hlLWZ1amkweDQzNjZhMDQxYkE0MjM3RjliNzU1M0I4YTczZThBRjFmMmVlMUY0ZDFoZWxsbwAAAAAAAAABGmAGtWFiOdXkE8Fe9cROo6h2dsYneWtnOVWA1xsoSByK/5UGhcLtS8MXTzRyKHtW2VF7nJSBJzGaCaejberIDgAAAHz///8qAAAAgv///6T///8FAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            "Program gtwEpzTprUX7TJLx1hFXNeqCXJMsoxYQhQaEbnuDcj1 consumed 4737 of 196074 compute units ",
-            "Program gtwEpzTprUX7TJLx1hFXNeqCXJMsoxYQhQaEbnuDcj1 success ",
-            "Program meme9s3tVXUYLLmPomrk36sEDodjKu4zjUuKn12tSic consumed 8781 of 200000 compute units ",
-            "Program meme9s3tVXUYLLmPomrk36sEDodjKu4zjUuKn12tSic success          ",
-        ];
-        let ctx = MatchContext::new("gtwEpzTprUX7TJLx1hFXNeqCXJMsoxYQhQaEbnuDcj1");
-        let mut result = build_program_event_stack(&ctx, &logs);
-        assert_eq!(result.len(), 1);
-        let state = result.pop().unwrap();
-        let ProgramInvocationState::Succeeded(item) = state else {
-            panic!("state is not of `succeeded` version");
-        };
-        assert_eq!(item.len(), 1);
     }
 }

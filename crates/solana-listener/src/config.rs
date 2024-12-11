@@ -62,7 +62,7 @@ pub(crate) mod config_defaults {
     }
 
     pub(crate) const fn gateway_program_address() -> Pubkey {
-        gmp_gateway::ID
+        axelar_solana_gateway::id()
     }
 }
 
