@@ -77,6 +77,8 @@ ignore = [
   { id = "RUSTSEC-2024-0375", reason = "dependency of solana lib" },
   { id = "RUSTSEC-2021-0145", reason = "dependency of solana lib" },
   { id = "RUSTSEC-2021-0139", reason = "dependency of solana lib" },
+  { id = "RUSTSEC-2024-0384", reason = "updating `instant` is not feasible" },
+  { id = "RUSTSEC-2024-0388", reason = "updating `derivative` is not feasible" },
   # { id = "RUSTSEC-2024-0344", reason = "ed25519-dalek: need to wait for solana to upgrade internally" },
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
@@ -97,7 +99,7 @@ ignore = [
 allow = [
   "MIT",
   "Apache-2.0",
-  "Unicode-DFS-2016",
+  "Unicode-3.0",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
@@ -125,11 +127,47 @@ exceptions = [
 # adding a clarification entry for it allows you to manually specify the
 # licensing information
 [[licenses.clarify]]
-crate = "gmp-gateway"
+crate = "axelar-solana-gateway"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-solana-encoding"
 expression = "MIT"
 license-files = []
 [[licenses.clarify]]
 crate = "axelar-rkyv-encoding"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-executable-old"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "gmp-gateway"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "governance-gmp"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "role-management"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "interchain-token-transfer-gmp"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-solana-its"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-solana-governance"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-solana-its"
 expression = "MIT"
 license-files = []
 [[licenses.clarify]]

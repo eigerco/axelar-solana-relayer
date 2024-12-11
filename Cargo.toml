@@ -101,14 +101,14 @@ bs58 = "0.5"
 redact = { version = "0.1", features = ["serde"] }
 thiserror = "1"
 uuid = { version = "1.2", features = ["v4", "serde"] }
-typed-builder = "0.18"
+typed-builder = "0.2"
 derive_builder = "0.20"
 bnum = "0.12"
 hex = "0.4"
 quanta = "0.12"
 backoff = { version = "0.4", features = ["tokio"] }
 indoc = "2"
-itertools = "0.12"
+itertools = "0.13"
 num-traits = "0.2"
 memmap2 = "0.9"
 bytemuck = "1.19"
@@ -117,10 +117,10 @@ bytemuck = "1.19"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 serde_json = "1"
-simd-json = "0.13"
+simd-json = "0.14"
 
 # Tests
-rstest = { version = "0.21" }
+rstest = { version = "0.23" }
 test-log = { version = "0.2", features = ["trace"], default-features = false }
 pretty_assertions = "1"
 mockall = "0.13"
