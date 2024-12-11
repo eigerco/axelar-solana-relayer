@@ -187,7 +187,7 @@ mod tests {
     }
 
     fn identity_fixture() -> String {
-        "
+        indoc::indoc! {"
             -----BEGIN CERTIFICATE-----
             MIIC3zCCAcegAwIBAgIJALAul9kzR0W/MA0GCSqGSIb3DQEBBQUAMA0xCzAJBgNV
             BAYTAmx2MB4XDTIyMDgwMjE5MTE1NloXDTIzMDgwMjE5MTE1NlowDTELMAkGA1UE
@@ -233,7 +233,7 @@ mod tests {
             yvdFIFrv4ZPdRkf174B1G+FDkH8o3NZ1cf+OuVIKC+jONciIJsYLPTHR0pgWqE4q
             FAbbOyAg51Xklqm2Q954WWFmu3lluHCWUGB9eSHshIurTmDd+8o15A==
             -----END PRIVATE KEY-----
-        "
+        "}
         .to_owned()
     }
 }
