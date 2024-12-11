@@ -11,3 +11,4 @@ target/
 *.key
 config.toml
 store
+storage
