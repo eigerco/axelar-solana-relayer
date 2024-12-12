@@ -60,7 +60,6 @@ impl IntoResponse for CallContractOffchainDataError {
     }
 }
 
-// #[instrument(skip_all, fields(signature = Empty))]
 async fn post_handler(
     State(state): State<Arc<ServiceState>>,
     Path(signature): Path<String>,
@@ -112,6 +111,7 @@ async fn try_build_and_push_event_with_data(
         solana_transaction.logs.as_slice(),
         gateway_event_stack::parse_gateway_logs,
     );
+
     let mut events_iter = invocations
         .into_iter()
         .filter_map(|inv| match inv {
