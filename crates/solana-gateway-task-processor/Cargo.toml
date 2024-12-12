@@ -28,6 +28,7 @@ effective-tx-sender.workspace = true
 axelar-executable.workspace = true
 num-traits.workspace = true
 relayer-amplifier-state.workspace = true
+its-instruction-builder.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

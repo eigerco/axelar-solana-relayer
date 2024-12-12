@@ -202,8 +202,16 @@ async fn execute_task(
     let destination_address = message.destination_address.parse::<Pubkey>()?;
     match destination_address {
         axelar_solana_its::ID => {
-            // todo ITS specific handling
-            tracing::error!("ITS program not yet supported");
+            let ix = its_instruction_builder::build_its_gmp_instruction(
+                signer,
+                gateway_incoming_message_pda,
+                message,
+                payload,
+                solana_rpc_client,
+            )
+            .await?;
+
+            send_tx(solana_rpc_client, keypair, ix).await?;
         }
         axelar_solana_governance::ID => {
             // todo Governance specific handling

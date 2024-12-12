@@ -80,13 +80,14 @@ relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-cor
 core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core.git", package = "common-serde-utils", branch = "main" }
 
 # Solana Gateway
-axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", rev = "e212e33", features = ["no-entrypoint"] }
-axelar-solana-its = { git = "https://github.com/eigerco/solana-axelar.git", rev = "e212e33", features = ["no-entrypoint"] }
-axelar-solana-governance = { git = "https://github.com/eigerco/solana-axelar.git", rev = "e212e33", features = ["no-entrypoint"] }
-gateway-event-stack = { git = "https://github.com/eigerco/solana-axelar.git", rev = "e212e33" }
-axelar-solana-encoding = { git = "https://github.com/eigerco/solana-axelar.git", rev = "e212e33" }
-axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", rev = "e212e33" }
-axelar-executable = { git = "https://github.com/eigerco/solana-axelar.git", rev = "e212e33" }
+axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda", features = ["no-entrypoint"] }
+axelar-solana-its = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda", features = ["no-entrypoint"] }
+axelar-solana-governance = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda", features = ["no-entrypoint"] }
+gateway-event-stack = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda" }
+axelar-solana-encoding = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda" }
+axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda" }
+axelar-executable = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda" }
+its-instruction-builder = { git = "https://github.com/eigerco/solana-axelar.git", rev = "f065eda" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
