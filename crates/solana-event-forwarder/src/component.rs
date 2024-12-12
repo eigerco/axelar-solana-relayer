@@ -252,5 +252,9 @@ fn map_gateway_event_to_amplifier_event(
             tracing::info!(?new_operatorship, "Operatorship transferred");
             None
         }
+        GatewayEvent::CallContractOffchainData(ref _call) => {
+            tracing::info!("CallContractOffchainData event is handled on user request");
+            None
+        }
     }
 }

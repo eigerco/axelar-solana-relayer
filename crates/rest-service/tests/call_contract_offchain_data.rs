@@ -35,11 +35,11 @@ const RESPONSE_JSON: &str = indoc! {r#"
         "Program log: Invalid instruction data: [2, 136, 4, 0, 0, 240, 159, 144, 170, 240, 159, 144, 170, 240, 159, 144]",
         "Program log: Instruction: Native",
         "Program log: Instruction: SendToGateway",
-        "Program gtwgM94UYHwBh3g7rWi1tcpkgELxHQRLPpPHsaECW57 invoke [2]",
+        "Program gtwLjHAsfKAR6GWB4hzTUAA1w4SDdFMKamtGA5ttMEe invoke [2]",
         "Program log: Instruction: Call Contract Offchain Data",
         "Program data: b2ZmY2hhaW4gZGF0YV9fXw== 6NGe5cm7PkXHz/g8V2VdRg0nU0l7R48x8lll4s0Clz0= ik8DocGbvnSCYaX9IUJZUapVH+LFQmwjbrT91ZGn450= ZXRoZXJldW0= MHgwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDBhZmRlMGY1MWU2OTJmMGU0YmZkNDVkMGYyYmI2ODRmYjM3YmZjNjQz",
-        "Program gtwgM94UYHwBh3g7rWi1tcpkgELxHQRLPpPHsaECW57 consumed 4452 of 172724 compute units",
-        "Program gtwgM94UYHwBh3g7rWi1tcpkgELxHQRLPpPHsaECW57 success",
+        "Program gtwLjHAsfKAR6GWB4hzTUAA1w4SDdFMKamtGA5ttMEe consumed 4452 of 172724 compute units",
+        "Program gtwLjHAsfKAR6GWB4hzTUAA1w4SDdFMKamtGA5ttMEe success",
         "Program memQuKMGBounhwP5yw9qomYNU97Eqcx9c4XwDUo6uGV consumed 31849 of 200000 compute units",
         "Program memQuKMGBounhwP5yw9qomYNU97Eqcx9c4XwDUo6uGV success"
       ],
@@ -261,14 +261,7 @@ async fn test_fail_call_contract_offchain_data_invalid_data() {
     });
 
     #[expect(clippy::non_ascii_literal, reason = "Test code")]
-    let memo = "🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪
-    🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪
-    🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪
-    🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪
-    🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪
-    🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪
-    🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪
-    🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪"
+    let memo = "🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪🐪"
         .to_owned()
         .replace(['\n', ' '], "");
     let memo_bytes = memo.as_bytes().to_vec();
