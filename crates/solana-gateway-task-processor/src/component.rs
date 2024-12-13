@@ -232,7 +232,7 @@ async fn execute_task(
                 &payload,
                 gateway_incoming_message_pda,
             )?;
-            send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+            send_tx(solana_rpc_client, keypair, ix).await?;
         }
     }
     Ok(())
@@ -261,7 +261,7 @@ async fn gateway_tx_task(
         gateway_root_pda,
         execute_data.payload_merkle_root,
     )?;
-    send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+    send_tx(solana_rpc_client, keypair, ix).await?;
 
     // verify each signature in the signing session
     let mut verifier_ver_future_set = execute_data
@@ -275,7 +275,7 @@ async fn gateway_tx_task(
                 verifier_info,
             )
             .ok()?;
-            Some(send_tx_parse_error(solana_rpc_client, keypair, ix))
+            Some(send_tx(solana_rpc_client, keypair, ix))
         })
         .collect::<FuturesUnordered<_>>();
     while let Some(result) = verifier_ver_future_set.next().await {
@@ -298,7 +298,7 @@ async fn gateway_tx_task(
                 None,
                 new_verifier_set_merkle_root,
             )?;
-            send_tx_parse_error(solana_rpc_client, keypair, ix).await?;
+            send_tx(solana_rpc_client, keypair, ix).await?;
         }
         MerkleisedPayload::NewMessages { messages } => {
             let mut merkelised_message_f_set = messages
@@ -318,7 +318,7 @@ async fn gateway_tx_task(
                         pda,
                     )
                     .ok()?;
-                    Some(send_tx_parse_error(solana_rpc_client, keypair, ix))
+                    Some(send_tx(solana_rpc_client, keypair, ix))
                 })
                 .collect::<FuturesUnordered<_>>();
             while let Some(result) = merkelised_message_f_set.next().await {
@@ -329,7 +329,13 @@ async fn gateway_tx_task(
     Ok(())
 }
 
-async fn send_tx_parse_error(
+/// Sends a transaction to the Solana blockchain.
+///
+/// # Errors
+///
+/// In case the transaction fails and the error is not recoverable relayer will stop processing
+/// and return the error.
+async fn send_tx(
     solana_rpc_client: &RpcClient,
     keypair: &Keypair,
     ix: Instruction,
