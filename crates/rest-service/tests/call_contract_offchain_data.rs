@@ -11,7 +11,6 @@ use indoc::indoc;
 use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
 use relayer_engine::RelayerComponent as _;
 use serde_json::{json, Value};
-use serial_test::serial;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_request::RpcRequest;
 use test_log::test;
@@ -54,7 +53,6 @@ const RESPONSE_JSON: &str = indoc! {r#"
 };
 
 #[test(tokio::test)]
-#[serial]
 async fn test_successful_call_contract_offchain_data() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
@@ -134,7 +132,6 @@ async fn test_successful_call_contract_offchain_data() {
 }
 
 #[test(tokio::test)]
-#[serial]
 async fn test_fail_call_contract_offchain_data_too_big() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
@@ -199,7 +196,6 @@ async fn test_fail_call_contract_offchain_data_too_big() {
 }
 
 #[test(tokio::test)]
-#[serial]
 async fn test_fail_call_contract_offchain_data_invalid_signature() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
@@ -265,7 +261,6 @@ async fn test_fail_call_contract_offchain_data_invalid_signature() {
 }
 
 #[test(tokio::test)]
-#[serial]
 async fn test_fail_call_contract_offchain_data_invalid_data() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
@@ -325,7 +320,6 @@ async fn test_fail_call_contract_offchain_data_invalid_data() {
 }
 
 #[test(tokio::test)]
-#[serial]
 async fn test_fail_call_contract_offchain_data_on_tx_fetch_error() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
@@ -389,7 +383,6 @@ async fn test_fail_call_contract_offchain_data_on_tx_fetch_error() {
 }
 
 #[test(tokio::test)]
-#[serial]
 #[expect(clippy::indexing_slicing, reason = "It's fine to panic in tests")]
 async fn test_fail_call_contract_offchain_data_on_event_not_found() {
     let config = rest_service::Config {

@@ -1,0 +1,6 @@
+[test-groups]
+rest-service-same-port = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'package(rest-service)'
+test-group = 'rest-service-same-port'
