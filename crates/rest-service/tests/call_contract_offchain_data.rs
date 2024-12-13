@@ -80,7 +80,8 @@ async fn test_successful_call_contract_offchain_data() {
         amplifier_client,
     ));
 
-    tokio::spawn(async move {
+    let shutdown_tx = service.shutdown_sender();
+    let service_handle = tokio::spawn(async move {
         service.process().await.unwrap();
     });
 
@@ -121,6 +122,15 @@ async fn test_successful_call_contract_offchain_data() {
         panic!("Expected CallEvent");
     };
     assert_eq!(metadata.payload, memo.as_bytes());
+
+    shutdown_tx
+        .send(Ok(()))
+        .await
+        .expect("Failed to send shutdown signal");
+    tokio::time::timeout(Duration::from_secs(1), service_handle)
+        .await
+        .expect("Faileed to gracefully shutdown service")
+        .expect("Join error");
 }
 
 #[test(tokio::test)]
@@ -150,7 +160,8 @@ async fn test_fail_call_contract_offchain_data_too_big() {
         amplifier_client,
     ));
 
-    tokio::spawn(async move {
+    let shutdown_tx = service.shutdown_sender();
+    let service_handle = tokio::spawn(async move {
         service.process().await.unwrap();
     });
 
@@ -176,6 +187,15 @@ async fn test_fail_call_contract_offchain_data_too_big() {
     };
 
     assert_eq!(response.status(), 413);
+
+    shutdown_tx
+        .send(Ok(()))
+        .await
+        .expect("Failed to send shutdown signal");
+    tokio::time::timeout(Duration::from_secs(1), service_handle)
+        .await
+        .expect("Faileed to gracefully shutdown service")
+        .expect("Join error");
 }
 
 #[test(tokio::test)]
@@ -203,7 +223,8 @@ async fn test_fail_call_contract_offchain_data_invalid_signature() {
         amplifier_client,
     ));
 
-    tokio::spawn(async move {
+    let shutdown_tx = service.shutdown_sender();
+    let service_handle = tokio::spawn(async move {
         service.process().await.unwrap();
     });
 
@@ -232,6 +253,15 @@ async fn test_fail_call_contract_offchain_data_invalid_signature() {
 
     let error_message = response.text().await.expect("Expected error message");
     assert!(error_message.contains("Invalid transaction signature"));
+
+    shutdown_tx
+        .send(Ok(()))
+        .await
+        .expect("Failed to send shutdown signal");
+    tokio::time::timeout(Duration::from_secs(1), service_handle)
+        .await
+        .expect("Faileed to gracefully shutdown service")
+        .expect("Join error");
 }
 
 #[test(tokio::test)]
@@ -261,7 +291,8 @@ async fn test_fail_call_contract_offchain_data_invalid_data() {
         amplifier_client,
     ));
 
-    tokio::spawn(async move {
+    let shutdown_tx = service.shutdown_sender();
+    let service_handle = tokio::spawn(async move {
         service.process().await.unwrap();
     });
 
@@ -282,6 +313,15 @@ async fn test_fail_call_contract_offchain_data_invalid_data() {
 
     let error_message = response.text().await.expect("Expected error message");
     assert!(error_message.contains("Payload hashes don't match"));
+
+    shutdown_tx
+        .send(Ok(()))
+        .await
+        .expect("Failed to send shutdown signal");
+    tokio::time::timeout(Duration::from_secs(1), service_handle)
+        .await
+        .expect("Faileed to gracefully shutdown service")
+        .expect("Join error");
 }
 
 #[test(tokio::test)]
@@ -308,7 +348,8 @@ async fn test_fail_call_contract_offchain_data_on_tx_fetch_error() {
         amplifier_client,
     ));
 
-    tokio::spawn(async move {
+    let shutdown_tx = service.shutdown_sender();
+    let service_handle = tokio::spawn(async move {
         service.process().await.unwrap();
     });
 
@@ -335,8 +376,16 @@ async fn test_fail_call_contract_offchain_data_on_tx_fetch_error() {
     assert_eq!(response.status(), 400);
 
     let error_message = response.text().await.expect("Expected error message");
-    dbg!(&error_message);
     assert!(error_message.contains("Failed to fetch transaction logs"));
+
+    shutdown_tx
+        .send(Ok(()))
+        .await
+        .expect("Failed to send shutdown signal");
+    tokio::time::timeout(Duration::from_secs(1), service_handle)
+        .await
+        .expect("Faileed to gracefully shutdown service")
+        .expect("Join error");
 }
 
 #[test(tokio::test)]
@@ -371,7 +420,8 @@ async fn test_fail_call_contract_offchain_data_on_event_not_found() {
         amplifier_client,
     ));
 
-    tokio::spawn(async move {
+    let shutdown_tx = service.shutdown_sender();
+    let service_handle = tokio::spawn(async move {
         service.process().await.unwrap();
     });
 
@@ -400,4 +450,13 @@ async fn test_fail_call_contract_offchain_data_on_event_not_found() {
     let error_message = response.text().await.expect("Expected error message");
     assert!(error_message
         .contains("Successful transaction with CallContractOffchainDataEvent not found"));
+
+    shutdown_tx
+        .send(Ok(()))
+        .await
+        .expect("Failed to send shutdown signal");
+    tokio::time::timeout(Duration::from_secs(1), service_handle)
+        .await
+        .expect("Faileed to gracefully shutdown service")
+        .expect("Join error");
 }

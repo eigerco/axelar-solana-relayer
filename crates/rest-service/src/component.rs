@@ -1,7 +1,7 @@
 //! REST service component for the relayer.
-use core::future::{Future, IntoFuture as _};
+use core::future::Future;
 use core::net::SocketAddr;
-use core::pin::{pin, Pin};
+use core::pin::Pin;
 use core::time::Duration;
 use std::sync::Arc;
 
@@ -9,7 +9,6 @@ use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{Request, Response};
 use axum::Router;
-use futures::future::{select, Either};
 use relayer_amplifier_api_integration::AmplifierCommandClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use tower_http::trace::TraceLayer;
@@ -22,7 +21,8 @@ use crate::{endpoints, Config};
 pub struct RestService {
     router: Router,
     socket_addr: SocketAddr,
-    shutdown_rx: tokio::sync::mpsc::Receiver<eyre::Error>,
+    shutdown_tx: tokio::sync::mpsc::Sender<Result<(), eyre::Error>>,
+    shutdown_rx: tokio::sync::mpsc::Receiver<Result<(), eyre::Error>>,
 }
 
 impl relayer_engine::RelayerComponent for RestService {
@@ -37,7 +37,7 @@ pub(crate) struct ServiceState {
     chain_name: String,
     rpc_client: Arc<RpcClient>,
     amplifier_client: AmplifierCommandClient,
-    shutdown_tx: tokio::sync::mpsc::Sender<eyre::Error>,
+    shutdown_tx: tokio::sync::mpsc::Sender<Result<(), eyre::Error>>,
 }
 
 impl ServiceState {
@@ -55,7 +55,7 @@ impl ServiceState {
 
     pub(crate) async fn shutdown(&self, error: eyre::Error) {
         self.shutdown_tx
-            .send(error)
+            .send(Err(error))
             .await
             .expect("Failed to send shutdown signal");
     }
@@ -75,7 +75,7 @@ impl RestService {
             chain_name,
             rpc_client,
             amplifier_client,
-            shutdown_tx,
+            shutdown_tx: shutdown_tx.clone(),
         };
         let router = Router::new()
             .route(
@@ -101,32 +101,38 @@ impl RestService {
         Self {
             router,
             socket_addr: config.bind_addr,
+            shutdown_tx,
             shutdown_rx,
         }
     }
 
-    async fn process_internal(mut self) -> eyre::Result<()> {
-        fn bail() -> Result<(), eyre::Error> {
-            Err(eyre::eyre!("REST service unexpectedly shut down"))
-        }
+    /// Returns the tx side of the channel used to shutdown the service. Main use case is to
+    /// gracefully shutdown the http server during tests to avoid errors binding to the same port.
+    #[must_use]
+    pub fn shutdown_sender(&self) -> tokio::sync::mpsc::Sender<Result<(), eyre::Error>> {
+        self.shutdown_tx.clone()
+    }
 
+    async fn process_internal(mut self) -> eyre::Result<()> {
         let listener = tokio::net::TcpListener::bind(self.socket_addr).await?;
         tracing::info!("REST Service Listening on {}", listener.local_addr()?);
 
-        match select(
-            pin!(self.shutdown_rx.recv()),
-            axum::serve(listener, self.router).into_future(),
-        )
-        .await
-        {
-            Either::Left((result, _)) => match result {
-                Some(err) => {
-                    tracing::info!("Shutting down REST service due to internal error");
-                    Err(err)
+        axum::serve(listener, self.router)
+            .with_graceful_shutdown(async move {
+                match self.shutdown_rx.recv().await {
+                    Some(Ok(())) => {
+                        tracing::info!("Shutting down REST service gracefully");
+                    }
+                    Some(Err(error)) => {
+                        tracing::error!("Shutting down REST service due to error: {:?}", error);
+                    }
+                    None => {
+                        tracing::warn!("Shutting down REST service due to channel close");
+                    }
                 }
-                _ => bail(),
-            },
-            Either::Right((_, _)) => bail(),
-        }
+            })
+            .await?;
+
+        Ok(())
     }
 }
