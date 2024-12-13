@@ -182,6 +182,10 @@ license-files = []
 crate = "axelar-executable"
 expression = "MIT"
 license-files = []
+[[licenses.clarify]]
+crate = "its-instruction-builder"
+expression = "MIT"
+license-files = []
 
 [[licenses.clarify]]
 # The package spec the clarification applies to
