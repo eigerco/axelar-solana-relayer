@@ -79,6 +79,10 @@ impl RestService {
         };
         let router = Router::new()
             .route(
+                endpoints::health::PATH,
+                endpoints::health::handlers(),
+            )
+            .route(
                 endpoints::call_contract_offchain_data::PATH,
                 endpoints::call_contract_offchain_data::handlers(),
             )

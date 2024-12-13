@@ -10,6 +10,7 @@ use futures::StreamExt as _;
 use indoc::indoc;
 use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
 use relayer_engine::RelayerComponent as _;
+use reqwest::StatusCode;
 use serde_json::{json, Value};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_request::RpcRequest;
@@ -51,6 +52,17 @@ const RESPONSE_JSON: &str = indoc! {r#"
 }
 "#
 };
+
+async fn wait_for_server(client: &reqwest::Client) {
+    let url = "http://127.0.0.1:8080/health";
+    loop {
+        let result = client.get(url).send().await;
+        match result {
+            Ok(res) if res.status() == StatusCode::OK => break,
+            Ok(_) | Err(_) => continue,
+        }
+    }
+}
 
 #[test(tokio::test)]
 async fn test_successful_call_contract_offchain_data() {
@@ -176,8 +188,8 @@ async fn test_fail_call_contract_offchain_data_too_big() {
         .replace(['\n', ' '], "");
     let memo_bytes = memo.as_bytes().to_vec();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
     let client = reqwest::Client::new();
+    wait_for_server(&client).await;
     let url = format!("http://127.0.0.1:8080/call-contract-offchain-data/{encoded_signature}");
     let Ok(response) = client.post(url).body(memo_bytes).send().await else {
         panic!("Expected response");
@@ -238,8 +250,8 @@ async fn test_fail_call_contract_offchain_data_invalid_signature() {
         .replace(['\n', ' '], "");
     let memo_bytes = memo.as_bytes().to_vec();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
     let client = reqwest::Client::new();
+    wait_for_server(&client).await;
     let url = format!("http://127.0.0.1:8080/call-contract-offchain-data/{encoded_signature}");
     let Ok(response) = client.post(url).body(memo_bytes).send().await else {
         panic!("Expected response");
@@ -297,8 +309,8 @@ async fn test_fail_call_contract_offchain_data_invalid_data() {
         .replace(['\n', ' '], "");
     let memo_bytes = memo.as_bytes().to_vec();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
     let client = reqwest::Client::new();
+    wait_for_server(&client).await;
     let url = format!("http://127.0.0.1:8080/call-contract-offchain-data/{encoded_signature}");
     let Ok(response) = client.post(url).body(memo_bytes).send().await else {
         panic!("Expected response");
@@ -360,8 +372,8 @@ async fn test_fail_call_contract_offchain_data_on_tx_fetch_error() {
         .replace(['\n', ' '], "");
     let memo_bytes = memo.as_bytes().to_vec();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
     let client = reqwest::Client::new();
+    wait_for_server(&client).await;
     let url = format!("http://127.0.0.1:8080/call-contract-offchain-data/{encoded_signature}");
     let Ok(response) = client.post(url).body(memo_bytes).send().await else {
         panic!("Expected response");
@@ -431,8 +443,8 @@ async fn test_fail_call_contract_offchain_data_on_event_not_found() {
         .replace(['\n', ' '], "");
     let memo_bytes = memo.as_bytes().to_vec();
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
     let client = reqwest::Client::new();
+    wait_for_server(&client).await;
     let url = format!("http://127.0.0.1:8080/call-contract-offchain-data/{encoded_signature}");
     let Ok(response) = client.post(url).body(memo_bytes).send().await else {
         panic!("Expected response");
