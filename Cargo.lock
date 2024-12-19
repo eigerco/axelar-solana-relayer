@@ -667,7 +667,7 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 [[package]]
 name = "axelar-executable"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "alloy-sol-types",
  "axelar-solana-encoding",
@@ -683,7 +683,7 @@ dependencies = [
 [[package]]
 name = "axelar-executable-old"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "axelar-message-primitives",
  "axelar-rkyv-encoding",
@@ -695,7 +695,7 @@ dependencies = [
 [[package]]
 name = "axelar-message-primitives"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -711,7 +711,7 @@ dependencies = [
 [[package]]
 name = "axelar-rkyv-encoding"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "arrayref",
  "bitflags 2.6.0",
@@ -731,7 +731,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-encoding"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "arrayref",
  "borsh 1.5.3",
@@ -746,9 +746,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "axelar-solana-gas-service"
+version = "0.1.0"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
+dependencies = [
+ "borsh 1.5.3",
+ "bytemuck",
+ "program-utils",
+ "solana-program",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "axelar-solana-gateway"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "axelar-message-primitives",
  "axelar-solana-encoding",
@@ -770,7 +782,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-governance"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "alloy-sol-types",
  "axelar-executable-old",
@@ -786,7 +798,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-its"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -2319,8 +2331,9 @@ dependencies = [
 [[package]]
 name = "gateway-event-stack"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
+ "axelar-solana-gas-service",
  "axelar-solana-gateway",
  "base64 0.21.7",
  "solana-sdk",
@@ -2403,7 +2416,7 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 [[package]]
 name = "gmp-gateway"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "arrayref",
  "axelar-message-primitives",
@@ -2438,7 +2451,7 @@ dependencies = [
 [[package]]
 name = "governance-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3055,7 +3068,7 @@ dependencies = [
 [[package]]
 name = "interchain-token-transfer-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3110,7 +3123,7 @@ checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 [[package]]
 name = "its-instruction-builder"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "async-recursion",
  "axelar-executable",
@@ -4121,9 +4134,10 @@ dependencies = [
 [[package]]
 name = "program-utils"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "borsh 1.5.3",
+ "bytemuck",
  "rkyv",
  "solana-program",
 ]
@@ -4817,7 +4831,7 @@ dependencies = [
 [[package]]
 name = "role-management"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=f065eda#f065eda7f1f6de08992371e10ebc5d55fba2c427"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=5206cb5#5206cb57bed02935797cfd08c77cbc9ce4f4c89a"
 dependencies = [
  "bincode",
  "bitflags 2.6.0",
