@@ -41,6 +41,7 @@ async fn main() {
         name_on_amplifier.clone(),
         Arc::clone(&rpc_client),
         amplifier_task_receiver,
+        amplifier_client.clone(),
         file_based_storage,
     );
     let (solana_listener_component, solana_listener_client) = solana_listener::SolanaListener::new(
