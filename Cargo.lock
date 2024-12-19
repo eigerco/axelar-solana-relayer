@@ -216,8 +216,8 @@ dependencies = [
 
 [[package]]
 name = "amplifier-api"
-version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#bb7071c042805c6f3f653ef6056408769cdf5113"
+version = "0.1.1"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#f4b8b4a6c30bd070263ea4f4ad09ab647e089293"
 dependencies = [
  "base64 0.22.1",
  "bnum 0.12.0",
@@ -1411,8 +1411,8 @@ dependencies = [
 
 [[package]]
 name = "common-serde-utils"
-version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#bb7071c042805c6f3f653ef6056408769cdf5113"
+version = "0.1.1"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#f4b8b4a6c30bd070263ea4f4ad09ab647e089293"
 dependencies = [
  "serde",
 ]
@@ -4538,11 +4538,11 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "relayer-amplifier-api-integration"
-version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#bb7071c042805c6f3f653ef6056408769cdf5113"
+version = "0.1.1"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#f4b8b4a6c30bd070263ea4f4ad09ab647e089293"
 dependencies = [
  "amplifier-api",
- "common-serde-utils 0.1.0 (git+https://github.com/eigerco/axelar-relayer-core.git?branch=main)",
+ "common-serde-utils 0.1.1",
  "eyre",
  "futures",
  "futures-concurrency",
@@ -4559,16 +4559,16 @@ dependencies = [
 
 [[package]]
 name = "relayer-amplifier-state"
-version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#bb7071c042805c6f3f653ef6056408769cdf5113"
+version = "0.1.1"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#f4b8b4a6c30bd070263ea4f4ad09ab647e089293"
 dependencies = [
  "amplifier-api",
 ]
 
 [[package]]
 name = "relayer-engine"
-version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#bb7071c042805c6f3f653ef6056408769cdf5113"
+version = "0.1.1"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?branch=main#f4b8b4a6c30bd070263ea4f4ad09ab647e089293"
 dependencies = [
  "eyre",
  "serde",
@@ -5684,6 +5684,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-client",
+ "solana-listener",
  "solana-sdk",
  "solana-transaction-status",
  "tracing",
@@ -5708,7 +5709,7 @@ dependencies = [
  "axelar-solana-gateway",
  "chrono",
  "common-serde-utils 0.1.0",
- "common-serde-utils 0.1.0 (git+https://github.com/eigerco/axelar-relayer-core.git?branch=main)",
+ "common-serde-utils 0.1.1",
  "eyre",
  "futures",
  "relayer-engine",
