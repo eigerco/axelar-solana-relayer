@@ -129,7 +129,7 @@ impl<'a> EffectiveTxSender<'a, Evaluated> {
                 return Err(ComputeBudgetError::TransactionError {
                     source: err
                         .get_transaction_error()
-                        .expect("Value shouldn't disapper after is_some returns true"),
+                        .expect("Value shouldn't disappear after is_some returns true"),
                     signature: *signature,
                 });
             }
