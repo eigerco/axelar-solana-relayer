@@ -208,7 +208,7 @@ async fn process_task(
                         )
                     }
                     _ => {
-                        // Any other error, probably happening before execution: Simulation eror,
+                        // Any other error, probably happening before execution: Simulation error,
                         // error building an instruction, parsing pubkey, rpc transport error,
                         // etc.
                         cannot_execute_message_event(
