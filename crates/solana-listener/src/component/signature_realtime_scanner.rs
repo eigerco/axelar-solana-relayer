@@ -33,6 +33,13 @@ pub(crate) async fn process_realtime_logs(
         let client =
             solana_client::nonblocking::pubsub_client::PubsubClient::new(config.solana_ws.as_str())
                 .await?;
+
+        // todo we have to also subscribe to the gas service events (new websocket stream running in
+        // parallel).
+        // Reason for parallel stream: https://solana.com/docs/rpc/websocket/logssubscribe :
+        // "The mentions field currently only supports one Pubkey string per method call. Listing
+        // additional addresses will result in an error."
+
         let (ws_stream, _unsubscribe) = client
             .logs_subscribe(
                 RpcTransactionLogsFilter::Mentions(vec![gateway_program_address.to_string()]),
