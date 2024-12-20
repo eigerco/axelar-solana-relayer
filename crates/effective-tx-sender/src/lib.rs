@@ -105,7 +105,7 @@ impl<'a> EffectiveTxSender<'a, Unevaluated> {
 impl<'a> EffectiveTxSender<'a, Evaluated> {
     /// Signs and sends the transaction.
     #[tracing::instrument(skip_all, err)]
-    pub async fn send_tx(self) -> eyre::Result<Signature> {
+    pub async fn send_tx(self) -> Result<Signature, ComputeBudgetError> {
         let valid_slice = self.ixs.as_slices().0;
         let tx = solana_sdk::transaction::Transaction::new_signed_with_payer(
             valid_slice,
@@ -114,10 +114,28 @@ impl<'a> EffectiveTxSender<'a, Evaluated> {
             self.hash,
         );
 
-        let signature = self
+        let signature = match self
             .solana_rpc_client
             .send_and_confirm_transaction(&tx)
-            .await?;
+            .await
+        {
+            Ok(signature) => signature,
+            Err(err) if err.get_transaction_error().is_some() => {
+                let signature = tx
+                    .signatures
+                    .first()
+                    .expect("Signed transaction should have a signature");
+
+                return Err(ComputeBudgetError::TransactionError {
+                    source: err
+                        .get_transaction_error()
+                        .expect("Value shouldn't disappear after is_some returns true"),
+                    signature: *signature,
+                });
+            }
+            Err(err) => return Err(ComputeBudgetError::Generic(eyre::Error::from(err))),
+        };
+
         Ok(signature)
     }
 }
@@ -128,6 +146,16 @@ pub enum ComputeBudgetError {
     /// Error occurred during transaction simulation.
     #[error("Simulation error: {0:?}")]
     SimulationError(RpcSimulateTransactionResult),
+
+    /// An error occurred during the transaction RPC call.
+    #[error("TransactionError: {source}")]
+    TransactionError {
+        /// The transaction error that occurred.
+        source: solana_sdk::transaction::TransactionError,
+        /// The signature of the transaction that caused the error.
+        signature: Signature,
+    },
+
     /// Generic, non-recoverable error.
     #[error("Generic error: {0}")]
     Generic(eyre::Error),

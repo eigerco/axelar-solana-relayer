@@ -4,7 +4,13 @@ use core::task::Poll;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use amplifier_api::types::TaskItem;
+use amplifier_api::chrono::DateTime;
+use amplifier_api::types::{
+    BigInt, CannotExecuteMessageEventV2, CannotExecuteMessageEventV2Metadata,
+    CannotExecuteMessageReason, Event, EventBase, EventId, EventMetadata, MessageExecutedEvent,
+    MessageExecutedEventMetadata, MessageExecutionStatus, PublishEventsRequest, TaskItem,
+    TaskItemId, Token, TxEvent,
+};
 use axelar_executable::AxelarMessagePayload;
 use axelar_solana_encoding::borsh::BorshDeserialize as _;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
@@ -12,18 +18,24 @@ use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
 use axelar_solana_gateway::state::incoming_message::command_id;
 use effective_tx_sender::ComputeBudgetError;
-use eyre::Context as _;
+use eyre::{Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
-use futures::StreamExt as _;
+use futures::{SinkExt as _, StreamExt as _};
 use num_traits::FromPrimitive as _;
+use relayer_amplifier_api_integration::AmplifierCommand;
 use relayer_amplifier_state::State;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::rpc_config::RpcTransactionConfig;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::instruction::{Instruction, InstructionError};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::TransactionError;
+use solana_transaction_status::{
+    EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding, UiTransactionStatusMeta,
+};
 use tracing::{info_span, instrument, Instrument as _};
 
 use crate::config;
@@ -35,6 +47,7 @@ pub struct SolanaTxPusher<S: State> {
     name_on_amplifier: String,
     rpc_client: Arc<RpcClient>,
     task_receiver: relayer_amplifier_api_integration::AmplifierTaskReceiver,
+    amplifier_client: relayer_amplifier_api_integration::AmplifierCommandClient,
     state: S,
 }
 
@@ -54,6 +67,7 @@ impl<S: State> SolanaTxPusher<S> {
         name_on_amplifier: String,
         rpc_client: Arc<RpcClient>,
         task_receiver: relayer_amplifier_api_integration::AmplifierTaskReceiver,
+        amplifier_client: relayer_amplifier_api_integration::AmplifierCommandClient,
         state: S,
     ) -> Self {
         Self {
@@ -61,6 +75,7 @@ impl<S: State> SolanaTxPusher<S> {
             name_on_amplifier,
             rpc_client,
             task_receiver,
+            amplifier_client,
             state,
         }
     }
@@ -82,11 +97,17 @@ impl<S: State> SolanaTxPusher<S> {
                         let solana_rpc_client = Arc::clone(&self.rpc_client);
                         let keypair = Arc::clone(&keypair);
                         let config_metadata = Arc::clone(&config_metadata);
+                        let amplifier_client = self.amplifier_client.clone();
                         async move {
                             let command_id = task.id.clone();
-                            let res =
-                                process_task(&keypair, &solana_rpc_client, task, &config_metadata)
-                                    .await;
+                            let res = process_task(
+                                &keypair,
+                                &solana_rpc_client,
+                                amplifier_client,
+                                task,
+                                &config_metadata,
+                            )
+                            .await;
                             (command_id, res)
                         }
                     });
@@ -140,14 +161,15 @@ struct ConfigMetadata {
 async fn process_task(
     keypair: &Keypair,
     solana_rpc_client: &RpcClient,
-    task: TaskItem,
+    mut amplifier_client: relayer_amplifier_api_integration::AmplifierCommandClient,
+    task_item: TaskItem,
     metadata: &ConfigMetadata,
 ) -> eyre::Result<()> {
     use amplifier_api::types::Task::{Execute, GatewayTx, Refund, Verify};
     let signer = keypair.pubkey();
     let gateway_root_pda = metadata.gateway_root_pda;
 
-    match task.task {
+    match task_item.task {
         Verify(_verify_task) => {
             tracing::warn!("solana blockchain is not supposed to receive the `verify_task`");
         }
@@ -155,11 +177,55 @@ async fn process_task(
             gateway_tx_task(task, gateway_root_pda, signer, solana_rpc_client, keypair).await?;
         }
         Execute(task) => {
+            let source_chain = task.message.source_chain.clone();
+            let message_id = task.message.message_id.clone();
+
             // communicate with the destination program
-            execute_task(task, metadata, signer, solana_rpc_client, keypair)
+            if let Err(error) = execute_task(task, metadata, signer, solana_rpc_client, keypair)
                 .instrument(info_span!("execute task"))
                 .in_current_span()
-                .await?;
+                .await
+            {
+                let event = match error.downcast_ref::<ComputeBudgetError>() {
+                    Some(&ComputeBudgetError::TransactionError {
+                        source: ref _source,
+                        signature,
+                    }) => {
+                        let (meta, maybe_block_time) =
+                            get_confirmed_transaction_metadata(solana_rpc_client, &signature)
+                                .await?;
+
+                        message_executed_event(
+                            signature,
+                            source_chain,
+                            message_id,
+                            MessageExecutionStatus::Reverted,
+                            maybe_block_time,
+                            Token {
+                                token_id: None,
+                                amount: BigInt::from_u64(meta.fee),
+                            },
+                        )
+                    }
+                    _ => {
+                        // Any other error, probably happening before execution: Simulation error,
+                        // error building an instruction, parsing pubkey, rpc transport error,
+                        // etc.
+                        cannot_execute_message_event(
+                            task_item.id,
+                            source_chain,
+                            message_id,
+                            CannotExecuteMessageReason::Error,
+                            error.to_string(),
+                        )
+                    }
+                };
+
+                let command = AmplifierCommand::PublishEvents(PublishEventsRequest {
+                    events: vec![event],
+                });
+                amplifier_client.sender.send(command).await?;
+            };
         }
         Refund(_refund_task) => {
             tracing::error!("refund task not implemented");
@@ -167,6 +233,83 @@ async fn process_task(
     };
 
     Ok(())
+}
+
+async fn get_confirmed_transaction_metadata(
+    solana_rpc_client: &RpcClient,
+    signature: &Signature,
+) -> Result<(UiTransactionStatusMeta, Option<i64>), eyre::Error> {
+    let config = RpcTransactionConfig {
+        encoding: Some(UiTransactionEncoding::Binary),
+        commitment: Some(CommitmentConfig::confirmed()),
+        max_supported_transaction_version: Some(0),
+    };
+
+    let EncodedConfirmedTransactionWithStatusMeta {
+        transaction: transaction_with_meta,
+        block_time,
+        ..
+    } = solana_rpc_client
+        .get_transaction_with_config(signature, config)
+        .await?;
+
+    let meta = transaction_with_meta
+        .meta
+        .ok_or_eyre("transaction metadata not available")?;
+
+    Ok((meta, block_time))
+}
+
+fn message_executed_event(
+    tx_signature: Signature,
+    source_chain: String,
+    message_id: TxEvent,
+    status: MessageExecutionStatus,
+    block_time: Option<i64>,
+    cost: Token,
+) -> Event {
+    let event_id = EventId::tx_reverted_event_id(&tx_signature.to_string());
+    let metadata = MessageExecutedEventMetadata::builder().build();
+    let event_metadata = EventMetadata::builder()
+        .timestamp(block_time.and_then(|secs| DateTime::from_timestamp(secs, 0)))
+        .extra(metadata)
+        .build();
+    let event_base = EventBase::builder()
+        .event_id(event_id)
+        .meta(Some(event_metadata))
+        .build();
+    Event::MessageExecuted(MessageExecutedEvent {
+        base: event_base,
+        message_id,
+        source_chain,
+        status,
+        cost,
+    })
+}
+
+fn cannot_execute_message_event(
+    task_item_id: TaskItemId,
+    source_chain: String,
+    message_id: TxEvent,
+    reason: CannotExecuteMessageReason,
+    details: String,
+) -> Event {
+    let event_id = EventId::cannot_execute_task_event_id(&task_item_id);
+    let metadata = CannotExecuteMessageEventV2Metadata::builder()
+        .task_item_id(task_item_id)
+        .build();
+    let event_metadata = EventMetadata::builder().extra(metadata).build();
+    let event_base = EventBase::builder()
+        .meta(Some(event_metadata))
+        .event_id(event_id)
+        .build();
+    Event::CannotExecuteMessageV2(CannotExecuteMessageEventV2 {
+        base: event_base,
+        reason,
+        details,
+        message_id,
+        source_chain,
+    })
 }
 
 async fn execute_task(
@@ -211,7 +354,7 @@ async fn execute_task(
             )
             .await?;
 
-            send_tx(solana_rpc_client, keypair, ix).await?;
+            send_transaction(solana_rpc_client, keypair, ix).await?;
         }
         axelar_solana_governance::ID => {
             // todo Governance specific handling
@@ -240,7 +383,7 @@ async fn execute_task(
                 &payload,
                 gateway_incoming_message_pda,
             )?;
-            send_tx(solana_rpc_client, keypair, ix).await?;
+            send_transaction(solana_rpc_client, keypair, ix).await?;
         }
     }
     Ok(())
@@ -269,7 +412,7 @@ async fn gateway_tx_task(
         gateway_root_pda,
         execute_data.payload_merkle_root,
     )?;
-    send_tx(solana_rpc_client, keypair, ix).await?;
+    send_gateway_tx(solana_rpc_client, keypair, ix).await?;
 
     // verify each signature in the signing session
     let mut verifier_ver_future_set = execute_data
@@ -283,7 +426,7 @@ async fn gateway_tx_task(
                 verifier_info,
             )
             .ok()?;
-            Some(send_tx(solana_rpc_client, keypair, ix))
+            Some(send_gateway_tx(solana_rpc_client, keypair, ix))
         })
         .collect::<FuturesUnordered<_>>();
     while let Some(result) = verifier_ver_future_set.next().await {
@@ -306,7 +449,7 @@ async fn gateway_tx_task(
                 None,
                 new_verifier_set_merkle_root,
             )?;
-            send_tx(solana_rpc_client, keypair, ix).await?;
+            send_gateway_tx(solana_rpc_client, keypair, ix).await?;
         }
         MerkleisedPayload::NewMessages { messages } => {
             let mut merkelised_message_f_set = messages
@@ -326,7 +469,7 @@ async fn gateway_tx_task(
                         pda,
                     )
                     .ok()?;
-                    Some(send_tx(solana_rpc_client, keypair, ix))
+                    Some(send_gateway_tx(solana_rpc_client, keypair, ix))
                 })
                 .collect::<FuturesUnordered<_>>();
             while let Some(result) = merkelised_message_f_set.next().await {
@@ -343,7 +486,7 @@ async fn gateway_tx_task(
 ///
 /// In case the transaction fails and the error is not recoverable relayer will stop processing
 /// and return the error.
-async fn send_tx(
+async fn send_gateway_tx(
     solana_rpc_client: &RpcClient,
     keypair: &Keypair,
     ix: Instruction,
@@ -388,6 +531,4 @@ async fn send_transaction(
         .await?
         .send_tx()
         .await
-        .map_err(eyre::Error::from)
-        .map_err(ComputeBudgetError::Generic)
 }
