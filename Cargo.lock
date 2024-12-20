@@ -5658,6 +5658,7 @@ dependencies = [
 name = "solana-event-forwarder"
 version = "0.1.0"
 dependencies = [
+ "axelar-solana-gas-service",
  "axelar-solana-gateway",
  "base64 0.22.1",
  "bs58",
@@ -5698,7 +5699,6 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-client",
- "solana-listener",
  "solana-sdk",
  "solana-transaction-status",
  "tracing",

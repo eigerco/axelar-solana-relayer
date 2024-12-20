@@ -9,6 +9,7 @@ edition.workspace = true
 
 [dependencies]
 futures.workspace = true
+axelar-solana-gas-service.workspace = true
 relayer-amplifier-api-integration.workspace = true
 solana-listener.workspace = true
 relayer-engine.workspace = true

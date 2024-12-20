@@ -1,6 +1,8 @@
 use core::future::Future;
 use core::pin::Pin;
+use std::str::FromStr;
 
+use axelar_solana_gas_service::processor::GasServiceEvent;
 use axelar_solana_gateway::processor::GatewayEvent;
 use futures::{SinkExt as _, StreamExt as _};
 use gateway_event_stack::{
@@ -8,10 +10,12 @@ use gateway_event_stack::{
 };
 use relayer_amplifier_api_integration::amplifier_api::types::{
     BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventId, EventMetadata,
-    GatewayV2Message, MessageApprovedEvent, MessageApprovedEventMetadata, MessageId,
-    PublishEventsRequest, SignersRotatedEvent, SignersRotatedMetadata, Token, TxEvent, TxId,
+    GasCreditEvent, GasRefundedEvent, GatewayV2Message, MessageApprovedEvent,
+    MessageApprovedEventMetadata, MessageId, PublishEventsRequest, SignersRotatedEvent,
+    SignersRotatedMetadata, Token, TxEvent, TxId,
 };
 use relayer_amplifier_api_integration::AmplifierCommand;
+use solana_sdk::signature::Signature;
 
 /// The core component that is responsible for ingesting raw Solana events.
 ///
@@ -100,6 +104,119 @@ impl SolanaEventForwarder {
             self.amplifier_client.sender.send(command).await?;
         }
         eyre::bail!("Listener has stopped unexpectedly");
+    }
+}
+
+fn map_gas_service_event_to_amplifier_event(
+    source_chain: &str,
+    event: GasServiceEvent,
+    message: &solana_listener::SolanaTransaction,
+    log_index: usize,
+    price_per_event_in_lamports: u64,
+    correlated_message_id: Option<MessageId>,
+) -> Option<Event> {
+    let signature = message.signature.to_string();
+    let event_id = EventId::new(&signature, log_index);
+    let tx_id = TxId(signature.clone());
+
+    match event {
+        GasServiceEvent::NativeGasPaidForncontractCall(event) => {
+            let event = Event::GasCredit(
+                GasCreditEvent::builder()
+                    .base(
+                        EventBase::builder()
+                            .event_id(event_id)
+                            .meta(Some(
+                                EventMetadata::builder()
+                                    .tx_id(Some(tx_id))
+                                    .timestamp(message.timestamp)
+                                    .from_address(None)
+                                    .finalized(Some(true))
+                                    .extra(())
+                                    .build(),
+                            ))
+                            .build(),
+                    )
+                    .message_id(message_id)
+                    .payment(
+                        Token::builder()
+                            .amount(BigInt::from_u64(event.gas_fee_amount))
+                            .token_id(None)
+                            .build(),
+                    )
+                    .refund_address(event.refund_address.to_string())
+                    .build(),
+            );
+            return Some(event)
+        }
+        GasServiceEvent::NativeGasAdded(event) => {
+            let sig = Signature::from(event.tx_hash);
+            let message_id = MessageId::new(&sig.to_string(), event.log_index.try_into().ok()?);
+            let event = Event::GasCredit(
+                GasCreditEvent::builder()
+                    .base(
+                        EventBase::builder()
+                            .event_id(event_id)
+                            .meta(Some(
+                                EventMetadata::builder()
+                                    .tx_id(Some(tx_id))
+                                    .timestamp(message.timestamp)
+                                    .from_address(None)
+                                    .finalized(Some(true))
+                                    .extra(())
+                                    .build(),
+                            ))
+                            .build(),
+                    )
+                    .message_id(message_id)
+                    .payment(
+                        Token::builder()
+                            .amount(BigInt::from_u64(event.gas_fee_amount))
+                            .token_id(None)
+                            .build(),
+                    )
+                    .refund_address(event.refund_address.to_string())
+                    .build(),
+            );
+            return Some(event)
+        }
+        GasServiceEvent::NativeGasRefunded(event) => {
+            let sig = Signature::from(event.tx_hash);
+            let message_id = MessageId::new(&sig.to_string(), event.log_index.try_into().ok()?);
+            let event = Event::GasRefunded(
+                GasRefundedEvent::builder()
+                    .base(
+                        EventBase::builder()
+                            .event_id(event_id)
+                            .meta(Some(
+                                EventMetadata::builder()
+                                    .tx_id(Some(tx_id))
+                                    .timestamp(message.timestamp)
+                                    .from_address(None)
+                                    .finalized(Some(true))
+                                    .extra(())
+                                    .build(),
+                            ))
+                            .build(),
+                    )
+                    .message_id(message_id)
+                    .cost(
+                        Token::builder()
+                            .amount(BigInt::from_u64(price_per_event_in_lamports))
+                            .token_id(None)
+                            .build(),
+                    )
+                    .recipient_address(event.receiver.to_string())
+                    .refunded_amount(
+                        Token::builder()
+                            .amount(BigInt::from_u64(event.fees))
+                            .token_id(None)
+                            .build(),
+                    )
+                    .build(),
+            );
+            return Some(event)
+        }
     }
 }
 
