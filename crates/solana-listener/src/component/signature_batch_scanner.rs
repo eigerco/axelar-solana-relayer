@@ -71,6 +71,13 @@ pub(crate) async fn scan_old_signatures(
     Ok(latest_processed_signature)
 }
 
+/// Fetches events in range. Prcoesses them "backwards" in time.
+/// Fetching the events in range: batch(t1..t2), batch(t2..t3), ..
+///
+/// The fetching will be done for: gateway and gas service programs until both programs don't return
+/// anu more events.
+///
+/// The fetching of events stops after *both* programs have no more events to report.
 #[tracing::instrument(skip_all, err)]
 pub(crate) async fn fetch_batches_in_range(
     config: &crate::Config,
@@ -84,32 +91,49 @@ pub(crate) async fn fetch_batches_in_range(
 
     // Track the chronologically youngest t2 that we've seen
     let mut chronologically_newest_signature = t2_signature;
+    'a: loop {
+        let mut all_completed = true;
+        let mut newest_sig = chronologically_newest_signature;
 
-    loop {
-        let mut fetcher = SignatureRangeFetcher {
-            t1: t1_signature,
-            t2: t2_signature,
-            rpc_client: Arc::clone(&rpc_client),
-            address: config.gateway_program_address,
-            signature_sender: signature_sender.clone(),
-        };
+        for program_to_monitor in [
+            config.gateway_program_address,
+            config.gas_service_config_pda,
+        ] {
+            let mut fetcher = SignatureRangeFetcher {
+                t1: t1_signature,
+                t2: t2_signature,
+                rpc_client: Arc::clone(&rpc_client),
+                address: program_to_monitor,
+                signature_sender: signature_sender.clone(),
+            };
 
-        let res = fetcher.fetch().await?;
-        match res {
-            FetchingState::Completed => break,
-            FetchingState::FetchAgain { new_t2 } => {
-                // Set the newest signature only once
-                if chronologically_newest_signature.is_none() {
-                    chronologically_newest_signature = Some(new_t2);
+            let res = fetcher.fetch().await?;
+            match res {
+                FetchingState::Completed => {
+                    // This program finished, but we still need to process the other one
                 }
-
-                // Update t2 to fetch older signatures
-                t2_signature = Some(new_t2);
+                FetchingState::FetchAgain { new_t2 } => {
+                    all_completed = false;
+                    if newest_sig.is_none() {
+                        newest_sig = Some(new_t2);
+                    }
+                }
             }
+
+            // Avoid rate limiting
+            interval.tick().await;
         }
-        // Sleep to avoid rate limiting
-        interval.tick().await;
+
+        // After processing both programs:
+        if !all_completed {
+            t2_signature = newest_sig;
+            chronologically_newest_signature = newest_sig;
+        } else {
+            // Both completed, break out
+            break 'a;
+        }
     }
+
     Ok(chronologically_newest_signature)
 }
 

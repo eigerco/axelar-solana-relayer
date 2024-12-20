@@ -80,9 +80,18 @@ relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-cor
 core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core.git", package = "common-serde-utils", branch = "main" }
 
 # Solana Gateway
-axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5", features = ["no-entrypoint"] }
-axelar-solana-its = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5", features = ["no-entrypoint"] }
-axelar-solana-governance = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5", features = ["no-entrypoint"] }
+axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5", features = [
+    "no-entrypoint",
+] }
+axelar-solana-gas-service = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5", features = [
+    "no-entrypoint",
+] }
+axelar-solana-its = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5", features = [
+    "no-entrypoint",
+] }
+axelar-solana-governance = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5", features = [
+    "no-entrypoint",
+] }
 gateway-event-stack = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5" }
 axelar-solana-encoding = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5" }
 axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", rev = "5206cb5" }
@@ -97,7 +106,11 @@ xshell = "0.2"
 arrayvec = "0.7"
 url = { version = "2.5", features = ["serde"] }
 temp-env = "0.3"
-chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
+chrono = { version = "0.4", default-features = false, features = [
+    "serde",
+    "clock",
+    "std",
+] }
 base64 = "0.22"
 bs58 = "0.5"
 redact = { version = "0.1", features = ["serde"] }
@@ -134,7 +147,14 @@ color-eyre = "0.6"
 
 # HTTP
 axum = "0.7.9"
-reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls", "stream", "http2"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "gzip",
+    "deflate",
+    "rustls-tls",
+    "stream",
+    "http2",
+] }
 tower-http = { version = "0.6.2", features = ["trace"] }
 
 # Solana
@@ -146,7 +166,12 @@ solana-sdk = "=2.0.16"
 solana-transaction-status = "=2.0.16"
 
 # Async
-tokio = { version = "1", features = ["rt", "signal", "rt-multi-thread", "macros"] }
+tokio = { version = "1", features = [
+    "rt",
+    "signal",
+    "rt-multi-thread",
+    "macros",
+] }
 tokio-stream = { version = "0.1" }
 tokio-util = "0.7"
 futures-concurrency = "7.4"
@@ -156,13 +181,28 @@ async-trait = "0"
 
 # tracing
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "tracing-log", "json", "valuable", "tracing"] }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "fmt",
+    "tracing-log",
+    "json",
+    "valuable",
+    "tracing",
+] }
 tracing-error = "0.2"
 
 # opentelemetry
 opentelemetry = "0.25"
-opentelemetry-otlp = { version = "0.25", default-features = false, features = ["trace", "tokio", "logs", "metrics", "grpc-tonic"] }
-tracing-opentelemetry = { version = "0.26", default-features = false, features = ["metrics"] }
+opentelemetry-otlp = { version = "0.25", default-features = false, features = [
+    "trace",
+    "tokio",
+    "logs",
+    "metrics",
+    "grpc-tonic",
+] }
+tracing-opentelemetry = { version = "0.26", default-features = false, features = [
+    "metrics",
+] }
 opentelemetry-semantic-conventions = "0.25"
 opentelemetry_sdk = { version = "0.25", features = ["rt-tokio"] }
 opentelemetry-appender-tracing = { version = "0.25" }

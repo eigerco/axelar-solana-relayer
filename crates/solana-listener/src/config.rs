@@ -16,6 +16,10 @@ pub struct Config {
     #[serde(default = "config_defaults::gateway_program_address")]
     pub gateway_program_address: Pubkey,
 
+    /// Gas service config PDA
+    #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
+    pub gas_service_config_pda: Pubkey,
+
     /// The websocket endpoint of the solana node
     pub solana_ws: url::Url,
 
