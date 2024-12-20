@@ -4,6 +4,7 @@ use core::task::Poll;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use amplifier_api::chrono::DateTime;
 use amplifier_api::types::{
     BigInt, CannotExecuteMessageEventV2, CannotExecuteMessageEventV2Metadata,
     CannotExecuteMessageReason, Event, EventBase, EventId, EventMetadata, MessageExecutedEvent,
@@ -17,19 +18,24 @@ use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
 use axelar_solana_gateway::state::incoming_message::command_id;
 use effective_tx_sender::ComputeBudgetError;
-use eyre::Context as _;
+use eyre::{Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
 use futures::{SinkExt as _, StreamExt as _};
 use num_traits::FromPrimitive as _;
 use relayer_amplifier_api_integration::AmplifierCommand;
 use relayer_amplifier_state::State;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::rpc_config::RpcTransactionConfig;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::instruction::{Instruction, InstructionError};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::TransactionError;
+use solana_transaction_status::{
+    EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding, UiTransactionStatusMeta,
+};
 use tracing::{info_span, instrument, Instrument as _};
 
 use crate::config;
@@ -185,15 +191,19 @@ async fn process_task(
                         source: ref _source,
                         signature,
                     }) => {
-                        let tx = solana_listener::fetch_logs(signature, solana_rpc_client).await?;
+                        let (meta, maybe_block_time) =
+                            get_confirmed_transaction_metadata(solana_rpc_client, &signature)
+                                .await?;
+
                         message_executed_event(
                             signature,
                             source_chain,
                             message_id,
                             MessageExecutionStatus::Reverted,
+                            maybe_block_time,
                             Token {
                                 token_id: None,
-                                amount: BigInt::from_u64(tx.cost_in_lamports),
+                                amount: BigInt::from_u64(meta.fee),
                             },
                         )
                     }
@@ -225,16 +235,45 @@ async fn process_task(
     Ok(())
 }
 
+async fn get_confirmed_transaction_metadata(
+    solana_rpc_client: &RpcClient,
+    signature: &Signature,
+) -> Result<(UiTransactionStatusMeta, Option<i64>), eyre::Error> {
+    let config = RpcTransactionConfig {
+        encoding: Some(UiTransactionEncoding::Binary),
+        commitment: Some(CommitmentConfig::confirmed()),
+        max_supported_transaction_version: Some(0),
+    };
+
+    let EncodedConfirmedTransactionWithStatusMeta {
+        transaction: transaction_with_meta,
+        block_time,
+        ..
+    } = solana_rpc_client
+        .get_transaction_with_config(signature, config)
+        .await?;
+
+    let meta = transaction_with_meta
+        .meta
+        .ok_or_eyre("transaction metadata not available")?;
+
+    Ok((meta, block_time))
+}
+
 fn message_executed_event(
     tx_signature: Signature,
     source_chain: String,
     message_id: TxEvent,
     status: MessageExecutionStatus,
+    block_time: Option<i64>,
     cost: Token,
 ) -> Event {
     let event_id = EventId::tx_reverted_event_id(&tx_signature.to_string());
     let metadata = MessageExecutedEventMetadata::builder().build();
-    let event_metadata = EventMetadata::builder().extra(metadata).build();
+    let event_metadata = EventMetadata::builder()
+        .timestamp(block_time.and_then(|secs| DateTime::from_timestamp(secs, 0)))
+        .extra(metadata)
+        .build();
     let event_base = EventBase::builder()
         .event_id(event_id)
         .meta(Some(event_metadata))
