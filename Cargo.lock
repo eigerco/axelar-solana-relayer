@@ -5665,6 +5665,7 @@ dependencies = [
  "eyre",
  "futures",
  "gateway-event-stack",
+ "itertools 0.13.0",
  "pretty_assertions",
  "relayer-amplifier-api-integration",
  "relayer-engine",

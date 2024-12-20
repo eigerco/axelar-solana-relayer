@@ -1,13 +1,19 @@
 use core::future::Future;
 use core::pin::Pin;
-use std::str::FromStr;
 
-use axelar_solana_gas_service::processor::GasServiceEvent;
-use axelar_solana_gateway::processor::GatewayEvent;
+use axelar_solana_gas_service::processor::{
+    GasServiceEvent, NativeGasAddedEvent, NativeGasPaidForContractCallEvent, NativeGasRefundedEvent,
+};
+use axelar_solana_gateway::processor::{
+    CallContractEvent, CallContractOffchainDataEvent, GatewayEvent, MessageEvent,
+    VerifierSetRotated,
+};
 use futures::{SinkExt as _, StreamExt as _};
 use gateway_event_stack::{
-    build_program_event_stack, parse_gateway_logs, MatchContext, ProgramInvocationState,
+    build_program_event_stack, parse_gas_service_log, parse_gateway_logs, MatchContext,
+    ProgramInvocationState,
 };
+use itertools::Itertools;
 use relayer_amplifier_api_integration::amplifier_api::types::{
     BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventId, EventMetadata,
     GasCreditEvent, GasRefundedEvent, GatewayV2Message, MessageApprovedEvent,
@@ -35,6 +41,25 @@ impl relayer_engine::RelayerComponent for SolanaEventForwarder {
     }
 }
 
+enum GatewayOrGasEvent {
+    GatewayEvent(GatewayEvent),
+    GasEveent(GasServiceEvent),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum GatewayAndGasEvent {
+    CallContract(Option<NativeGasPaidForContractCallEvent>, CallContractEvent),
+    CallContractOffchainData(
+        Option<NativeGasPaidForContractCallEvent>,
+        CallContractOffchainDataEvent,
+    ),
+    VerifierSetRotated(VerifierSetRotated),
+    MessageApproved(MessageEvent),
+    MessageExecuted(MessageEvent),
+    NativeGasAdded(NativeGasAddedEvent),
+    NativeGasRefunded(NativeGasRefundedEvent),
+}
+
 impl SolanaEventForwarder {
     /// Instantiate a new `SolanaEventForwarder` using the pre-configured configuration.
     #[must_use]
@@ -50,45 +75,117 @@ impl SolanaEventForwarder {
         }
     }
 
-    #[tracing::instrument(skip_all, name = "Solana log forwarder")]
+    // #[tracing::instrument(skip_all, name = "Solana log forwarder")]
     pub(crate) async fn process_internal(mut self) -> eyre::Result<()> {
         let match_context = MatchContext::new(self.config.gateway_program_id.to_string().as_str());
 
         while let Some(message) = self.solana_listener_client.log_receiver.next().await {
             let gateway_program_stack =
                 build_program_event_stack(&match_context, &message.logs, parse_gateway_logs);
+            let gas_events_program_stack =
+                build_program_event_stack(&match_context, &message.logs, parse_gas_service_log);
             let total_cost = message.cost_in_lamports;
 
             // Collect all successful events into a vector
-            let events_vec = gateway_program_stack
+            let gateway_events_vec = keep_successful_events(gateway_program_stack)
                 .into_iter()
-                .filter_map(|x| {
-                    if let ProgramInvocationState::Succeeded(events) = x {
-                        Some(events)
-                    } else {
-                        None
-                    }
-                })
-                .flatten()
-                .collect::<Vec<_>>();
+                .map(|(idx, event)| (idx, GatewayOrGasEvent::GatewayEvent(event)));
+            let gas_events = keep_successful_events(gas_events_program_stack)
+                .into_iter()
+                .map(|(idx, event)| (idx, GatewayOrGasEvent::GasEveent(event)));
+            let all_events = gateway_events_vec
+                .chain(gas_events)
+                .sorted_by(|(idx_a, _), (idx_b, _)| idx_a.cmp(idx_b));
+
+            // we have to associate the gas events with the gateway events because for
+            // NativeGasPaidForContractCallEvent event we need to attach the message_id that
+            // corresponds with the given CallContract event.
+            let combined_events = all_events
+                .fold(
+                    // (accumulated vector, pending NativeGasPaidForContractCallEvent)
+                    (vec![], vec![]),
+                    |(mut acc, mut pending_gas), (idx, evt)| {
+                        match evt {
+                            GatewayOrGasEvent::GatewayEvent(gateway_evt) => {
+                                // Check if we have a pending gas event to combine
+                                match gateway_evt {
+                                    GatewayEvent::CallContract(call_event) => {
+                                        let gas = pending_gas.pop();
+                                        let event =
+                                            GatewayAndGasEvent::CallContract(gas, call_event);
+                                        acc.push((idx, event));
+                                        (acc, pending_gas)
+                                    }
+                                    GatewayEvent::CallContractOffchainData(call_event) => {
+                                        let gas = pending_gas.pop();
+                                        let event = GatewayAndGasEvent::CallContractOffchainData(
+                                            gas, call_event,
+                                        );
+                                        acc.push((idx, event));
+                                        (acc, pending_gas)
+                                    }
+                                    GatewayEvent::VerifierSetRotated(evt) => {
+                                        let event = GatewayAndGasEvent::VerifierSetRotated(evt);
+                                        acc.push((idx, event));
+                                        (acc, pending_gas)
+                                    }
+                                    GatewayEvent::OperatorshipTransferred(event) => {
+                                        tracing::debug!(?event, "operator ship transferred");
+                                        (acc, pending_gas)
+                                    }
+                                    GatewayEvent::MessageApproved(evt) => {
+                                        let event = GatewayAndGasEvent::MessageApproved(evt);
+                                        acc.push((idx, event));
+                                        (acc, pending_gas)
+                                    }
+                                    GatewayEvent::MessageExecuted(evt) => {
+                                        let event = GatewayAndGasEvent::MessageExecuted(evt);
+                                        acc.push((idx, event));
+                                        (acc, pending_gas)
+                                    }
+                                }
+                            }
+                            GatewayOrGasEvent::GasEveent(evt) => {
+                                // Other gas events that aren't combined
+                                match evt {
+                                    GasServiceEvent::NativeGasAdded(evt) => {
+                                        acc.push((idx, GatewayAndGasEvent::NativeGasAdded(evt)));
+                                    }
+                                    GasServiceEvent::NativeGasRefunded(evt) => {
+                                        acc.push((idx, GatewayAndGasEvent::NativeGasRefunded(evt)));
+                                    }
+                                    GasServiceEvent::NativeGasPaidForncontractCall(evt) => {
+                                        // Store this gas event and wait for the next CallContract /
+                                        // CallContractOffchainData
+                                        pending_gas.push(evt);
+                                    }
+                                };
+                                (acc, pending_gas)
+                            }
+                        }
+                    },
+                )
+                .0; // Extract only the vector from the tuple, we ignore gas calls that don't have call
+                    // contract events attached
 
             // Calculate the number of events
-            let num_events = events_vec.len();
+            let num_events = combined_events.len();
 
             // Compute the price per event, handling the case where num_events is zero
             let price_for_event = total_cost.checked_div(num_events.try_into()?).unwrap_or(0);
 
             // Map the events to amplifier events with the calculated price
-            let events_to_send = events_vec
+            let events_to_send = combined_events
                 .into_iter()
-                .filter_map(|(log_index, event)| {
-                    map_gateway_event_to_amplifier_event(
+                .flat_map(|(log_index, event)| {
+                    let (ev1, ev2) = map_gateway_event_to_amplifier_event(
                         self.config.source_chain_name.as_str(),
                         event,
                         &message,
                         log_index,
                         price_for_event,
-                    )
+                    );
+                    [ev1, ev2].into_iter().flatten()
                 })
                 .collect::<Vec<_>>();
 
@@ -107,119 +204,23 @@ impl SolanaEventForwarder {
     }
 }
 
-fn map_gas_service_event_to_amplifier_event(
-    source_chain: &str,
-    event: GasServiceEvent,
-    message: &solana_listener::SolanaTransaction,
-    log_index: usize,
-    price_per_event_in_lamports: u64,
-    correlated_message_id: Option<MessageId>,
-) -> Option<Event> {
-    let signature = message.signature.to_string();
-    let event_id = EventId::new(&signature, log_index);
-    let tx_id = TxId(signature.clone());
-
-    match event {
-        GasServiceEvent::NativeGasPaidForncontractCall(event) => {
-            let event = Event::GasCredit(
-                GasCreditEvent::builder()
-                    .base(
-                        EventBase::builder()
-                            .event_id(event_id)
-                            .meta(Some(
-                                EventMetadata::builder()
-                                    .tx_id(Some(tx_id))
-                                    .timestamp(message.timestamp)
-                                    .from_address(None)
-                                    .finalized(Some(true))
-                                    .extra(())
-                                    .build(),
-                            ))
-                            .build(),
-                    )
-                    .message_id(message_id)
-                    .payment(
-                        Token::builder()
-                            .amount(BigInt::from_u64(event.gas_fee_amount))
-                            .token_id(None)
-                            .build(),
-                    )
-                    .refund_address(event.refund_address.to_string())
-                    .build(),
-            );
-            return Some(event)
-        }
-        GasServiceEvent::NativeGasAdded(event) => {
-            let sig = Signature::from(event.tx_hash);
-            let message_id = MessageId::new(&sig.to_string(), event.log_index.try_into().ok()?);
-            let event = Event::GasCredit(
-                GasCreditEvent::builder()
-                    .base(
-                        EventBase::builder()
-                            .event_id(event_id)
-                            .meta(Some(
-                                EventMetadata::builder()
-                                    .tx_id(Some(tx_id))
-                                    .timestamp(message.timestamp)
-                                    .from_address(None)
-                                    .finalized(Some(true))
-                                    .extra(())
-                                    .build(),
-                            ))
-                            .build(),
-                    )
-                    .message_id(message_id)
-                    .payment(
-                        Token::builder()
-                            .amount(BigInt::from_u64(event.gas_fee_amount))
-                            .token_id(None)
-                            .build(),
-                    )
-                    .refund_address(event.refund_address.to_string())
-                    .build(),
-            );
-            return Some(event)
-        }
-        GasServiceEvent::NativeGasRefunded(event) => {
-            let sig = Signature::from(event.tx_hash);
-            let message_id = MessageId::new(&sig.to_string(), event.log_index.try_into().ok()?);
-            let event = Event::GasRefunded(
-                GasRefundedEvent::builder()
-                    .base(
-                        EventBase::builder()
-                            .event_id(event_id)
-                            .meta(Some(
-                                EventMetadata::builder()
-                                    .tx_id(Some(tx_id))
-                                    .timestamp(message.timestamp)
-                                    .from_address(None)
-                                    .finalized(Some(true))
-                                    .extra(())
-                                    .build(),
-                            ))
-                            .build(),
-                    )
-                    .message_id(message_id)
-                    .cost(
-                        Token::builder()
-                            .amount(BigInt::from_u64(price_per_event_in_lamports))
-                            .token_id(None)
-                            .build(),
-                    )
-                    .recipient_address(event.receiver.to_string())
-                    .refunded_amount(
-                        Token::builder()
-                            .amount(BigInt::from_u64(event.fees))
-                            .token_id(None)
-                            .build(),
-                    )
-                    .build(),
-            );
-            return Some(event)
-        }
-    }
+fn keep_successful_events<T>(
+    program_call_stack: Vec<ProgramInvocationState<T>>,
+) -> Vec<(usize, T)> {
+    program_call_stack
+        .into_iter()
+        .filter_map(|x| {
+            if let ProgramInvocationState::Succeeded(events) = x {
+                Some(events)
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect::<Vec<_>>()
 }
 
+/// At most, it can return 2 events (combo of gas event and gas payment event)
 #[expect(
     clippy::too_many_lines,
     clippy::cognitive_complexity,
@@ -227,24 +228,56 @@ fn map_gas_service_event_to_amplifier_event(
 )]
 fn map_gateway_event_to_amplifier_event(
     source_chain: &str,
-    event: GatewayEvent,
+    event: GatewayAndGasEvent,
     message: &solana_listener::SolanaTransaction,
     log_index: usize,
     price_per_event_in_lamports: u64,
-) -> Option<Event> {
+) -> (Option<Event>, Option<Event>) {
     let signature = message.signature.to_string();
     let event_id = EventId::new(&signature, log_index);
     let tx_id = TxId(signature.clone());
+
+    let mut gateway_event = None;
+    let mut gas_event = None;
 
     #[expect(
         clippy::little_endian_bytes,
         reason = "we are guaranteed correct conversion"
     )]
     match event {
-        GatewayEvent::CallContract(call_contract) => {
+        GatewayAndGasEvent::CallContractOffchainData(maybe_gas_paid, _event) => {
+            let message_id = MessageId::new(&signature, log_index);
+
+            tracing::info!(
+                ?message_id,
+                "CallContractOffchainData event is handled on user request"
+            );
+
+            if let Some(gas_paid_event) = maybe_gas_paid {
+                gas_event = Some(construct_gas_event(
+                    event_id,
+                    tx_id,
+                    message,
+                    message_id,
+                    gas_paid_event,
+                ));
+            };
+        }
+        GatewayAndGasEvent::CallContract(maybe_gas_paid, call_contract) => {
             let message_id = MessageId::new(&signature, log_index);
             let source_address = call_contract.sender_key.to_string();
-            let amplifier_event = Event::Call(
+
+            if let Some(gas_paid_event) = maybe_gas_paid {
+                gas_event = Some(construct_gas_event(
+                    event_id.clone(),
+                    tx_id.clone(),
+                    message,
+                    message_id.clone(),
+                    gas_paid_event,
+                ));
+            };
+
+            gateway_event = Some(Event::Call(
                 CallEvent::builder()
                     .base(
                         EventBase::builder()
@@ -262,7 +295,7 @@ fn map_gateway_event_to_amplifier_event(
                     )
                     .message(
                         GatewayV2Message::builder()
-                            .message_id(message_id)
+                            .message_id(message_id.clone())
                             .source_chain(source_chain.to_owned())
                             .source_address(source_address)
                             .destination_address(call_contract.destination_contract_address)
@@ -272,17 +305,18 @@ fn map_gateway_event_to_amplifier_event(
                     .destination_chain(call_contract.destination_chain)
                     .payload(call_contract.payload)
                     .build(),
-            );
-            Some(amplifier_event)
+            ));
         }
-        GatewayEvent::VerifierSetRotated(signers) => {
+        GatewayAndGasEvent::VerifierSetRotated(signers) => {
             tracing::info!(?signers, "Signers rotated");
 
             let le_bytes = signers.epoch.to_le_bytes();
-            let (le_u64, _) = le_bytes.split_first_chunk::<8>()?;
+            let Some((le_u64, _)) = le_bytes.split_first_chunk::<8>() else {
+                return (gateway_event, gas_event);
+            };
             let epoch = u64::from_le_bytes(*le_u64);
 
-            let amplifier_event = Event::SignersRotated(
+            gateway_event = Some(Event::SignersRotated(
                 SignersRotatedEvent::builder()
                     .base(
                         EventBase::builder()
@@ -309,16 +343,15 @@ fn map_gateway_event_to_amplifier_event(
                             .build(),
                     )
                     .build(),
-            );
-            Some(amplifier_event)
+            ));
         }
-        GatewayEvent::MessageApproved(approved_message) => {
+        GatewayAndGasEvent::MessageApproved(approved_message) => {
             let command_id = approved_message.command_id;
             let span = tracing::info_span!("message", message_id = ?approved_message.cc_id_id);
             let _g = span.enter();
 
             let message_id = TxEvent(approved_message.cc_id_id);
-            let amplifier_event = Event::MessageApproved(
+            gateway_event = Some(Event::MessageApproved(
                 MessageApprovedEvent::builder()
                     .base(
                         EventBase::builder()
@@ -355,23 +388,116 @@ fn map_gateway_event_to_amplifier_event(
                             .build(),
                     )
                     .build(),
-            );
+            ));
             tracing::info!("message approved");
-            Some(amplifier_event)
         }
-        GatewayEvent::MessageExecuted(ref _executed_message) => {
+        GatewayAndGasEvent::MessageExecuted(ref _executed_message) => {
             tracing::warn!(
                 "current gateway event does not produce enough artifacts to relay this message"
             );
-            None
         }
-        GatewayEvent::OperatorshipTransferred(ref new_operatorship) => {
-            tracing::info!(?new_operatorship, "Operatorship transferred");
-            None
+        GatewayAndGasEvent::NativeGasRefunded(event) => {
+            let sig = Signature::from(event.tx_hash);
+            let message_id = MessageId::new(&sig.to_string(), event.log_index as usize);
+            gas_event = Some(Event::GasRefunded(
+                GasRefundedEvent::builder()
+                    .base(
+                        EventBase::builder()
+                            .event_id(event_id)
+                            .meta(Some(
+                                EventMetadata::builder()
+                                    .tx_id(Some(tx_id))
+                                    .timestamp(message.timestamp)
+                                    .from_address(None)
+                                    .finalized(Some(true))
+                                    .extra(())
+                                    .build(),
+                            ))
+                            .build(),
+                    )
+                    .message_id(message_id)
+                    .cost(
+                        Token::builder()
+                            .amount(BigInt::from_u64(price_per_event_in_lamports))
+                            .token_id(None)
+                            .build(),
+                    )
+                    .recipient_address(event.receiver.to_string())
+                    .refunded_amount(
+                        Token::builder()
+                            .amount(BigInt::from_u64(event.fees))
+                            .token_id(None)
+                            .build(),
+                    )
+                    .build(),
+            ));
         }
-        GatewayEvent::CallContractOffchainData(ref _call) => {
-            tracing::info!("CallContractOffchainData event is handled on user request");
-            None
+        GatewayAndGasEvent::NativeGasAdded(event) => {
+            let sig = Signature::from(event.tx_hash);
+            let message_id = MessageId::new(&sig.to_string(), event.log_index as usize);
+            gas_event = Some(Event::GasCredit(
+                GasCreditEvent::builder()
+                    .base(
+                        EventBase::builder()
+                            .event_id(event_id)
+                            .meta(Some(
+                                EventMetadata::builder()
+                                    .tx_id(Some(tx_id))
+                                    .timestamp(message.timestamp)
+                                    .from_address(None)
+                                    .finalized(Some(true))
+                                    .extra(())
+                                    .build(),
+                            ))
+                            .build(),
+                    )
+                    .message_id(message_id)
+                    .payment(
+                        Token::builder()
+                            .amount(BigInt::from_u64(event.gas_fee_amount))
+                            .token_id(None)
+                            .build(),
+                    )
+                    .refund_address(event.refund_address.to_string())
+                    .build(),
+            ));
         }
-    }
+    };
+
+    (gateway_event, gas_event)
+}
+
+fn construct_gas_event(
+    event_id: TxEvent,
+    tx_id: TxId,
+    message: &solana_listener::SolanaTransaction,
+    message_id: TxEvent,
+    gas_paid_event: NativeGasPaidForContractCallEvent,
+) -> Event {
+    Event::GasCredit(
+        GasCreditEvent::builder()
+            .base(
+                EventBase::builder()
+                    .event_id(event_id)
+                    .meta(Some(
+                        EventMetadata::builder()
+                            .tx_id(Some(tx_id))
+                            .timestamp(message.timestamp)
+                            .from_address(None)
+                            .finalized(Some(true))
+                            .extra(())
+                            .build(),
+                    ))
+                    .build(),
+            )
+            .message_id(message_id)
+            .payment(
+                Token::builder()
+                    .amount(BigInt::from_u64(gas_paid_event.gas_fee_amount))
+                    .token_id(None)
+                    .build(),
+            )
+            .refund_address(gas_paid_event.refund_address.to_string())
+            .build(),
+    )
 }
