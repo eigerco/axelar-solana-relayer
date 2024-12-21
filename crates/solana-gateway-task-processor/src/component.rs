@@ -653,10 +653,25 @@ mod message_payload {
         Ok(())
     }
 
-    /// Writes payload data to the initialized account in chunks.
+    /// Writes payload data to an initialized account in chunks concurrently.
     ///
-    /// The function splits the payload into manageable chunks and writes them
-    /// concurrently using a [`FuturesUnordered`] collection.
+    /// This function takes the raw payload bytes and writes them to a `MessagePayload`
+    /// PDA account by:
+    /// 1. Splitting the payload into fixed-size chunks.
+    /// 2. Creating concurrent write transactions for each chunk.
+    /// 3. Executing all writes in concurrently using [`FuturesUnordered`]
+    ///
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * Instruction construction fails
+    /// * Any chunk write transaction fails
+    ///
+    /// # Note
+    ///
+    /// Chunks can be written out of order since they target different parts of the
+    /// `MessagePayload` account's data.
     async fn write(
         solana_rpc_client: &RpcClient,
         keypair: &Keypair,
@@ -674,11 +689,10 @@ mod message_payload {
                 offset,
             )
             .context("failed to construct an instruction to write to the message payload pda")?;
-            let future = async move {
+            futures.push(async move {
                 let tx = send_transaction(solana_rpc_client, keypair, ix).await;
                 (offset, tx)
-            };
-            futures.push(future);
+            });
         }
 
         while let Some((offset, tx)) = futures.next().await {
