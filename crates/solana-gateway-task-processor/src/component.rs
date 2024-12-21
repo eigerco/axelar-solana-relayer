@@ -649,7 +649,9 @@ mod message_payload {
                 .context("Unexpected u64 overflow in buffer size")?,
         )
         .context("failed to construct an instruction to initialize the message payload pda")?;
-        send_transaction(solana_rpc_client, keypair, ix).await?;
+        send_transaction(solana_rpc_client, keypair, ix)
+            .await
+            .context("faled to initialize the message payload pda")?;
         Ok(())
     }
 
@@ -696,7 +698,7 @@ mod message_payload {
         }
 
         while let Some((offset, tx)) = futures.next().await {
-            tx.with_context(|| format!("failed to write message payload at offset {offset}"))?;
+            tx.with_context(|| format!("failed to  write message payload at offset {offset}"))?;
         }
 
         Ok(())
@@ -715,7 +717,9 @@ mod message_payload {
             command_id,
         )
         .context("failed to construct an instruction to commit the message payload pda")?;
-        send_transaction(solana_rpc_client, keypair, ix).await?;
+        send_transaction(solana_rpc_client, keypair, ix)
+            .await
+            .context("failed to commit the message payload pda")?;
         Ok(())
     }
 
@@ -733,7 +737,9 @@ mod message_payload {
             msg_command_id,
         )
         .context("failed to construct an instruction to close the message payload pda")?;
-        send_transaction(solana_rpc_client, keypair, ix).await?;
+        send_transaction(solana_rpc_client, keypair, ix)
+            .await
+            .context("failed to close the message payload pda")?;
         Ok(())
     }
 
