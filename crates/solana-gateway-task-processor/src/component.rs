@@ -564,3 +564,116 @@ async fn send_transaction(
         .send_tx()
         .await
 }
+
+mod message_payload {
+    use axelar_solana_encoding::types::messages::Message;
+    use axelar_solana_gateway::state::incoming_message::command_id;
+    use eyre::Context as _;
+    use solana_sdk::instruction::Instruction;
+    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::signature::Keypair;
+    use solana_sdk::signer::Signer as _;
+
+    // TODO: implement transaction handling logic.
+    #[expect(clippy::todo, reason = "wip")]
+    #[expect(clippy::unused_async, reason = "wip")]
+    async fn send_tx(_ixs: &[Instruction]) -> eyre::Result<()> {
+        todo!()
+    }
+
+    /// Upload a message payload to the PDA account
+    pub(super) async fn upload(
+        payer: &Keypair,
+        gateway_root_pda: Pubkey,
+        message: &Message,
+        payload: &[u8],
+    ) -> eyre::Result<Pubkey> {
+        let msg_command_id = message_to_command_id(message);
+
+        initialize(payer, gateway_root_pda, msg_command_id, payload).await?;
+        write(payer, gateway_root_pda, msg_command_id, payload).await?;
+        commit(payer, gateway_root_pda, msg_command_id).await?;
+
+        let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
+            gateway_root_pda,
+            message_to_command_id(message),
+            payer.pubkey(),
+        );
+
+        Ok(message_payload_pda)
+    }
+
+    async fn initialize(
+        payer: &Keypair,
+        gateway_root_pda: Pubkey,
+        command_id: [u8; 32],
+        payload: &[u8],
+    ) -> eyre::Result<()> {
+        let ix = axelar_solana_gateway::instructions::initialize_message_payload(
+            gateway_root_pda,
+            payer.pubkey(),
+            command_id,
+            payload
+                .len()
+                .try_into()
+                .context("Unexpected u64 overflow in buffer size")?,
+        )
+        .context("failed to construct an instruction to initialize the message payload pda")?;
+        send_tx(&[ix]).await?;
+        Ok(())
+    }
+
+    async fn write(
+        payer: &Keypair,
+        gateway_root_pda: Pubkey,
+        command_id: [u8; 32],
+        payload: &[u8],
+    ) -> eyre::Result<()> {
+        let ix = axelar_solana_gateway::instructions::write_message_payload(
+            gateway_root_pda,
+            payer.pubkey(),
+            command_id,
+            payload,
+            0,
+        )
+        .context("failed to construct an instruction to write to the message payload pda")?;
+        send_tx(&[ix]).await?;
+        Ok(())
+    }
+
+    async fn commit(
+        payer: &Keypair,
+        gateway_root_pda: Pubkey,
+        command_id: [u8; 32],
+    ) -> eyre::Result<()> {
+        let ix = axelar_solana_gateway::instructions::commit_message_payload(
+            gateway_root_pda,
+            payer.pubkey(),
+            command_id,
+        )
+        .context("failed to construct an instruction to commit the message payload pda")?;
+        send_tx(&[ix]).await?;
+        Ok(())
+    }
+
+    pub(super) async fn close(
+        payer: &Keypair,
+        gateway_root_pda: Pubkey,
+        message: &Message,
+    ) -> eyre::Result<()> {
+        let msg_command_id = message_to_command_id(message);
+        let ix = axelar_solana_gateway::instructions::close_message_payload(
+            gateway_root_pda,
+            payer.pubkey(),
+            msg_command_id,
+        )
+        .context("failed to construct an instruction to close the message payload pda")?;
+        send_tx(&[ix]).await?;
+        Ok(())
+    }
+
+    /// Helper fn to produce a command id from a message.
+    fn message_to_command_id(message: &Message) -> [u8; 32] {
+        command_id(&message.cc_id.chain, &message.cc_id.id)
+    }
+}
