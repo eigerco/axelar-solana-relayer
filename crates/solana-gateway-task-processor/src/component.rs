@@ -404,9 +404,8 @@ async fn execute_task(
 /// transaction.
 ///
 /// # Errors
-/// Returns an error if:
-/// * The relayer's signer account is found in the payload's account metadata
-/// * (Note: Decoding failures are silently ignored as non-threatening)
+/// Returns an error if the relayer's signing account is detected in the payload's account metadata.
+/// Decoding errors are ignored, as they are considered non-critical.
 fn validate_relayer_not_in_payload(payload: &[u8], signer: Pubkey) -> eyre::Result<()> {
     if let Ok(decoded_payload) = AxelarMessagePayload::decode(payload) {
         eyre::ensure!(
