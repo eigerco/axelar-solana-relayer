@@ -5683,6 +5683,7 @@ dependencies = [
  "async-trait",
  "axelar-executable",
  "axelar-solana-encoding",
+ "axelar-solana-gas-service",
  "axelar-solana-gateway",
  "axelar-solana-governance",
  "axelar-solana-its",

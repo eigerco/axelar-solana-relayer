@@ -1,5 +1,6 @@
 use core::future::Future;
 use core::pin::Pin;
+use core::str::FromStr as _;
 use core::task::Poll;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -148,6 +149,7 @@ impl<S: State> SolanaTxPusher<S> {
         ConfigMetadata {
             gateway_root_pda,
             name_of_the_solana_chain: self.name_on_amplifier.clone(),
+            gas_service_config_pda: self.config.gas_service_config_pda,
         }
     }
 }
@@ -155,6 +157,7 @@ impl<S: State> SolanaTxPusher<S> {
 struct ConfigMetadata {
     name_of_the_solana_chain: String,
     gateway_root_pda: Pubkey,
+    gas_service_config_pda: Pubkey,
 }
 
 #[instrument(skip_all)]
@@ -227,8 +230,8 @@ async fn process_task(
                 amplifier_client.sender.send(command).await?;
             };
         }
-        Refund(_refund_task) => {
-            tracing::error!("refund task not implemented");
+        Refund(task) => {
+            refund_task(task, metadata, solana_rpc_client, keypair).await?;
         }
     };
 
@@ -477,6 +480,49 @@ async fn gateway_tx_task(
             }
         }
     };
+    Ok(())
+}
+
+async fn refund_task(
+    task: amplifier_api::types::RefundTask,
+    metadata: &ConfigMetadata,
+    solana_rpc_client: &RpcClient,
+    keypair: &Keypair,
+) -> eyre::Result<()> {
+    let receiver = Pubkey::from_str(&task.refund_recipient_address)?;
+    let mut message_id_parts = task.message.message_id.0.split('-');
+    let tx_hash = Signature::from_str(message_id_parts.next().ok_or_eyre("missing tx hash")?)?
+        .as_ref()
+        .try_into()?;
+    let log_index = message_id_parts
+        .next()
+        .ok_or_eyre("missing log_index")?
+        .parse()?;
+
+    if task.remaining_gas_balance.token_id.is_some() {
+        // Should we implement this? As the Gas Service supports it, perhaps we should.
+        //
+        // We need a function to build the SPL refund instruction before we implement this
+        // though.
+        tracing::warn!("ignoring refund task for non-native token");
+    } else {
+        let instruction = axelar_solana_gas_service::instructions::refund_native_fees_instruction(
+            &axelar_solana_gas_service::id(),
+            &keypair.pubkey(),
+            &receiver,
+            &metadata.gas_service_config_pda,
+            tx_hash,
+            log_index,
+            task.remaining_gas_balance
+                .amount
+                .0
+                .try_into()
+                .map_err(|_err| eyre::eyre!("refund amount is too large"))?,
+        )?;
+
+        send_transaction(solana_rpc_client, keypair, instruction).await?;
+    }
+
     Ok(())
 }
 
