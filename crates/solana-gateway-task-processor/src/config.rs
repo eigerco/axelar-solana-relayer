@@ -12,6 +12,10 @@ pub struct Config {
     #[serde(default = "config_defaults::gateway_program_address")]
     pub gateway_program_address: Pubkey,
 
+    /// The PDA used to store the gas service configuration associated with this relayer instance.
+    #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
+    pub gas_service_config_pda: Pubkey,
+
     /// The signing keypair for transactions.
     /// Can be represented as a base58 string or 64 element array `[42, 42, ..]`
     #[serde(deserialize_with = "serde_utils::deserialize_keypair")]

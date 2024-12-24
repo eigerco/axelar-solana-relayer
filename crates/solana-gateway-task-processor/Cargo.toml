@@ -30,6 +30,7 @@ num-traits.workspace = true
 relayer-amplifier-state.workspace = true
 its-instruction-builder.workspace = true
 solana-transaction-status.workspace = true
+axelar-solana-gas-service.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

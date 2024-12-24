@@ -125,13 +125,13 @@ pub(crate) async fn fetch_batches_in_range(
         }
 
         // After processing both programs:
-        if !all_completed {
-            t2_signature = newest_sig;
-            chronologically_newest_signature = newest_sig;
-        } else {
+        if all_completed {
             // Both completed, break out
             break 'a;
         }
+
+        t2_signature = newest_sig;
+        chronologically_newest_signature = newest_sig;
     }
 
     Ok(chronologically_newest_signature)
