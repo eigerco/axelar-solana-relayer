@@ -5721,12 +5721,14 @@ dependencies = [
 name = "solana-listener"
 version = "0.1.0"
 dependencies = [
+ "axelar-solana-gas-service",
  "axelar-solana-gateway",
  "chrono",
  "common-serde-utils 0.1.0",
  "common-serde-utils 0.1.1",
  "eyre",
  "futures",
+ "pin-project",
  "relayer-engine",
  "serde",
  "solana-client",

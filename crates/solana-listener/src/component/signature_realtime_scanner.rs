@@ -1,10 +1,12 @@
 use core::pin::Pin;
 use core::str::FromStr as _;
+use core::task::Context;
 use std::sync::Arc;
 
 use futures::stream::{poll_fn, FuturesUnordered, StreamExt as _};
 use futures::task::Poll;
-use futures::{SinkExt as _, Stream as _};
+use futures::{SinkExt as _, Stream};
+use pin_project::pin_project;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcTransactionLogsConfig, RpcTransactionLogsFilter};
 use solana_sdk::commitment_config::CommitmentConfig;
@@ -24,6 +26,8 @@ pub(crate) async fn process_realtime_logs(
     mut signature_sender: MessageSender,
 ) -> Result<(), eyre::Error> {
     let gateway_program_address = config.gateway_program_address;
+    let gas_service_address = axelar_solana_gateway::id();
+
     'outer: loop {
         tracing::info!(
             endpoint = ?config.solana_ws.as_str(),
@@ -34,13 +38,12 @@ pub(crate) async fn process_realtime_logs(
             solana_client::nonblocking::pubsub_client::PubsubClient::new(config.solana_ws.as_str())
                 .await?;
 
-        // todo we have to also subscribe to the gas service events (new websocket stream running in
-        // parallel).
-        // Reason for parallel stream: https://solana.com/docs/rpc/websocket/logssubscribe :
-        // "The mentions field currently only supports one Pubkey string per method call. Listing
+        // Reason for subscribing to gateway and gas service separately
+        // (https://solana.com/docs/rpc/websocket/logssubscribe):
+        //
+        // "The `mentions` field currently only supports one Pubkey string per method call. Listing
         // additional addresses will result in an error."
-
-        let (ws_stream, _unsubscribe) = client
+        let (gateway_ws_stream, _unsubscribe) = client
             .logs_subscribe(
                 RpcTransactionLogsFilter::Mentions(vec![gateway_program_address.to_string()]),
                 RpcTransactionLogsConfig {
@@ -48,7 +51,21 @@ pub(crate) async fn process_realtime_logs(
                 },
             )
             .await?;
-        let mut ws_stream = ws_stream.fuse();
+
+        let (gas_service_ws_stream, _unsubscribe) = client
+            .logs_subscribe(
+                RpcTransactionLogsFilter::Mentions(vec![gas_service_address.to_string()]),
+                RpcTransactionLogsConfig {
+                    commitment: Some(CommitmentConfig::finalized()),
+                },
+            )
+            .await?;
+
+        // We could use `futures::stream::select` here, but it only completes when both streams
+        // complete. As we want to complete when either stream completes, we need a custom
+        // combinator.
+        let mut ws_stream =
+            CompleteOnAny::new(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse());
 
         'first: loop {
             // Get the first item from the ws_stream
@@ -140,6 +157,65 @@ pub(crate) async fn process_realtime_logs(
                     tracing::error!(?err, "Error in merged stream");
                 }
             }
+        }
+    }
+}
+
+macro_rules! poll_streams {
+    ($primary:expr, $secondary:expr, $cx:expr, $turn:expr) => {{
+        match $primary.poll_next($cx) {
+            Poll::Ready(Some(item)) => {
+                *$turn = !*$turn;
+                Poll::Ready(Some(item))
+            }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => match $secondary.poll_next($cx) {
+                Poll::Ready(Some(item)) => {
+                    *$turn = !*$turn;
+                    Poll::Ready(Some(item))
+                }
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            },
+        }
+    }};
+}
+
+/// A stream combinator that yields items from two sub-streams in a round-robin
+/// fashion but completes as soon as either sub-stream completes.
+#[pin_project]
+struct CompleteOnAny<S1, S2> {
+    #[pin]
+    stream1: S1,
+    #[pin]
+    stream2: S2,
+    turn: bool,
+}
+
+impl<S1, S2> CompleteOnAny<S1, S2> {
+    const fn new(stream1: S1, stream2: S2) -> Self {
+        Self {
+            stream1,
+            stream2,
+            turn: false,
+        }
+    }
+}
+
+impl<S1, S2> Stream for CompleteOnAny<S1, S2>
+where
+    S1: Stream,
+    S2: Stream<Item = S1::Item>,
+{
+    type Item = S1::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+
+        if *this.turn {
+            poll_streams!(this.stream1, this.stream2, cx, this.turn)
+        } else {
+            poll_streams!(this.stream2, this.stream1, cx, this.turn)
         }
     }
 }
