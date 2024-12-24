@@ -18,6 +18,7 @@ use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
 use axelar_solana_gateway::state::incoming_message::command_id;
+use axelar_solana_gateway::BytemuckedPda as _;
 use effective_tx_sender::ComputeBudgetError;
 use eyre::{Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
@@ -84,8 +85,10 @@ impl<S: State> SolanaTxPusher<S> {
     async fn process_internal(self) -> eyre::Result<()> {
         let config_metadata = Arc::new(self.get_config_metadata());
         let state = self.state.clone();
-
         let keypair = Arc::new(self.config.signing_keypair.insecure_clone());
+
+        ensure_gas_service_authority(&keypair.pubkey(), &self.rpc_client, &config_metadata).await?;
+
         let mut futures_ordered = FuturesOrdered::new();
         let mut rx = self.task_receiver.receiver.fuse();
         let mut task_stream = futures::stream::poll_fn(move |cx| {
@@ -152,6 +155,24 @@ impl<S: State> SolanaTxPusher<S> {
             gas_service_config_pda: self.config.gas_service_config_pda,
         }
     }
+}
+
+async fn ensure_gas_service_authority(
+    key: &Pubkey,
+    solana_rpc_client: &RpcClient,
+    metadata: &ConfigMetadata,
+) -> eyre::Result<()> {
+    let account_data = solana_rpc_client
+        .get_account_data(&metadata.gas_service_config_pda)
+        .await?;
+    let config = axelar_solana_gas_service::state::Config::read(&account_data)
+        .ok_or_eyre("gas service config PDA account not initialized")?;
+
+    if config.authority != *key {
+        eyre::bail!("relayer is not the gas service authority")
+    }
+
+    Ok(())
 }
 
 struct ConfigMetadata {
