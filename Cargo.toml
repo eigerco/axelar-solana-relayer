@@ -116,6 +116,7 @@ memmap2 = "0.9"
 bytemuck = "1.19"
 
 # Serde
+bincode = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 serde_json = "1"
@@ -127,6 +128,7 @@ pretty_assertions = "1"
 rstest = { version = "0.23" }
 serial_test = "3.2"
 test-log = { version = "0.2", features = ["trace"], default-features = false }
+rand =  "0.8.5"
 
 # Errors
 eyre = "0.6"

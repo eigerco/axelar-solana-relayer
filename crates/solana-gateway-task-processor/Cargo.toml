@@ -30,12 +30,14 @@ num-traits.workspace = true
 relayer-amplifier-state.workspace = true
 its-instruction-builder.workspace = true
 solana-transaction-status.workspace = true
+bincode.workspace= true
 
 [dev-dependencies]
 serde_json.workspace = true
 mockall.workspace = true
 async-trait.workspace = true
 solana-transaction-status.workspace = true
+rand.workspace = true
 
 [lints]
 workspace = true

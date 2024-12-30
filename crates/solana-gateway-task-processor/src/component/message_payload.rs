@@ -9,15 +9,15 @@ use eyre::Context as _;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt as _;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::hash::Hash;
+use solana_sdk::message::legacy::Message as SolanaMessage;
+use solana_sdk::packet::PACKET_DATA_SIZE;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::Keypair;
+use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
+use solana_sdk::transaction::Transaction;
 
 use super::send_transaction;
-
-/// Maximum size for payload chunks in bytes.
-// TODO: we should either fine tune this or make this configurable
-const CHUNK_SIZE: usize = 500;
 
 /// Handles the upload of a message payload to a Program Derived Address (PDA) account.
 ///
@@ -113,8 +113,14 @@ async fn write(
     command_id: [u8; 32],
     payload: &[u8],
 ) -> eyre::Result<()> {
+    let chunk_size = calculate_max_chunk_size(WriteInstructionParams {
+        gateway_root_pda,
+        authority: keypair.pubkey(),
+        command_id,
+    })?;
+
     let mut futures = FuturesUnordered::new();
-    for ChunkWithOffset { bytes, offset } in chunks_with_offset(payload, CHUNK_SIZE) {
+    for ChunkWithOffset { bytes, offset } in chunks_with_offset(payload, chunk_size) {
         let ix = axelar_solana_gateway::instructions::write_message_payload(
             gateway_root_pda,
             keypair.pubkey(),
@@ -178,6 +184,39 @@ pub(crate) async fn close(
 /// Helper function to generate a command ID from a message.
 fn message_to_command_id(message: &Message) -> [u8; 32] {
     command_id(&message.cc_id.chain, &message.cc_id.id)
+}
+
+#[derive(Clone, Copy)]
+struct WriteInstructionParams {
+    gateway_root_pda: Pubkey,
+    authority: Pubkey,
+    command_id: [u8; 32],
+}
+
+/// Based on <https://github.com/solana-labs/solana/pull/19654>
+/// TODO: Should we turn this into a static calculation?
+fn calculate_max_chunk_size(params: WriteInstructionParams) -> eyre::Result<usize> {
+    // Create baseline message directly with empty data
+    let ix = axelar_solana_gateway::instructions::write_message_payload(
+        params.gateway_root_pda,
+        params.authority,
+        params.command_id,
+        &[], // empty data
+        0,
+    )?;
+
+    let baseline_msg =
+        SolanaMessage::new_with_blockhash(&[ix], Some(&params.authority), &Hash::default());
+
+    let tx_size = bincode::serialized_size(&Transaction {
+        signatures: vec![Signature::default(); baseline_msg.header.num_required_signatures.into()],
+        message: baseline_msg,
+    })
+    .context("failed to calculate max chunk size")?
+    .try_into()?;
+
+    // add 1 byte buffer to account for shortvec encoding
+    Ok(PACKET_DATA_SIZE.saturating_sub(tx_size).saturating_sub(1))
 }
 
 /// Represents a chunk of data with its offset in the original data slice.
@@ -247,5 +286,18 @@ mod tests {
                 offset: 0
             },]
         );
+    }
+
+    #[test]
+    fn test_calculate_max_chunk_size() {
+        let chunk_size = calculate_max_chunk_size(WriteInstructionParams {
+            gateway_root_pda: Pubkey::new_unique(),
+            authority: Pubkey::new_unique(),
+            command_id: rand::random(),
+        })
+        .unwrap();
+
+        assert!(chunk_size > 0);
+        assert!(chunk_size < PACKET_DATA_SIZE);
     }
 }
