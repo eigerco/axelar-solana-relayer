@@ -61,11 +61,8 @@ pub(crate) async fn process_realtime_logs(
             )
             .await?;
 
-        // We could use `futures::stream::select` here, but it only completes when both streams
-        // complete. As we want to complete when either stream completes, we need a custom
-        // combinator.
         let mut ws_stream =
-            CompleteOnAny::new(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse());
+            round_robin_two_streams(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse());
 
         'first: loop {
             // Get the first item from the ws_stream
@@ -161,61 +158,45 @@ pub(crate) async fn process_realtime_logs(
     }
 }
 
-macro_rules! poll_streams {
-    ($primary:expr, $secondary:expr, $cx:expr, $turn:expr) => {{
-        match $primary.poll_next($cx) {
-            Poll::Ready(Some(item)) => {
-                *$turn = !*$turn;
-                Poll::Ready(Some(item))
-            }
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => match $secondary.poll_next($cx) {
-                Poll::Ready(Some(item)) => {
-                    *$turn = !*$turn;
-                    Poll::Ready(Some(item))
-                }
-                Poll::Ready(None) => Poll::Ready(None),
-                Poll::Pending => Poll::Pending,
-            },
-        }
-    }};
-}
-
-/// A stream combinator that yields items from two sub-streams in a round-robin
-/// fashion but completes as soon as either sub-stream completes.
-#[pin_project]
-struct CompleteOnAny<S1, S2> {
-    #[pin]
-    stream1: S1,
-    #[pin]
-    stream2: S2,
-    turn: bool,
-}
-
-impl<S1, S2> CompleteOnAny<S1, S2> {
-    const fn new(stream1: S1, stream2: S2) -> Self {
-        Self {
-            stream1,
-            stream2,
-            turn: false,
-        }
-    }
-}
-
-impl<S1, S2> Stream for CompleteOnAny<S1, S2>
+// We could use `futures::stream::select` here, but it only completes when both streams
+// complete. As we want to complete when either stream completes, we need a custom
+// combinator.
+pub fn round_robin_two_streams<S1, S2>(mut s1: S1, mut s2: S2) -> impl Stream<Item = S1::Item>
 where
-    S1: Stream,
-    S2: Stream<Item = S1::Item>,
+    S1: Stream + Unpin,
+    S2: Stream<Item = S1::Item> + Unpin,
 {
-    type Item = S1::Item;
+    let mut poll_first = false;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.project();
+    poll_fn(move |cx| {
+        // Flip which stream is polled first.
+        poll_first = !poll_first;
 
-        if *this.turn {
-            poll_streams!(this.stream1, this.stream2, cx, this.turn)
-        } else {
-            poll_streams!(this.stream2, this.stream1, cx, this.turn)
+        // Helper to poll one stream first, then the other.
+        fn poll_round<AS, BS>(
+            cx: &mut Context<'_>,
+            a: &mut AS,
+            b: &mut BS,
+        ) -> Poll<Option<AS::Item>>
+        where
+            AS: Stream + Unpin,
+            BS: Stream<Item = AS::Item> + Unpin,
+        {
+            match Pin::new(a).poll_next(cx) {
+                Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => match Pin::new(b).poll_next(cx) {
+                    Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
+                    Poll::Ready(None) => Poll::Ready(None),
+                    Poll::Pending => Poll::Pending,
+                },
+            }
         }
-    }
+
+        if poll_first {
+            poll_round(cx, &mut s1, &mut s2)
+        } else {
+            poll_round(cx, &mut s2, &mut s1)
+        }
+    })
 }
