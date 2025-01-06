@@ -23,6 +23,8 @@ core-common-serde-utils.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status.workspace = true
+axelar-solana-gas-service.workspace = true
+pin-project.workspace = true
 
 [lints]
 workspace = true
