@@ -521,11 +521,7 @@ async fn refund_task(
         .parse()?;
 
     if task.remaining_gas_balance.token_id.is_some() {
-        // Should we implement this? As the Gas Service supports it, perhaps we should.
-        //
-        // We need a function to build the SPL refund instruction before we implement this
-        // though.
-        tracing::warn!("ignoring refund task for non-native token");
+        eyre::bail!("non-native token refunds are not supported");
     } else {
         let instruction = axelar_solana_gas_service::instructions::refund_native_fees_instruction(
             &axelar_solana_gas_service::id(),
