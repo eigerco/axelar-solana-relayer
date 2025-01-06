@@ -18,7 +18,7 @@ use crate::component::log_processor::fetch_logs;
 use crate::component::signature_batch_scanner;
 use crate::SolanaTransaction;
 
-#[tracing::instrument(skip_all, err, name = "realtime log ingestion")]
+// #[tracing::instrument(skip_all, err, name = "realtime log ingestion")]
 pub(crate) async fn process_realtime_logs(
     config: crate::Config,
     latest_processed_signature: Option<Signature>,
@@ -26,7 +26,7 @@ pub(crate) async fn process_realtime_logs(
     mut signature_sender: MessageSender,
 ) -> Result<(), eyre::Error> {
     let gateway_program_address = config.gateway_program_address;
-    let gas_service_address = axelar_solana_gateway::id();
+    let gas_service_config_pda_address = config.gas_service_config_pda;
 
     'outer: loop {
         tracing::info!(
@@ -45,6 +45,7 @@ pub(crate) async fn process_realtime_logs(
         // additional addresses will result in an error."
         let (gateway_ws_stream, _unsubscribe) = client
             .logs_subscribe(
+                // we subscribe to all txs that contain the gateway program id
                 RpcTransactionLogsFilter::Mentions(vec![gateway_program_address.to_string()]),
                 RpcTransactionLogsConfig {
                     commitment: Some(CommitmentConfig::finalized()),
@@ -54,7 +55,11 @@ pub(crate) async fn process_realtime_logs(
 
         let (gas_service_ws_stream, _unsubscribe) = client
             .logs_subscribe(
-                RpcTransactionLogsFilter::Mentions(vec![gas_service_address.to_string()]),
+                // we subscribe to all txs that contain the gas service config PDA (not just the
+                // program id, because there can be many configs).
+                RpcTransactionLogsFilter::Mentions(
+                    vec![gas_service_config_pda_address.to_string()],
+                ),
                 RpcTransactionLogsConfig {
                     commitment: Some(CommitmentConfig::finalized()),
                 },
@@ -64,6 +69,9 @@ pub(crate) async fn process_realtime_logs(
         let mut ws_stream =
             round_robin_two_streams(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse());
 
+        // We have special handling for the very first message we receive:
+        // We fetch messages in batches based on the config defitned strategy to recover old
+        // messages
         'first: loop {
             // Get the first item from the ws_stream
             let first_item = ws_stream.next().await;
@@ -71,6 +79,7 @@ pub(crate) async fn process_realtime_logs(
                 // Reconnect if connection dropped
                 continue 'outer;
             };
+            // todo: I don't think we need to filter for this anymore
             // Process the first item
             if first_item.value.err.is_none() {
                 if let Ok(sig) = Signature::from_str(&first_item.value.signature) {
@@ -114,6 +123,7 @@ pub(crate) async fn process_realtime_logs(
             // Poll ws_stream
             match Pin::new(&mut ws_stream).poll_next(cx) {
                 Poll::Ready(Some(item)) => {
+                    // todo I don't think we need this filter here anymore
                     if item.value.err.is_none() {
                         if let Ok(sig) = Signature::from_str(&item.value.signature) {
                             // Push fetch_logs future into fetch_futures
