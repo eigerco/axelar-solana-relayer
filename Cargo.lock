@@ -5733,6 +5733,7 @@ dependencies = [
  "relayer-engine",
  "serde",
  "solana-client",
+ "solana-rpc-client-api",
  "solana-sdk",
  "solana-transaction-status",
  "tokio",

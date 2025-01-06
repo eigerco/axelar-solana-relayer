@@ -3,12 +3,15 @@ use core::str::FromStr as _;
 use core::task::Context;
 use std::sync::Arc;
 
-use futures::stream::{poll_fn, FuturesUnordered, StreamExt as _};
+use futures::future::BoxFuture;
+use futures::stream::{poll_fn, BoxStream, FuturesUnordered, StreamExt as _};
 use futures::task::Poll;
 use futures::{SinkExt as _, Stream};
-use pin_project::pin_project;
+use solana_client::nonblocking::pubsub_client::PubsubClientResult;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcTransactionLogsConfig, RpcTransactionLogsFilter};
+use solana_client::rpc_response::RpcLogsResponse;
+use solana_rpc_client_api::response::Response;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::signature::Signature;
 use tracing::{info_span, Instrument as _};
@@ -26,7 +29,7 @@ pub(crate) async fn process_realtime_logs(
     mut signature_sender: MessageSender,
 ) -> Result<(), eyre::Error> {
     let gateway_program_address = config.gateway_program_address;
-    let gas_service_config_pda_address = config.gas_service_config_pda;
+    let gas_service_config_pda = config.gas_service_config_pda;
 
     'outer: loop {
         tracing::info!(
@@ -43,28 +46,13 @@ pub(crate) async fn process_realtime_logs(
         //
         // "The `mentions` field currently only supports one Pubkey string per method call. Listing
         // additional addresses will result in an error."
-        let (gateway_ws_stream, _unsubscribe) = client
-            .logs_subscribe(
-                // we subscribe to all txs that contain the gateway program id
-                RpcTransactionLogsFilter::Mentions(vec![gateway_program_address.to_string()]),
-                RpcTransactionLogsConfig {
-                    commitment: Some(CommitmentConfig::finalized()),
-                },
-            )
-            .await?;
+        let (gateway_ws_stream, _unsub) =
+            init_logs_subscribe(&client, gateway_program_address).await?;
 
-        let (gas_service_ws_stream, _unsubscribe) = client
-            .logs_subscribe(
-                // we subscribe to all txs that contain the gas service config PDA (not just the
-                // program id, because there can be many configs).
-                RpcTransactionLogsFilter::Mentions(
-                    vec![gas_service_config_pda_address.to_string()],
-                ),
-                RpcTransactionLogsConfig {
-                    commitment: Some(CommitmentConfig::finalized()),
-                },
-            )
-            .await?;
+        // we subscribe to all txs that contain the gas service config PDA (not just the
+        // program id, because there can be many configs).
+        let (gas_service_ws_stream, _unsub) =
+            init_logs_subscribe(&client, gas_service_config_pda).await?;
 
         let mut ws_stream =
             round_robin_two_streams(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse());
@@ -168,10 +156,26 @@ pub(crate) async fn process_realtime_logs(
     }
 }
 
+type UnsubscribeFn = Box<dyn FnOnce() -> BoxFuture<'static, ()> + Send>;
+async fn init_logs_subscribe(
+    client: &solana_client::nonblocking::pubsub_client::PubsubClient,
+    pubkey: solana_sdk::pubkey::Pubkey,
+) -> PubsubClientResult<(BoxStream<'_, Response<RpcLogsResponse>>, UnsubscribeFn)> {
+    client
+        .logs_subscribe(
+            // we subscribe to all txs that contain the gateway program id
+            RpcTransactionLogsFilter::Mentions(vec![pubkey.to_string()]),
+            RpcTransactionLogsConfig {
+                commitment: Some(CommitmentConfig::finalized()),
+            },
+        )
+        .await
+}
+
 // We could use `futures::stream::select` here, but it only completes when both streams
 // complete. As we want to complete when either stream completes, we need a custom
 // combinator.
-pub fn round_robin_two_streams<S1, S2>(mut s1: S1, mut s2: S2) -> impl Stream<Item = S1::Item>
+fn round_robin_two_streams<S1, S2>(mut s1: S1, mut s2: S2) -> impl Stream<Item = S1::Item>
 where
     S1: Stream + Unpin,
     S2: Stream<Item = S1::Item> + Unpin,
