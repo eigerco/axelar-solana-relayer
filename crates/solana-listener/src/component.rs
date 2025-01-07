@@ -92,6 +92,7 @@ impl SolanaListener {
             latest,
             self.rpc_client,
             self.sender,
+            signature_realtime_scanner::SolanaLogsSubscriber,
         )
         .await?;
 

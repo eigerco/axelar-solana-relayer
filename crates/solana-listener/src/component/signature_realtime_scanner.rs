@@ -22,12 +22,41 @@ use crate::component::log_processor::fetch_logs;
 use crate::component::signature_batch_scanner;
 use crate::SolanaTransaction;
 
+pub(crate) type UnsubscribeFn = Box<dyn FnOnce() -> BoxFuture<'static, ()> + Send>;
+pub(crate) trait LogsSubscriber {
+    async fn sub_to_logs<'a>(
+        &'a self,
+        client: &'a solana_client::nonblocking::pubsub_client::PubsubClient,
+        pubkey: solana_sdk::pubkey::Pubkey,
+    ) -> PubsubClientResult<(BoxStream<'a, Response<RpcLogsResponse>>, UnsubscribeFn)>;
+}
+
+pub(crate) struct SolanaLogsSubscriber;
+impl LogsSubscriber for SolanaLogsSubscriber {
+    async fn sub_to_logs<'a>(
+        &'a self,
+        client: &'a solana_client::nonblocking::pubsub_client::PubsubClient,
+        pubkey: solana_sdk::pubkey::Pubkey,
+    ) -> PubsubClientResult<(BoxStream<'a, Response<RpcLogsResponse>>, UnsubscribeFn)> {
+        client
+            .logs_subscribe(
+                // we subscribe to all txs that contain the gateway program id
+                RpcTransactionLogsFilter::Mentions(vec![pubkey.to_string()]),
+                RpcTransactionLogsConfig {
+                    commitment: Some(CommitmentConfig::finalized()),
+                },
+            )
+            .await
+    }
+}
+
 // #[tracing::instrument(skip_all, err, name = "realtime log ingestion")]
-pub(crate) async fn process_realtime_logs(
+pub(crate) async fn process_realtime_logs<L: LogsSubscriber>(
     config: crate::Config,
     latest_processed_signature: Option<Signature>,
     rpc_client: Arc<RpcClient>,
     mut signature_sender: MessageSender,
+    log_subscriber: L,
 ) -> Result<(), eyre::Error> {
     let gateway_program_address = config.gateway_program_address;
     let gas_service_config_pda = config.gas_service_config_pda;
@@ -47,13 +76,15 @@ pub(crate) async fn process_realtime_logs(
         //
         // "The `mentions` field currently only supports one Pubkey string per method call. Listing
         // additional addresses will result in an error."
-        let (gateway_ws_stream, _unsub) =
-            init_logs_subscribe(&client, gateway_program_address).await?;
+        let (gateway_ws_stream, _unsub) = log_subscriber
+            .sub_to_logs(&client, gateway_program_address)
+            .await?;
 
         // we subscribe to all txs that contain the gas service config PDA (not just the
         // program id, because there can be many configs).
-        let (gas_service_ws_stream, _unsub) =
-            init_logs_subscribe(&client, gas_service_config_pda).await?;
+        let (gas_service_ws_stream, _unsub) = log_subscriber
+            .sub_to_logs(&client, gas_service_config_pda)
+            .await?;
 
         let mut ws_stream =
             round_robin_two_streams(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse())
@@ -148,22 +179,6 @@ pub(crate) async fn process_realtime_logs(
             }
         }
     }
-}
-
-type UnsubscribeFn = Box<dyn FnOnce() -> BoxFuture<'static, ()> + Send>;
-async fn init_logs_subscribe(
-    client: &solana_client::nonblocking::pubsub_client::PubsubClient,
-    pubkey: solana_sdk::pubkey::Pubkey,
-) -> PubsubClientResult<(BoxStream<'_, Response<RpcLogsResponse>>, UnsubscribeFn)> {
-    client
-        .logs_subscribe(
-            // we subscribe to all txs that contain the gateway program id
-            RpcTransactionLogsFilter::Mentions(vec![pubkey.to_string()]),
-            RpcTransactionLogsConfig {
-                commitment: Some(CommitmentConfig::finalized()),
-            },
-        )
-        .await
 }
 
 // We could use `futures::stream::select` here, but it only completes when both streams
