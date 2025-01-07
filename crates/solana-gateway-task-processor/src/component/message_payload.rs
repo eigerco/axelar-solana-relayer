@@ -19,7 +19,7 @@ use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::Transaction;
 
-use super::send_transaction;
+use super::send_gateway_tx;
 
 /// Maximum number of bytes we can pack into each `GatewayInstruction::WriteMessagePayload`
 /// instruction.
@@ -130,7 +130,7 @@ async fn initialize(
             .context("Unexpected u64 overflow in buffer size")?,
     )
     .context("failed to construct an instruction to initialize the message payload pda")?;
-    send_transaction(solana_rpc_client, keypair, ix)
+    send_gateway_tx(solana_rpc_client, keypair, ix)
         .await
         .context("faled to initialize the message payload pda")?;
     Ok(())
@@ -173,7 +173,7 @@ async fn write(
         )
         .context("failed to construct an instruction to write to the message payload pda")?;
         futures.push(async move {
-            let tx = send_transaction(solana_rpc_client, keypair, ix).await;
+            let tx = send_gateway_tx(solana_rpc_client, keypair, ix).await;
             (offset, tx)
         });
     }
@@ -198,7 +198,7 @@ async fn commit(
         command_id,
     )
     .context("failed to construct an instruction to commit the message payload pda")?;
-    send_transaction(solana_rpc_client, keypair, ix)
+    send_gateway_tx(solana_rpc_client, keypair, ix)
         .await
         .context("failed to commit the message payload pda")?;
     Ok(())
@@ -218,7 +218,7 @@ pub(crate) async fn close(
         msg_command_id,
     )
     .context("failed to construct an instruction to close the message payload pda")?;
-    send_transaction(solana_rpc_client, keypair, ix)
+    send_gateway_tx(solana_rpc_client, keypair, ix)
         .await
         .context("failed to close the message payload pda")?;
     Ok(())
