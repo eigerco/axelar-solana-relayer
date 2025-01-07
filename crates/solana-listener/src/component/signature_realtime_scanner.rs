@@ -1,12 +1,13 @@
 use core::pin::Pin;
 use core::str::FromStr as _;
 use core::task::Context;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use futures::stream::{poll_fn, BoxStream, FuturesUnordered, StreamExt as _};
 use futures::task::Poll;
-use futures::{SinkExt as _, Stream};
+use futures::{SinkExt as _, Stream, StreamExt};
 use solana_client::nonblocking::pubsub_client::PubsubClientResult;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcTransactionLogsConfig, RpcTransactionLogsFilter};
@@ -55,39 +56,35 @@ pub(crate) async fn process_realtime_logs(
             init_logs_subscribe(&client, gas_service_config_pda).await?;
 
         let mut ws_stream =
-            round_robin_two_streams(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse());
+            round_robin_two_streams(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse())
+                // only successful txs are checked
+                .filter(|x| std::future::ready(x.value.err.is_none()));
 
         // We have special handling for the very first message we receive:
         // We fetch messages in batches based on the config defitned strategy to recover old
         // messages
-        'first: loop {
-            // Get the first item from the ws_stream
-            let first_item = ws_stream.next().await;
-            let Some(first_item) = first_item else {
-                // Reconnect if connection dropped
-                continue 'outer;
-            };
-            // todo: I don't think we need to filter for this anymore
-            // Process the first item
-            if first_item.value.err.is_none() {
-                if let Ok(sig) = Signature::from_str(&first_item.value.signature) {
-                    let t2_signature = fetch_logs(sig, &rpc_client).await?;
+        // Get the first item from the ws_stream
+        let first_item = ws_stream.next().await;
+        let Some(first_item) = first_item else {
+            // Reconnect if connection dropped
+            continue 'outer;
+        };
+        // Process the first item
+        if let Ok(sig) = Signature::from_str(&first_item.value.signature) {
+            let t2_signature = fetch_logs(sig, &rpc_client).await?;
 
-                    // Fetch missed batches
-                    signature_batch_scanner::fetch_batches_in_range(
-                        &config,
-                        Arc::clone(&rpc_client),
-                        &signature_sender,
-                        Some(t2_signature.signature),
-                        latest_processed_signature,
-                    )
-                    .instrument(info_span!("fetching missed signatures"))
-                    .await?;
-                    // Send the first item
-                    signature_sender.send(t2_signature).await?;
-                    break 'first;
-                }
-            }
+            // Fetch missed batches
+            signature_batch_scanner::fetch_batches_in_range(
+                &config,
+                Arc::clone(&rpc_client),
+                &signature_sender,
+                Some(t2_signature.signature),
+                latest_processed_signature,
+            )
+            .instrument(info_span!("fetching missed signatures"))
+            .await?;
+            // Send the first item
+            signature_sender.send(t2_signature).await?;
         }
 
         // Create the FuturesUnordered
