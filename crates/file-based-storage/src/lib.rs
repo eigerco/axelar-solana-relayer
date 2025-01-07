@@ -1,5 +1,4 @@
 #![expect(clippy::allow_attributes_without_reason)]
-#![expect(clippy::allow_attributes)]
 
 //! simple memory storage implementation using memory maps
 use std::fs::OpenOptions;

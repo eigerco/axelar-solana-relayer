@@ -154,10 +154,15 @@ impl SolanaEventForwarder {
                                     GasServiceEvent::NativeGasRefunded(evt) => {
                                         acc.push((idx, GatewayAndGasEvent::NativeGasRefunded(evt)));
                                     }
-                                    GasServiceEvent::NativeGasPaidForncontractCall(evt) => {
+                                    GasServiceEvent::NativeGasPaidForContractCall(evt) => {
                                         // Store this gas event and wait for the next CallContract /
                                         // CallContractOffchainData
                                         pending_gas.push(evt);
+                                    }
+                                    GasServiceEvent::SplGasPaidForContractCall(_) |
+                                    GasServiceEvent::SplGasAdded(_) |
+                                    GasServiceEvent::SplGasRefunded(_) => {
+                                        tracing::warn!("unsupported gas event");
                                     }
                                 };
                                 (acc, pending_gas)

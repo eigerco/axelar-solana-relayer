@@ -42,6 +42,8 @@ use tracing::{info_span, instrument, Instrument as _};
 
 use crate::config;
 
+mod message_payload;
+
 /// A component that pushes transactions over to the Solana blockchain.
 /// The transactions to push are dependant on the events that the Amplifier API will provide
 pub struct SolanaTxPusher<S: State> {
@@ -364,6 +366,16 @@ async fn execute_task(
     let (gateway_incoming_message_pda, ..) =
         axelar_solana_gateway::get_incoming_message_pda(&command_id);
 
+    // Upload the message payload to a Gateway-owned PDA account and get its address back.
+    let gateway_message_payload_pda = message_payload::upload(
+        solana_rpc_client,
+        keypair,
+        metadata.gateway_root_pda,
+        &message,
+        &payload,
+    )
+    .await?;
+
     // For compatibility reasons with the rest of the Axelar protocol we need add custom handling
     // for ITS & Governance programs
     let destination_address = message.destination_address.parse::<Pubkey>()?;
@@ -372,7 +384,8 @@ async fn execute_task(
             let ix = its_instruction_builder::build_its_gmp_instruction(
                 signer,
                 gateway_incoming_message_pda,
-                message,
+                gateway_message_payload_pda,
+                message.clone(),
                 payload,
                 solana_rpc_client,
             )
@@ -385,30 +398,49 @@ async fn execute_task(
             tracing::error!("governance program not yet supported");
         }
         _ => {
-            // this is a security check, because the relayer is a signer, we don't want to
-            // sign a tx where a malicious destination contract could drain the account. This is
-            // because the `AxelarMessagePayload` defines an interface where the accounts get
-            // dynamically appended, thus it could also include the relayers account.
-            if let Ok(decoded_payload) = AxelarMessagePayload::decode(&payload) {
-                let relayer_signer_acc_included = decoded_payload
-                    .account_meta()
-                    .iter()
-                    .any(|acc| acc.pubkey == signer);
-                if relayer_signer_acc_included {
-                    eyre::bail!(
-                        "relayer will not execute a transaction where its own key is included"
-                    );
-                }
-            }
+            validate_relayer_not_in_payload(&payload, signer)?;
 
             // if security passed, we broadcast the tx
             let ix = axelar_executable::construct_axelar_executable_ix(
-                message,
+                &message,
                 &payload,
                 gateway_incoming_message_pda,
+                gateway_message_payload_pda,
             )?;
             send_transaction(solana_rpc_client, keypair, ix).await?;
         }
+    }
+
+    // Close the MessagePaynload PDA account to reclaim funds
+    message_payload::close(
+        solana_rpc_client,
+        keypair,
+        metadata.gateway_root_pda,
+        &message,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Validates that the relayer's signing account is not included in the transaction payload.
+///
+/// This is a critical security check to prevent potential account draining attacks. Since the
+/// relayer acts as a transaction signer, and `AxelarMessagePayload` allows dynamic account
+/// appending, a malicious actors could include an instruction to transfer relayer's funds in the
+/// transaction.
+///
+/// # Errors
+/// Returns an error if the relayer's signing account is detected in the payload's account metadata.
+/// Decoding errors are ignored, as they are considered non-critical.
+fn validate_relayer_not_in_payload(payload: &[u8], signer: Pubkey) -> eyre::Result<()> {
+    if let Ok(decoded_payload) = AxelarMessagePayload::decode(payload) {
+        eyre::ensure!(
+            decoded_payload
+                .account_meta()
+                .iter()
+                .any(|acc| acc.pubkey == signer),
+            "relayer will not execute a transaction where its own key is included",
+        );
     }
     Ok(())
 }
