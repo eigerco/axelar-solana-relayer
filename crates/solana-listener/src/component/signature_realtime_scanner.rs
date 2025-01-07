@@ -70,29 +70,28 @@ pub(crate) async fn process_realtime_logs(
             continue 'outer;
         };
         // Process the first item
-        if let Ok(sig) = Signature::from_str(&first_item.value.signature) {
-            let t2_signature = fetch_logs(sig, &rpc_client).await?;
+        let sig = Signature::from_str(&first_item.value.signature)
+            .expect("signature from RPC must be valid");
+        let t2_signature = fetch_logs(sig, &rpc_client).await?;
 
-            // Fetch missed batches
-            signature_batch_scanner::fetch_batches_in_range(
-                &config,
-                Arc::clone(&rpc_client),
-                &signature_sender,
-                Some(t2_signature.signature),
-                latest_processed_signature,
-            )
-            .instrument(info_span!("fetching missed signatures"))
-            .await?;
-            // Send the first item
-            signature_sender.send(t2_signature).await?;
-        }
+        // Fetch missed batches
+        signature_batch_scanner::fetch_batches_in_range(
+            &config,
+            Arc::clone(&rpc_client),
+            &signature_sender,
+            Some(t2_signature.signature),
+            latest_processed_signature,
+        )
+        .instrument(info_span!("fetching missed signatures"))
+        .await?;
+        // Send the first item
+        signature_sender.send(t2_signature).await?;
 
         // Create the FuturesUnordered
         let mut fetch_futures = FuturesUnordered::new();
 
         // Manual polling using poll_fn
         tracing::info!("waiting realtime logs");
-
         let rpc_client = Arc::clone(&rpc_client);
         let mut merged_stream = poll_fn(move |cx| {
             // Poll fetch_futures
@@ -108,18 +107,15 @@ pub(crate) async fn process_realtime_logs(
             // Poll ws_stream
             match Pin::new(&mut ws_stream).poll_next(cx) {
                 Poll::Ready(Some(item)) => {
-                    // todo I don't think we need this filter here anymore
-                    if item.value.err.is_none() {
-                        if let Ok(sig) = Signature::from_str(&item.value.signature) {
-                            // Push fetch_logs future into fetch_futures
-                            let rpc_client = Arc::clone(&rpc_client);
-                            let fetch_future = async move {
-                                let log_item = fetch_logs(sig, &rpc_client).await?;
-                                tracing::info!(item = ?log_item.signature, "found tx");
-                                eyre::Result::Ok(log_item)
-                            };
-                            fetch_futures.push(fetch_future);
-                        }
+                    if let Ok(sig) = Signature::from_str(&item.value.signature) {
+                        // Push fetch_logs future into fetch_futures
+                        let rpc_client = Arc::clone(&rpc_client);
+                        let fetch_future = async move {
+                            let log_item = fetch_logs(sig, &rpc_client).await?;
+                            tracing::info!(item = ?log_item.signature, "found tx");
+                            eyre::Result::Ok(log_item)
+                        };
+                        fetch_futures.push(fetch_future);
                     }
                     // We return Pending here because the actual result will come from
                     // fetch_futures
@@ -147,6 +143,7 @@ pub(crate) async fn process_realtime_logs(
                 Err(err) => {
                     // Handle error in fetch_logs
                     tracing::error!(?err, "Error in merged stream");
+                    continue 'outer;
                 }
             }
         }
