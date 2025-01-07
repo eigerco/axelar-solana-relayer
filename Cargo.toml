@@ -80,14 +80,14 @@ relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-cor
 core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core.git", package = "common-serde-utils", branch = "main" }
 
 # Solana Gateway
-axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates", features = ["no-entrypoint"] }
-axelar-solana-its = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates", features = ["no-entrypoint"] }
-axelar-solana-governance = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates", features = ["no-entrypoint"] }
-gateway-event-stack = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates" }
-axelar-solana-encoding = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates" }
-axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates" }
-axelar-executable = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates" }
-its-instruction-builder = { git = "https://github.com/eigerco/solana-axelar.git", branch = "axelar-executable-updates" }
+axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main", features = ["no-entrypoint"] }
+axelar-solana-its = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main", features = ["no-entrypoint"] }
+axelar-solana-governance = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main", features = ["no-entrypoint"] }
+gateway-event-stack = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
+axelar-solana-encoding = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
+axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
+axelar-executable = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
+its-instruction-builder = { git = "https://github.com/eigerco/solana-axelar.git", branch = "main" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
