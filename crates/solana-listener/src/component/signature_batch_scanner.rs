@@ -71,7 +71,7 @@ pub(crate) async fn scan_old_signatures(
     Ok(latest_processed_signature)
 }
 
-/// Fetches events in range. Prcoesses them "backwards" in time.
+/// Fetches events in range. Processes them "backwards" in time.
 /// Fetching the events in range: batch(t1..t2), batch(t2..t3), ..
 ///
 /// The fetching will be done for: gateway and gas service programs until both programs don't return
@@ -213,5 +213,82 @@ impl SignatureRangeFetcher {
                 new_t2: chronologically_oldest_signature,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use axelar_solana_gateway_test_fixtures::base::TestFixture;
+    use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
+    use solana_sdk::account::AccountSharedData;
+    use solana_sdk::signature::Keypair;
+    use solana_sdk::signer::Signer;
+    use solana_sdk::{bpf_loader_upgradeable, system_program};
+    use solana_test_validator::{TestValidator, UpgradeableProgramInfo};
+
+    use super::*;
+
+    /// Return the [`PathBuf`] that points to the `[repo]` folder
+    #[must_use]
+    pub fn workspace_root_dir() -> PathBuf {
+        let dir = std::env::var("CARGO_MANIFEST_DIR")
+            .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_owned());
+        PathBuf::from(dir)
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned()
+    }
+
+    #[tokio::test]
+    async fn can_initialize() {
+        let mut fixture = setup().await;
+    }
+
+    pub async fn setup() -> SolanaAxelarIntegrationMetadata {
+        use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegration;
+        use solana_test_validator::TestValidatorGenesis;
+        let mut validator = TestValidatorGenesis::default();
+        let upgrade_authority = Keypair::new();
+        validator.add_account(
+            upgrade_authority.pubkey(),
+            AccountSharedData::new(u64::MAX, 0, &system_program::ID),
+        );
+        validator.add_upgradeable_programs_with_path(&[
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_gateway::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_gateway.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_gas_service::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_gas_service.so"),
+            },
+        ]);
+        let mut fixture =
+            TestFixture::new_test_validator(validator, Duration::from_millis(500)).await;
+        fixture.payer = upgrade_authority.insecure_clone();
+
+        let mut fixture = SolanaAxelarIntegration::builder()
+            .initial_signer_weights(vec![42])
+            .fixture(fixture)
+            .build()
+            .stetup_without_deployment(upgrade_authority);
+
+        fixture.initialize_gateway_config_account().await.unwrap();
+        fixture
     }
 }
