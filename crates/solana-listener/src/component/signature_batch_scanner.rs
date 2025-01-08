@@ -149,6 +149,7 @@ enum FetchingState {
     FetchAgain { new_t2: Signature },
 }
 
+#[derive(Clone)]
 struct SignatureRangeFetcher {
     t1: Option<Signature>,
     t2: Option<Signature>,
@@ -226,7 +227,7 @@ impl SignatureRangeFetcher {
 
 #[cfg(test)]
 mod test {
-    use std::collections::{BTreeSet, HashSet};
+    use std::collections::{BTreeMap, BTreeSet, HashSet};
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -267,7 +268,7 @@ mod test {
     async fn signature_range_fetcher() {
         let mut fixture = setup().await;
         let (gas_config, counter_pda) = setup_aux_contracts(&mut fixture).await;
-        let (memo_and_gas_signatures, gas_signatures) =
+        let generated_signs =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
         let client = match &fixture.fixture.test_node {
@@ -282,59 +283,127 @@ mod test {
 
         let rpc_client = Arc::new(client);
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
         let (tx, rx) = futures::channel::mpsc::unbounded();
-        let last = *gas_signatures.last().unwrap();
-        let fetcher = SignatureRangeFetcher {
+        let mut fetcher = SignatureRangeFetcher {
             t1: None,
-            t2: Some(last),
+            t2: None,
             rpc_client: Arc::clone(&rpc_client),
-            address: gas_config.config_pda,
+            address: Pubkey::new_unique(),
             signature_sender: tx,
             // TestValidator never has a tx in a `finalized state`. When I try to adjust the
             // validator.ticks_per_slot(1) then the test error output is full of panic stack traces
             commitment: CommitmentConfig::confirmed(),
-        }
-        .fetch()
-        .await
-        .unwrap();
+        };
 
-        assert_eq!(fetcher, FetchingState::Completed);
-        let mut all_gas_entries = gas_signatures
-            .iter()
-            .chain(memo_and_gas_signatures.iter())
-            .copied()
-            .collect::<BTreeSet<_>>();
-        // the t2 entry is not included in the RPC response, the assumption is that we already have
-        // processed it hence we know its signature beforehand
-        all_gas_entries.remove(&last);
-        let fetched_gas_events = rx
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .map(|x| x.signature)
-            .collect::<BTreeSet<_>>();
-        assert_eq!(
-            fetched_gas_events.len(),
-            5,
-            "the intersection does not include the `last` entry."
-        );
-        assert_eq!(
-            fetched_gas_events
-                .intersection(&all_gas_entries)
+        // test that t1=None and t2=Some works
+        {
+            let (tx, rx) = futures::channel::mpsc::unbounded();
+            let last = *generated_signs.gas_signatures.last().unwrap();
+            let mut fetcher = fetcher.clone();
+            fetcher.t2 = Some(last);
+            fetcher.t1 = None;
+            fetcher.signature_sender = tx;
+            fetcher.address = gas_config.config_pda;
+            let fetch_state = fetcher.fetch().await.unwrap();
+            drop(fetcher);
+            assert_eq!(fetch_state, FetchingState::Completed);
+
+            let mut all_gas_entries = generated_signs
+                .gas_signatures
+                .iter()
+                .chain(generated_signs.memo_and_gas_signatures.iter())
                 .copied()
-                .collect::<BTreeSet<_>>(),
-            all_gas_entries,
-            r#"`fetched_gas_events` includes the signature for PDA initialization,
+                .collect::<BTreeSet<_>>();
+            // the t2 entry is not included in the RPC response, the assumption is that we already
+            // have processed it hence we know its signature beforehand
+            all_gas_entries.remove(&last);
+            let fetched_gas_events = rx
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .map(|x| x.signature)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                fetched_gas_events.len(),
+                5,
+                "the intersection does not include the `last` entry."
+            );
+            assert_eq!(
+                fetched_gas_events
+                    .intersection(&all_gas_entries)
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                all_gas_entries,
+                r#"`fetched_gas_events` includes the signature for PDA initialization,
 thus must be filtered out. But all other events must remain includded"#,
-        );
+            );
+        }
+        // test that t1=Some and t2=Some works
+        {
+            let (tx, rx) = futures::channel::mpsc::unbounded();
+            let items_in_range = 5;
+            let all_memo_signatures_to_fetch = generated_signs
+                .memo_signatures
+                .iter()
+                .chain(generated_signs.memo_and_gas_signatures.iter())
+                .copied()
+                .take(items_in_range)
+                .collect::<Vec<_>>();
+            let newest = *all_memo_signatures_to_fetch.last().unwrap();
+            let oldest = *all_memo_signatures_to_fetch.first().unwrap();
+
+            let mut fetcher = fetcher.clone();
+            fetcher.t2 = Some(newest);
+            fetcher.t1 = Some(oldest);
+            fetcher.signature_sender = tx;
+            fetcher.address = axelar_solana_memo_program::id();
+            let fetch_state = fetcher.fetch().await.unwrap();
+            drop(fetcher);
+            assert_eq!(fetch_state, FetchingState::Completed);
+
+            // the t2 entry is not included in the RPC response, the assumption is that we already
+            // have processed it hence we know its signature beforehand
+            let fetched = rx
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .map(|x| x.signature)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                fetched.len(),
+                items_in_range - 2,
+                "does not include the `oldest` and `newest` entry."
+            );
+            let mut all_memo_signatures_to_fetch = all_memo_signatures_to_fetch
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+            all_memo_signatures_to_fetch.remove(&newest);
+            all_memo_signatures_to_fetch.remove(&oldest);
+            assert_eq!(
+                fetched
+                    .intersection(&all_memo_signatures_to_fetch)
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                all_memo_signatures_to_fetch,
+                r#"`fetched_gas_events` includes the signature for PDA initialization,
+            thus must be filtered out. But all other events must remain includded"#,
+            );
+        }
+    }
+
+    struct GenerateTestSolanaDataResult {
+        memo_signatures: Vec<Signature>,
+        memo_and_gas_signatures: Vec<Signature>,
+        gas_signatures: Vec<Signature>,
     }
 
     async fn generate_test_solana_data(
         fixture: &mut SolanaAxelarIntegrationMetadata,
         counter_pda: (Pubkey, u8),
         gas_config: &axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
-    ) -> (Vec<Signature>, Vec<Signature>) {
+    ) -> GenerateTestSolanaDataResult {
         // solana memo program to evm raw message (3 logs)
         let mut memo_signatures = vec![];
         for i in 0..3 {
@@ -401,7 +470,11 @@ thus must be filtered out. But all other events must remain includded"#,
             let sig = fixture.send_tx_with_signatures(&[gas_ix]).await.unwrap().0[0];
             gas_signatures.push(sig);
         }
-        (memo_and_gas_signatures, gas_signatures)
+        GenerateTestSolanaDataResult {
+            memo_signatures,
+            memo_and_gas_signatures,
+            gas_signatures,
+        }
     }
 
     async fn setup_aux_contracts(
