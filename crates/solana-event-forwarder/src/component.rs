@@ -103,21 +103,40 @@ impl SolanaEventForwarder {
             let combined_events = all_events
                 .fold(
                     // (accumulated vector, pending NativeGasPaidForContractCallEvent)
-                    (vec![], vec![]),
+                    (vec![], Vec::<NativeGasPaidForContractCallEvent>::new()),
                     |(mut acc, mut pending_gas), (idx, evt)| {
+                        let mut find_corresponding_gas_call =
+                            |payload_hash: &[u8; 32],
+                             destination_chain: &str,
+                             destination_address: &str| {
+                                let desired_gas = pending_gas.iter().position(|x| {
+                                    x.payload_hash == *payload_hash &&
+                                        x.destination_chain == destination_chain &&
+                                        x.destination_address == destination_address
+                                });
+                                return desired_gas.map(|idx| pending_gas.remove(idx))
+                            };
                         match evt {
                             GatewayOrGasEvent::GatewayEvent(gateway_evt) => {
                                 // Check if we have a pending gas event to combine
                                 match gateway_evt {
                                     GatewayEvent::CallContract(call_event) => {
-                                        let gas = pending_gas.pop();
+                                        let gas = find_corresponding_gas_call(
+                                            &call_event.payload_hash,
+                                            &call_event.destination_chain,
+                                            &call_event.destination_contract_address,
+                                        );
                                         let event =
                                             GatewayAndGasEvent::CallContract(gas, call_event);
                                         acc.push((idx, event));
                                         (acc, pending_gas)
                                     }
                                     GatewayEvent::CallContractOffchainData(call_event) => {
-                                        let gas = pending_gas.pop();
+                                        let gas = find_corresponding_gas_call(
+                                            &call_event.payload_hash,
+                                            &call_event.destination_chain,
+                                            &call_event.destination_contract_address,
+                                        );
                                         let event = GatewayAndGasEvent::CallContractOffchainData(
                                             gas, call_event,
                                         );

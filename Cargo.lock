@@ -895,6 +895,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "axelar-solana-memo-program"
+version = "0.1.0"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=cf677b76#cf677b761b7f01aebfaba0b2bf459f7d9b4a8247"
+dependencies = [
+ "axelar-executable",
+ "axelar-solana-encoding",
+ "axelar-solana-gateway",
+ "axelar-solana-its",
+ "borsh 1.5.3",
+ "program-utils",
+ "solana-program",
+ "spl-token-2022 5.0.2",
+ "spl-token-metadata-interface 0.5.1",
+]
+
+[[package]]
 name = "axum"
 version = "0.6.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7528,6 +7544,7 @@ dependencies = [
  "axelar-solana-gas-service",
  "axelar-solana-gateway",
  "axelar-solana-gateway-test-fixtures",
+ "axelar-solana-memo-program",
  "chrono",
  "common-serde-utils 0.1.0",
  "common-serde-utils 0.1.1",
