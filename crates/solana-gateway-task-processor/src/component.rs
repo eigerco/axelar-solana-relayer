@@ -376,8 +376,14 @@ async fn execute_task(
             send_transaction(solana_rpc_client, keypair, ix).await?;
         }
         axelar_solana_governance::ID => {
-            // todo Governance specific handling
-            tracing::error!("governance program not yet supported");
+            let ix = axelar_solana_governance::instructions::builder::calculate_gmp_ix(
+                signer,
+                gateway_incoming_message_pda,
+                gateway_message_payload_pda,
+                &message,
+                &payload,
+            )?;
+            send_transaction(solana_rpc_client, keypair, ix).await?;
         }
         _ => {
             validate_relayer_not_in_payload(&payload, signer)?;
