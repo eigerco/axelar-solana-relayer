@@ -29,6 +29,7 @@ solana-rpc-client-api.workspace = true
 
 [dev-dependencies]
 axelar-solana-gateway-test-fixtures.workspace = true
+axelar-solana-memo-program.workspace = true
 solana-test-validator.workspace = true
 
 [lints]

@@ -228,6 +228,7 @@ mod test {
     use solana_sdk::signer::Signer;
     use solana_sdk::{bpf_loader_upgradeable, system_program};
     use solana_test_validator::{TestValidator, UpgradeableProgramInfo};
+    use tokio::task::JoinSet;
 
     use super::*;
 
@@ -245,8 +246,84 @@ mod test {
     }
 
     #[tokio::test]
-    async fn can_initialize() {
+    async fn can_initialize_gateway() {
         let mut fixture = setup().await;
+    }
+
+    #[tokio::test]
+    async fn signature_range_fetcher() {
+        let mut fixture = setup().await;
+        // init gas config
+        let gas_service_upgr_auth = fixture.payer.insecure_clone();
+        let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth);
+        fixture.init_gas_config(&gas_config).await.unwrap();
+
+        // init memo program
+        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
+        let ix = axelar_solana_memo_program::instruction::initialize(
+            &fixture.payer.pubkey(),
+            &fixture.gateway_root_pda,
+            &counter_pda,
+        )
+        .unwrap();
+        fixture.send_tx(&[ix]).await.unwrap();
+
+        // solana memo program to evm raw message (3)
+        for i in 0..3 {
+            let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
+                &fixture.gateway_root_pda,
+                &counter_pda.0,
+                format!("msg {i}"),
+                "evm".to_string(),
+                "0xdeadbeef".to_string(),
+                &axelar_solana_gateway::id(),
+            )
+            .unwrap();
+            fixture.send_tx(&[ix]).await.unwrap();
+        }
+        // solana memo program + gas service  (3)
+        for i in 0..3 {
+            let payload = format!("msg {i}");
+            let payload_hash = solana_sdk::keccak::hashv(&[payload.as_str().as_bytes()]).0;
+            let destination_address = format!("0xdeadbeef-{i}");
+            let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
+                &fixture.gateway_root_pda,
+                &counter_pda.0,
+                format!("msg {i}"),
+                "evm".to_string(),
+                destination_address.clone(),
+                &axelar_solana_gateway::id(),
+            )
+            .unwrap();
+            let gas_ix =
+                axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
+                    &axelar_solana_gas_service::id(),
+                    &fixture.payer.pubkey(),
+                    &gas_config.config_pda,
+                    "evm".to_string(),
+                    destination_address.clone(),
+                    payload_hash,
+                    Pubkey::new_unique(),
+                    vec![],
+                    5000,
+                )
+                .unwrap();
+            fixture.send_tx(&[ix, gas_ix]).await.unwrap();
+        }
+        // gas service to fund extra 3 msgs  (3)
+        for _ in 0..3 {
+            let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
+                &axelar_solana_gas_service::id(),
+                &fixture.payer.pubkey(),
+                &gas_config.config_pda,
+                [42; 64],
+                123,
+                5000,
+                Pubkey::new_unique(),
+            )
+            .unwrap();
+            fixture.send_tx(&[gas_ix]).await.unwrap();
+        }
     }
 
     pub async fn setup() -> SolanaAxelarIntegrationMetadata {
@@ -276,6 +353,15 @@ mod test {
                     .join("tests")
                     .join("fixtures")
                     .join("axelar_solana_gas_service.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_memo_program::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_memo_program.so"),
             },
         ]);
         let mut fixture =
