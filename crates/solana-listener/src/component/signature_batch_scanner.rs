@@ -11,6 +11,11 @@ use super::{MessageSender, SolanaTransaction};
 use crate::component::log_processor;
 use crate::config::MissedSignatureCatchupStrategy;
 
+/// Scan old signatures based on the configured catch-up strategy
+///
+/// # Returns
+/// The latest processed signature, if any was found.
+/// Latest -- chronologically oldest
 #[tracing::instrument(skip_all, name = "scan old signatures")]
 pub(crate) async fn scan_old_signatures(
     config: &crate::Config,
@@ -105,6 +110,7 @@ pub(crate) async fn fetch_batches_in_range(
                 rpc_client: Arc::clone(&rpc_client),
                 address: program_to_monitor,
                 signature_sender: signature_sender.clone(),
+                commitment: CommitmentConfig::finalized(),
             };
 
             let res = fetcher.fetch().await?;
@@ -137,6 +143,7 @@ pub(crate) async fn fetch_batches_in_range(
     Ok(chronologically_newest_signature)
 }
 
+#[derive(Debug, PartialEq)]
 enum FetchingState {
     Completed,
     FetchAgain { new_t2: Signature },
@@ -148,6 +155,7 @@ struct SignatureRangeFetcher {
     rpc_client: Arc<RpcClient>,
     address: Pubkey,
     signature_sender: MessageSender,
+    commitment: CommitmentConfig,
 }
 
 impl SignatureRangeFetcher {
@@ -169,7 +177,7 @@ impl SignatureRangeFetcher {
                     // search until this transaction signature, if found before limit reached
                     until: self.t1,
                     limit: Some(LIMIT),
-                    commitment: Some(CommitmentConfig::finalized()),
+                    commitment: Some(self.commitment),
                 },
             )
             .await?;
@@ -218,11 +226,15 @@ impl SignatureRangeFetcher {
 
 #[cfg(test)]
 mod test {
+    use std::collections::{BTreeSet, HashSet};
     use std::path::PathBuf;
     use std::time::Duration;
 
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
+    use futures::StreamExt;
+    use pretty_assertions::assert_eq;
+    use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::signature::Keypair;
     use solana_sdk::signer::Signer;
@@ -231,6 +243,7 @@ mod test {
     use tokio::task::JoinSet;
 
     use super::*;
+    use crate::Config;
 
     /// Return the [`PathBuf`] that points to the `[repo]` folder
     #[must_use]
@@ -245,30 +258,85 @@ mod test {
             .to_owned()
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn can_initialize_gateway() {
         let mut fixture = setup().await;
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn signature_range_fetcher() {
         let mut fixture = setup().await;
-        // init gas config
-        let gas_service_upgr_auth = fixture.payer.insecure_clone();
-        let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth);
-        fixture.init_gas_config(&gas_config).await.unwrap();
+        let (gas_config, counter_pda) = setup_aux_contracts(&mut fixture).await;
+        let (memo_and_gas_signatures, gas_signatures) =
+            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
-        // init memo program
-        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
-        let ix = axelar_solana_memo_program::instruction::initialize(
-            &fixture.payer.pubkey(),
-            &fixture.gateway_root_pda,
-            &counter_pda,
-        )
+        let client = match &fixture.fixture.test_node {
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                validator,
+                ..
+            } => validator.get_async_rpc_client(),
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                unimplemented!()
+            }
+        };
+
+        let rpc_client = Arc::new(client);
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+        let last = *gas_signatures.last().unwrap();
+        let fetcher = SignatureRangeFetcher {
+            t1: None,
+            t2: Some(last),
+            rpc_client: Arc::clone(&rpc_client),
+            address: gas_config.config_pda,
+            signature_sender: tx,
+            // TestValidator never has a tx in a `finalized state`. When I try to adjust the
+            // validator.ticks_per_slot(1) then the test error output is full of panic stack traces
+            commitment: CommitmentConfig::confirmed(),
+        }
+        .fetch()
+        .await
         .unwrap();
-        fixture.send_tx(&[ix]).await.unwrap();
 
-        // solana memo program to evm raw message (3)
+        assert_eq!(fetcher, FetchingState::Completed);
+        let mut all_gas_entries = gas_signatures
+            .iter()
+            .chain(memo_and_gas_signatures.iter())
+            .copied()
+            .collect::<BTreeSet<_>>();
+        // the t2 entry is not included in the RPC response, the assumption is that we already have
+        // processed it hence we know its signature beforehand
+        all_gas_entries.remove(&last);
+        let fetched_gas_events = rx
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .map(|x| x.signature)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            fetched_gas_events.len(),
+            5,
+            "the intersection does not include the `last` entry."
+        );
+        assert_eq!(
+            fetched_gas_events
+                .intersection(&all_gas_entries)
+                .copied()
+                .collect::<BTreeSet<_>>(),
+            all_gas_entries,
+            r#"`fetched_gas_events` includes the signature for PDA initialization,
+thus must be filtered out. But all other events must remain includded"#,
+        );
+    }
+
+    async fn generate_test_solana_data(
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+        counter_pda: (Pubkey, u8),
+        gas_config: &axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
+    ) -> (Vec<Signature>, Vec<Signature>) {
+        // solana memo program to evm raw message (3 logs)
+        let mut memo_signatures = vec![];
         for i in 0..3 {
             let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
                 &fixture.gateway_root_pda,
@@ -279,9 +347,11 @@ mod test {
                 &axelar_solana_gateway::id(),
             )
             .unwrap();
-            fixture.send_tx(&[ix]).await.unwrap();
+            let sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
+            memo_signatures.push(sig);
         }
-        // solana memo program + gas service  (3)
+        // solana memo program + gas service  (3 logs)
+        let mut memo_and_gas_signatures = vec![];
         for i in 0..3 {
             let payload = format!("msg {i}");
             let payload_hash = solana_sdk::keccak::hashv(&[payload.as_str().as_bytes()]).0;
@@ -308,28 +378,65 @@ mod test {
                     5000,
                 )
                 .unwrap();
-            fixture.send_tx(&[ix, gas_ix]).await.unwrap();
+            let sig = fixture
+                .send_tx_with_signatures(&[ix, gas_ix])
+                .await
+                .unwrap()
+                .0[0];
+            memo_and_gas_signatures.push(sig);
         }
-        // gas service to fund extra 3 msgs  (3)
-        for _ in 0..3 {
+        // gas service to fund some arbitrary events from the past (2 logs)
+        let mut gas_signatures = vec![];
+        for i in 0..2 {
             let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
                 &axelar_solana_gas_service::id(),
                 &fixture.payer.pubkey(),
                 &gas_config.config_pda,
-                [42; 64],
+                [42 + i; 64],
                 123,
                 5000,
                 Pubkey::new_unique(),
             )
             .unwrap();
-            fixture.send_tx(&[gas_ix]).await.unwrap();
+            let sig = fixture.send_tx_with_signatures(&[gas_ix]).await.unwrap().0[0];
+            gas_signatures.push(sig);
         }
+        (memo_and_gas_signatures, gas_signatures)
+    }
+
+    async fn setup_aux_contracts(
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+    ) -> (
+        axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
+        (Pubkey, u8),
+    ) {
+        // init gas config
+        let gas_service_upgr_auth = fixture.payer.insecure_clone();
+        let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth);
+        fixture.init_gas_config(&gas_config).await.unwrap();
+
+        // init memo program
+        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
+        let ix = axelar_solana_memo_program::instruction::initialize(
+            &fixture.payer.pubkey(),
+            &fixture.gateway_root_pda,
+            &counter_pda,
+        )
+        .unwrap();
+        fixture.send_tx(&[ix]).await.unwrap();
+        (gas_config, counter_pda)
     }
 
     pub async fn setup() -> SolanaAxelarIntegrationMetadata {
         use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegration;
         use solana_test_validator::TestValidatorGenesis;
         let mut validator = TestValidatorGenesis::default();
+
+        let mut rpc_config = JsonRpcConfig::default_for_test();
+        rpc_config.enable_rpc_transaction_history = true;
+        rpc_config.enable_extended_tx_metadata_storage = true;
+        validator.rpc_config(rpc_config);
+
         let upgrade_authority = Keypair::new();
         validator.add_account(
             upgrade_authority.pubkey(),
@@ -366,6 +473,7 @@ mod test {
         ]);
         let mut fixture =
             TestFixture::new_test_validator(validator, Duration::from_millis(500)).await;
+        let init_payer = fixture.payer.insecure_clone();
         fixture.payer = upgrade_authority.insecure_clone();
 
         let mut fixture = SolanaAxelarIntegration::builder()
@@ -375,6 +483,7 @@ mod test {
             .stetup_without_deployment(upgrade_authority);
 
         fixture.initialize_gateway_config_account().await.unwrap();
+        fixture.payer = init_payer;
         fixture
     }
 }
