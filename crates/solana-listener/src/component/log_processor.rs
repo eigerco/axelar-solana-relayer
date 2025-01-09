@@ -12,6 +12,7 @@ use tokio::task::JoinSet;
 
 use super::{MessageSender, SolanaTransaction};
 
+#[tracing::instrument(skip_all)]
 pub(crate) async fn fetch_and_send(
     fetched_signatures: impl Iterator<Item = Signature>,
     rpc_client: Arc<RpcClient>,
@@ -45,6 +46,7 @@ pub(crate) async fn fetch_and_send(
 /// - If the metadata is not included with the logs
 /// - If the logs are not included
 /// - If the transaction was not successful
+#[tracing::instrument(skip_all, fields(signtaure))]
 pub async fn fetch_logs(
     signature: Signature,
     rpc_client: &RpcClient,

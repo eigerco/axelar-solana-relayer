@@ -1,11 +1,15 @@
 use core::str::FromStr as _;
 use std::sync::Arc;
+use std::time::Duration;
 
+use eyre::Context;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
+use tokio::time::sleep;
+use tracing::Instrument;
 
 use super::{MessageSender, SolanaTransaction};
 use crate::component::log_processor;
@@ -16,7 +20,7 @@ use crate::config::MissedSignatureCatchupStrategy;
 /// # Returns
 /// The latest processed signature, if any was found.
 /// Latest -- chronologically oldest
-#[tracing::instrument(skip_all, name = "scan old signatures")]
+#[tracing::instrument(skip_all)]
 pub(crate) async fn scan_old_signatures(
     config: &crate::Config,
     signature_sender: &futures::channel::mpsc::UnboundedSender<SolanaTransaction>,
@@ -62,14 +66,16 @@ pub(crate) async fn scan_old_signatures(
                 ?latest_signature,
                 "Catching up all missed signatures starting from",
             );
-            fetch_batches_in_range(
+            let latest_signature = fetch_batches_in_range(
                 config,
                 Arc::clone(rpc_client),
                 signature_sender,
                 None,
                 latest_signature,
             )
-            .await?
+            .await?;
+            dbg!(&latest_signature);
+            latest_signature
         }
     };
 
@@ -96,12 +102,12 @@ pub(crate) async fn fetch_batches_in_range(
 ) -> Result<Option<Signature>, eyre::Error> {
     let mut interval = tokio::time::interval(config.tx_scan_poll_period);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    interval.tick().await;
 
-    // Track the chronologically youngest t2 that we've seen
-    let mut chronologically_newest_signature = t2_signature;
-    'a: loop {
+    let mut chronologically_newest_sig = t2_signature;
+    loop {
+        // Assume both are done until proven otherwise
         let mut all_completed = true;
-        let mut newest_sig = chronologically_newest_signature;
 
         for program_to_monitor in [
             config.gateway_program_address,
@@ -116,39 +122,39 @@ pub(crate) async fn fetch_batches_in_range(
                 commitment: config.commitment,
             };
 
-            let res = fetcher.fetch().await?;
-            match res {
-                FetchingState::Completed => {
-                    // This program finished, but we still need to process the other one
+            let new_t2 = match fetcher.fetch().in_current_span().await? {
+                FetchingState::Completed { new_t2 } => {
+                    // This program finished (no events), but we still check the other program to
+                    // query
+                    new_t2
                 }
                 FetchingState::FetchAgain { new_t2 } => {
                     all_completed = false;
-                    if newest_sig.is_none() {
-                        newest_sig = Some(new_t2);
-                    }
+                    t2_signature = Some(new_t2); // Always update to the latest
+                    Some(new_t2)
                 }
+            };
+            if chronologically_newest_sig.is_none() {
+                chronologically_newest_sig = new_t2;
             }
 
-            // Avoid rate limiting
+            // Avoid rate-limiting
             interval.tick().await;
         }
 
-        // After processing both programs:
+        // If neither program had more events, we’re done
         if all_completed {
-            // Both completed, break out
-            break 'a;
+            break;
         }
-
-        t2_signature = newest_sig;
-        chronologically_newest_signature = newest_sig;
     }
 
-    Ok(chronologically_newest_signature)
+    // Final updated signature is our newest
+    Ok(chronologically_newest_sig)
 }
 
 #[derive(Debug, PartialEq)]
 enum FetchingState {
-    Completed,
+    Completed { new_t2: Option<Signature> },
     FetchAgain { new_t2: Signature },
 }
 
@@ -184,24 +190,21 @@ impl SignatureRangeFetcher {
                     commitment: Some(self.commitment),
                 },
             )
-            .await?;
+            .await
+            .context("fetching signatures with address")?;
 
         let total_signatures = fetched_signatures.len();
         tracing::info!(total_signatures, "Fetched new set of signatures");
 
         if fetched_signatures.is_empty() {
             tracing::info!("No more signatures to fetch");
-            return Ok(FetchingState::Completed);
+            return Ok(FetchingState::Completed { new_t2: None });
         }
 
-        let (chronologically_oldest_signature, _) =
-            match (fetched_signatures.last(), fetched_signatures.first()) {
-                (Some(oldest), Some(newest)) => (
-                    Signature::from_str(&oldest.signature)?,
-                    Signature::from_str(&newest.signature)?,
-                ),
-                _ => return Ok(FetchingState::Completed),
-            };
+        let chronologically_oldest_signature = fetched_signatures
+            .first()
+            .map(|x| Signature::from_str(&x.signature).expect("rpc will return valid signatures"))
+            .expect("we checked that the vec is not empty");
 
         let fetched_signatures_iter = fetched_signatures
             .into_iter()
@@ -218,7 +221,9 @@ impl SignatureRangeFetcher {
 
         if total_signatures < LIMIT {
             tracing::info!("Fetched all available signatures in the range");
-            Ok(FetchingState::Completed)
+            Ok(FetchingState::Completed {
+                new_t2: Some(chronologically_oldest_signature),
+            })
         } else {
             tracing::info!("More signatures available, continuing fetch");
             Ok(FetchingState::FetchAgain {
@@ -229,7 +234,7 @@ impl SignatureRangeFetcher {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use std::collections::{BTreeMap, BTreeSet, HashSet};
     use std::path::PathBuf;
     use std::time::Duration;
@@ -239,6 +244,7 @@ mod test {
     use futures::{SinkExt, StreamExt};
     use pretty_assertions::assert_eq;
     use solana_rpc::rpc::JsonRpcConfig;
+    use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::signature::Keypair;
     use solana_sdk::signer::Signer;
@@ -264,13 +270,14 @@ mod test {
 
     #[test_log::test(tokio::test)]
     async fn can_initialize_gateway() {
-        let mut fixture = setup().await;
+        let _fixture = setup().await;
     }
 
     #[test_log::test(tokio::test)]
     async fn signature_range_fetcher() {
         let mut fixture = setup().await;
-        let (gas_config, counter_pda) = setup_aux_contracts(&mut fixture).await;
+        let (gas_config, gas_init_sig, counter_pda, init_memo_sig) =
+            setup_aux_contracts(&mut fixture).await;
         let generated_signs =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
@@ -311,7 +318,6 @@ mod test {
             fetcher.address = gas_config.config_pda;
             let fetch_state = fetcher.fetch().await.unwrap();
             drop(fetcher);
-            assert_eq!(fetch_state, FetchingState::Completed);
 
             let mut all_gas_entries = generated_signs
                 .gas_signatures
@@ -319,29 +325,27 @@ mod test {
                 .chain(generated_signs.memo_and_gas_signatures.iter())
                 .copied()
                 .collect::<BTreeSet<_>>();
-            // the t2 entry is not included in the RPC response, the assumption is that we already
-            // have processed it hence we know its signature beforehand
             all_gas_entries.remove(&last);
-            let fetched_gas_events = rx
-                .collect::<Vec<_>>()
-                .await
+            all_gas_entries.insert(gas_init_sig);
+            let fetched_gas_events = rx.collect::<Vec<_>>().await;
+            let fetched_gas_events = fetched_gas_events
                 .into_iter()
                 .map(|x| x.signature)
                 .collect::<BTreeSet<_>>();
+            assert_eq!(
+                fetch_state,
+                // the t2 entry is not included in the RPC response, the assumption is that we
+                // already have processed it hence we know its signature beforehand
+                FetchingState::Completed {
+                    new_t2: Some(*generated_signs.gas_signatures.iter().nth_back(1).unwrap())
+                }
+            );
             assert_eq!(
                 fetched_gas_events.len(),
                 5,
                 "the intersection does not include the `last` entry."
             );
-            assert_eq!(
-                fetched_gas_events
-                    .intersection(&all_gas_entries)
-                    .copied()
-                    .collect::<BTreeSet<_>>(),
-                all_gas_entries,
-                r#"`fetched_gas_events` includes the signature for PDA initialization,
-thus must be filtered out. But all other events must remain includded"#,
-            );
+            assert_eq!(fetched_gas_events, all_gas_entries,);
         }
         // test that t1=Some and t2=Some works
         {
@@ -364,7 +368,12 @@ thus must be filtered out. But all other events must remain includded"#,
             fetcher.address = axelar_solana_memo_program::id();
             let fetch_state = fetcher.fetch().await.unwrap();
             drop(fetcher);
-            assert_eq!(fetch_state, FetchingState::Completed);
+            assert_eq!(
+                fetch_state,
+                FetchingState::Completed {
+                    new_t2: Some(*all_memo_signatures_to_fetch.iter().nth_back(1).unwrap())
+                }
+            );
 
             // the t2 entry is not included in the RPC response, the assumption is that we already
             // have processed it hence we know its signature beforehand
@@ -384,21 +393,14 @@ thus must be filtered out. But all other events must remain includded"#,
                 .collect::<BTreeSet<_>>();
             all_memo_signatures_to_fetch.remove(&newest);
             all_memo_signatures_to_fetch.remove(&oldest);
-            assert_eq!(
-                fetched
-                    .intersection(&all_memo_signatures_to_fetch)
-                    .copied()
-                    .collect::<BTreeSet<_>>(),
-                all_memo_signatures_to_fetch,
-                r#"`fetched_gas_events` includes the signature for PDA initialization,
-            thus must be filtered out. But all other events must remain includded"#,
-            );
+            assert_eq!(fetched, all_memo_signatures_to_fetch,);
         }
     }
     #[test_log::test(tokio::test)]
     async fn fetch_large_range_of_signatures() {
         let mut fixture = setup().await;
-        let (gas_config, counter_pda) = setup_aux_contracts(&mut fixture).await;
+        let (gas_config, gas_init_sig, counter_pda, init_memo_sig) =
+            setup_aux_contracts(&mut fixture).await;
         let generated_signs_set_1 =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
         let generated_signs_set_2 =
@@ -460,24 +462,25 @@ thus must be filtered out. But all other events must remain includded"#,
         );
     }
 
-    struct GenerateTestSolanaDataResult {
-        memo_signatures: Vec<Signature>,
-        memo_and_gas_signatures: Vec<Signature>,
-        gas_signatures: Vec<Signature>,
+    #[derive(Debug)]
+    pub struct GenerateTestSolanaDataResult {
+        pub memo_signatures: Vec<Signature>,
+        pub memo_and_gas_signatures: Vec<Signature>,
+        pub gas_signatures: Vec<Signature>,
     }
 
     impl GenerateTestSolanaDataResult {
-        fn flatten_sequentially(self) -> Vec<Signature> {
+        pub fn flatten_sequentially(&self) -> Vec<Signature> {
             [
-                self.memo_signatures,
-                self.memo_and_gas_signatures,
-                self.gas_signatures,
+                self.memo_signatures.clone(),
+                self.memo_and_gas_signatures.clone(),
+                self.gas_signatures.clone(),
             ]
             .concat()
         }
     }
 
-    async fn generate_test_solana_data(
+    pub async fn generate_test_solana_data(
         fixture: &mut SolanaAxelarIntegrationMetadata,
         counter_pda: (Pubkey, u8),
         gas_config: &axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
@@ -555,16 +558,26 @@ thus must be filtered out. But all other events must remain includded"#,
         }
     }
 
-    async fn setup_aux_contracts(
+    pub async fn setup_aux_contracts(
         fixture: &mut SolanaAxelarIntegrationMetadata,
     ) -> (
         axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
+        Signature,
         (Pubkey, u8),
+        Signature,
     ) {
         // init gas config
         let gas_service_upgr_auth = fixture.payer.insecure_clone();
         let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth);
-        fixture.init_gas_config(&gas_config).await.unwrap();
+        let ix = axelar_solana_gas_service::instructions::init_config(
+            &axelar_solana_gas_service::ID,
+            &fixture.payer.pubkey(),
+            &gas_config.config_authority.pubkey(),
+            &gas_config.config_pda,
+            gas_config.salt,
+        )
+        .unwrap();
+        let gas_init_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
 
         // init memo program
         let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
@@ -574,8 +587,8 @@ thus must be filtered out. But all other events must remain includded"#,
             &counter_pda,
         )
         .unwrap();
-        fixture.send_tx(&[ix]).await.unwrap();
-        (gas_config, counter_pda)
+        let init_memo_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
+        (gas_config, gas_init_sig, counter_pda, init_memo_sig)
     }
 
     pub async fn setup() -> SolanaAxelarIntegrationMetadata {
@@ -587,6 +600,10 @@ thus must be filtered out. But all other events must remain includded"#,
         rpc_config.enable_rpc_transaction_history = true;
         rpc_config.enable_extended_tx_metadata_storage = true;
         validator.rpc_config(rpc_config);
+
+        let mut pubsub_config = PubSubConfig::default_for_tests();
+        pubsub_config.enable_block_subscription = true;
+        validator.pubsub_config(pubsub_config);
 
         let upgrade_authority = Keypair::new();
         validator.add_account(
