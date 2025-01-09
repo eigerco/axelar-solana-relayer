@@ -112,6 +112,7 @@ mod tests {
 
     use amplifier_api::identity::Identity;
     use pretty_assertions::assert_eq;
+    use solana_listener::solana_sdk::commitment_config::CommitmentConfig;
     use solana_listener::solana_sdk::pubkey::Pubkey;
     use solana_listener::solana_sdk::signature::{Keypair, Signature};
     use solana_listener::MissedSignatureCatchupStrategy;
@@ -195,6 +196,7 @@ mod tests {
                 solana_ws,
                 missed_signature_catchup_strategy: MissedSignatureCatchupStrategy::UntilBeginning,
                 latest_processed_signature: Some(Signature::from_str(&latest_processed_signature)?),
+                commitment: CommitmentConfig::finalized(),
             },
             solana_gateway_task_processor: solana_gateway_task_processor::Config {
                 gateway_program_address,

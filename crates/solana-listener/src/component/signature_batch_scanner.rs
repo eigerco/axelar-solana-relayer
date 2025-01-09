@@ -83,6 +83,9 @@ pub(crate) async fn scan_old_signatures(
 /// anu more events.
 ///
 /// The fetching of events stops after *both* programs have no more events to report.
+///
+/// # Returns
+/// The chronologically newest/latest signature
 #[tracing::instrument(skip_all, err)]
 pub(crate) async fn fetch_batches_in_range(
     config: &crate::Config,
@@ -110,7 +113,7 @@ pub(crate) async fn fetch_batches_in_range(
                 rpc_client: Arc::clone(&rpc_client),
                 address: program_to_monitor,
                 signature_sender: signature_sender.clone(),
-                commitment: CommitmentConfig::finalized(),
+                commitment: config.commitment,
             };
 
             let res = fetcher.fetch().await?;
@@ -233,7 +236,7 @@ mod test {
 
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
-    use futures::StreamExt;
+    use futures::{SinkExt, StreamExt};
     use pretty_assertions::assert_eq;
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::account::AccountSharedData;
@@ -392,11 +395,86 @@ thus must be filtered out. But all other events must remain includded"#,
             );
         }
     }
+    #[test_log::test(tokio::test)]
+    async fn fetch_large_range_of_signatures() {
+        let mut fixture = setup().await;
+        let (gas_config, counter_pda) = setup_aux_contracts(&mut fixture).await;
+        let generated_signs_set_1 =
+            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+        let generated_signs_set_2 =
+            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+        let generated_signs_set_3 =
+            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+
+        let (rpc_client, pubsub_url) = match &fixture.fixture.test_node {
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                validator,
+                ..
+            } => (validator.get_async_rpc_client(), validator.rpc_pubsub_url()),
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                unimplemented!()
+            }
+        };
+
+        let rpc_client = Arc::new(rpc_client);
+
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let config = Config {
+            gateway_program_address: axelar_solana_gateway::id(),
+            gas_service_config_pda: gas_config.config_pda,
+            solana_ws: pubsub_url.parse().unwrap(),
+            missed_signature_catchup_strategy: MissedSignatureCatchupStrategy::UntilBeginning,
+            latest_processed_signature: None,
+            tx_scan_poll_period: Duration::from_millis(1),
+            commitment: CommitmentConfig::confirmed(),
+        };
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+
+        // todo use `fetch_batches_in_range` fn herer
+        scan_old_signatures(&config, &tx, &rpc_client)
+            .await
+            .unwrap();
+        drop(tx);
+        let fetched = rx.map(|x| x.signature).collect::<BTreeSet<_>>().await;
+        let all_items_seq = [
+            generated_signs_set_1.flatten_sequentially(),
+            generated_signs_set_2.flatten_sequentially(),
+            generated_signs_set_3.flatten_sequentially(),
+        ]
+        .concat();
+
+        let all_items_btree = all_items_seq.clone().into_iter().collect::<BTreeSet<_>>();
+        assert_eq!(
+            fetched
+                .intersection(&all_items_btree)
+                .copied()
+                .collect::<BTreeSet<_>>(),
+            all_items_btree,
+            "expect to have fetched every single item"
+        );
+        assert_eq!(all_items_btree.len(), all_items_seq.len());
+        assert_eq!(
+            fetched.len(),
+            all_items_seq.len() + 2,
+            "adding init / deployment tx counts in there"
+        );
+    }
 
     struct GenerateTestSolanaDataResult {
         memo_signatures: Vec<Signature>,
         memo_and_gas_signatures: Vec<Signature>,
         gas_signatures: Vec<Signature>,
+    }
+
+    impl GenerateTestSolanaDataResult {
+        fn flatten_sequentially(self) -> Vec<Signature> {
+            [
+                self.memo_signatures,
+                self.memo_and_gas_signatures,
+                self.gas_signatures,
+            ]
+            .concat()
+        }
     }
 
     async fn generate_test_solana_data(

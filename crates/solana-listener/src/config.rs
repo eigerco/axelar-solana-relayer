@@ -3,6 +3,7 @@
 use core::time::Duration;
 
 use serde::Deserialize;
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use typed_builder::TypedBuilder;
@@ -39,6 +40,10 @@ pub struct Config {
         deserialize_with = "core_common_serde_utils::duration_ms_decode"
     )]
     pub tx_scan_poll_period: Duration,
+
+    /// The commitment level for the solana node tx state
+    #[serde(default = "CommitmentConfig::finalized")]
+    pub commitment: CommitmentConfig,
 }
 
 /// The strategy which defines on how we want to handle parsing historical signatures.
