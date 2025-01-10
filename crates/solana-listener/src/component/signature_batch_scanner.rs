@@ -8,7 +8,6 @@ use solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
-use tokio::time::sleep;
 use tracing::{span, Instrument};
 
 use super::{MessageSender, SolanaTransaction};
@@ -337,19 +336,21 @@ pub mod test {
         let generated_signs =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
-        let client = match &fixture.fixture.test_node {
+        let rpc_client_url = match &fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
                 validator,
                 ..
-            } => validator.get_async_rpc_client(),
+            } => validator.rpc_url(),
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
                 unimplemented!()
             }
         };
-
-        let rpc_client = Arc::new(client);
-
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 1,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
 
         let (tx, _rx) = futures::channel::mpsc::unbounded();
         let mut fetcher = SignatureRangeFetcher {
@@ -462,26 +463,29 @@ pub mod test {
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
         let generated_signs_set_2 =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
-        // let generated_signs_set_3 =
-        //     generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+        let generated_signs_set_3 =
+            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
-        let (rpc_client, pubsub_url) = match &fixture.fixture.test_node {
+        let rpc_client_url = match &fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
                 validator,
                 ..
-            } => (validator.get_async_rpc_client(), validator.rpc_pubsub_url()),
+            } => validator.rpc_url(),
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
                 unimplemented!()
             }
         };
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 1,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
 
-        let rpc_client = Arc::new(rpc_client);
-
-        tokio::time::sleep(Duration::from_secs(3)).await;
         let config = Config {
             gateway_program_address: axelar_solana_gateway::id(),
             gas_service_config_pda: gas_config.config_pda,
-            solana_ws: pubsub_url.parse().unwrap(),
+            solana_ws: rpc_client_url.parse().unwrap(),
             missed_signature_catchup_strategy: MissedSignatureCatchupStrategy::UntilBeginning,
             latest_processed_signature: None,
             tx_scan_poll_period: Duration::from_millis(1),
@@ -495,7 +499,7 @@ pub mod test {
         let all_items_seq = [
             generated_signs_set_1.flatten_sequentially(),
             generated_signs_set_2.flatten_sequentially(),
-            // generated_signs_set_3.flatten_sequentially(),
+            generated_signs_set_3.flatten_sequentially(),
         ]
         .concat();
         dbg!(&all_items_seq);

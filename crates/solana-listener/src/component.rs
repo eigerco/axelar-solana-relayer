@@ -119,7 +119,7 @@ mod tests {
         // 1. setup
         let mut fixture = setup().await;
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let (gas_config, gas_init_sig, counter_pda, init_memo_sig) =
+        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         tokio::time::sleep(Duration::from_secs(2)).await;
         // 2. generate test data
@@ -127,17 +127,21 @@ mod tests {
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
         // 3. setup client
-        let (rpc_client, pubsub_url) = match &fixture.fixture.test_node {
+        let (rpc_client_url, pubsub_url) = match &fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
                 validator,
                 ..
-            } => (validator.get_async_rpc_client(), validator.rpc_pubsub_url()),
+            } => (validator.rpc_url(), validator.rpc_pubsub_url()),
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
                 unimplemented!()
             }
         };
-        let rpc_client = Arc::new(rpc_client);
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 1,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
         let config = Config {
             gateway_program_address: axelar_solana_gateway::id(),
             gas_service_config_pda: gas_config.config_pda,
@@ -192,7 +196,6 @@ mod tests {
                 generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
             // 5. assert that we receive all the items we generated, and there's no overlap with the
             //    old data
-            tokio::time::sleep(Duration::from_secs(3)).await;
             let new_items = generated_signs_set_2.flatten_sequentially();
             let fetched = rx
                 .by_ref()
@@ -207,8 +210,6 @@ mod tests {
                 .collect::<BTreeSet<_>>()
                 .await;
             let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
-            dbg!(&fetched);
-            dbg!(&new_items_btree);
             assert!(!processor.is_finished());
             assert_eq!(
                 fetched
@@ -221,5 +222,3 @@ mod tests {
         }
     }
 }
-
-// todo -- add backoff so we can get rid of the artificial sleeps

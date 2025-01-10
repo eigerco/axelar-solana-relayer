@@ -7553,6 +7553,7 @@ dependencies = [
  "pin-project",
  "pretty_assertions",
  "relayer-engine",
+ "retrying-solana-http-sender",
  "serde",
  "solana-client",
  "solana-rpc",

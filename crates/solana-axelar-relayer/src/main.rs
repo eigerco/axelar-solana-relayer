@@ -206,6 +206,7 @@ mod tests {
             solana_rpc: retrying_solana_http_sender::Config {
                 max_concurrent_rpc_requests,
                 solana_http_rpc: solana_rpc,
+                commitment: CommitmentConfig::finalized(),
             },
             storage_path: "./store".parse().unwrap(),
             rest_service: rest_service::Config {
