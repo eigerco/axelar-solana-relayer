@@ -98,39 +98,35 @@ pub(crate) async fn fetch_batches_in_range(
     rpc_client: Arc<RpcClient>,
     signature_sender: &MessageSender,
     t1_signature: Option<Signature>,
-    mut t2_signature: Option<Signature>,
+    t2_signature: Option<Signature>,
 ) -> Result<Option<Signature>, eyre::Error> {
     let mut interval = tokio::time::interval(config.tx_scan_poll_period);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     interval.tick().await;
 
     let mut chronologically_newest_sig = t2_signature;
-    loop {
-        // Assume both are done until proven otherwise
-        let mut all_completed = true;
 
-        for program_to_monitor in [
-            config.gateway_program_address,
-            config.gas_service_config_pda,
-        ] {
+    for program_to_monitor in [
+        config.gateway_program_address,
+        config.gas_service_config_pda,
+    ] {
+        // keep using the arg provided t2 for the initial loop
+        let mut t2_in_loop = t2_signature;
+        loop {
             let mut fetcher = SignatureRangeFetcher {
                 t1: t1_signature,
-                t2: t2_signature,
+                t2: t2_in_loop,
                 rpc_client: Arc::clone(&rpc_client),
                 address: program_to_monitor,
                 signature_sender: signature_sender.clone(),
                 commitment: config.commitment,
             };
 
-            let new_t2 = match fetcher.fetch().in_current_span().await? {
-                FetchingState::Completed { new_t2 } => {
-                    // This program finished (no events), but we still check the other program to
-                    // query
-                    new_t2
-                }
+            let fetch_result = fetcher.fetch().in_current_span().await?;
+            let new_t2 = match fetch_result {
+                FetchingState::Completed { new_t2 } => new_t2,
                 FetchingState::FetchAgain { new_t2 } => {
-                    all_completed = false;
-                    t2_signature = Some(new_t2); // Always update to the latest
+                    t2_in_loop = Some(new_t2); // Always update to the latest
                     Some(new_t2)
                 }
             };
@@ -138,13 +134,13 @@ pub(crate) async fn fetch_batches_in_range(
                 chronologically_newest_sig = new_t2;
             }
 
+            // go to the next itereation if we've fetched all messages for this Pubkey
+            if matches!(fetch_result, FetchingState::Completed { .. }) {
+                break;
+            }
+
             // Avoid rate-limiting
             interval.tick().await;
-        }
-
-        // If neither program had more events, we’re done
-        if all_completed {
-            break;
         }
     }
 
@@ -220,12 +216,18 @@ impl SignatureRangeFetcher {
         .await?;
 
         if total_signatures < LIMIT {
-            tracing::info!("Fetched all available signatures in the range");
+            tracing::info!(
+                ?chronologically_oldest_signature,
+                "Fetched all available signatures in the range"
+            );
             Ok(FetchingState::Completed {
                 new_t2: Some(chronologically_oldest_signature),
             })
         } else {
-            tracing::info!("More signatures available, continuing fetch");
+            tracing::info!(
+                ?chronologically_oldest_signature,
+                "More signatures available, continuing fetch"
+            );
             Ok(FetchingState::FetchAgain {
                 new_t2: chronologically_oldest_signature,
             })
@@ -295,7 +297,7 @@ pub mod test {
 
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let (tx, rx) = futures::channel::mpsc::unbounded();
+        let (tx, _rx) = futures::channel::mpsc::unbounded();
         let mut fetcher = SignatureRangeFetcher {
             t1: None,
             t2: None,
@@ -396,6 +398,7 @@ pub mod test {
             assert_eq!(fetched, all_memo_signatures_to_fetch,);
         }
     }
+
     #[test_log::test(tokio::test)]
     async fn fetch_large_range_of_signatures() {
         let mut fixture = setup().await;
@@ -432,18 +435,22 @@ pub mod test {
         };
         let (tx, rx) = futures::channel::mpsc::unbounded();
 
-        // todo use `fetch_batches_in_range` fn herer
-        scan_old_signatures(&config, &tx, &rpc_client)
+        let latest_sig = scan_old_signatures(&config, &tx, &rpc_client)
             .await
             .unwrap();
-        drop(tx);
-        let fetched = rx.map(|x| x.signature).collect::<BTreeSet<_>>().await;
         let all_items_seq = [
             generated_signs_set_1.flatten_sequentially(),
             generated_signs_set_2.flatten_sequentially(),
             generated_signs_set_3.flatten_sequentially(),
         ]
         .concat();
+        dbg!(&all_items_seq);
+        assert_eq!(
+            latest_sig,
+            generated_signs_set_3.flatten_sequentially().last().copied()
+        );
+        drop(tx);
+        let fetched = rx.map(|x| x.signature).collect::<BTreeSet<_>>().await;
 
         let all_items_btree = all_items_seq.clone().into_iter().collect::<BTreeSet<_>>();
         assert_eq!(
