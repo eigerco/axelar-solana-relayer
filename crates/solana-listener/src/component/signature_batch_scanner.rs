@@ -9,7 +9,7 @@ use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use tokio::time::sleep;
-use tracing::Instrument;
+use tracing::{span, Instrument};
 
 use super::{MessageSender, SolanaTransaction};
 use crate::component::log_processor;
@@ -74,7 +74,6 @@ pub(crate) async fn scan_old_signatures(
                 latest_signature,
             )
             .await?;
-            dbg!(&latest_signature);
             latest_signature
         }
     };
@@ -124,16 +123,18 @@ pub(crate) async fn fetch_batches_in_range(
             };
 
             let fetch_result = fetcher.fetch().in_current_span().await?;
-            let new_t2 = match fetch_result {
-                FetchingState::Completed { new_t2 } => new_t2,
-                FetchingState::FetchAgain { new_t2 } => {
+            let newest_signature = match fetch_result {
+                FetchingState::Completed { newest_signature } => newest_signature,
+                FetchingState::FetchAgain {
+                    new_t2,
+                    newest_signature,
+                } => {
                     t2_in_loop = Some(new_t2.0); // Always update the t2 to use in the loop
-                    Some(new_t2)
+                    newest_signature
                 }
             };
-            dbg!(&new_t2);
 
-            match (new_t2, chronologically_newest_sig, slot) {
+            match (newest_signature, chronologically_newest_sig, slot) {
                 (Some((new_t2, new_slot)), None, None) => {
                     chronologically_newest_sig = Some(new_t2);
                     slot = Some(new_slot);
@@ -170,8 +171,13 @@ pub(crate) async fn fetch_batches_in_range(
 
 #[derive(Debug, PartialEq)]
 enum FetchingState {
-    Completed { new_t2: Option<(Signature, u64)> },
-    FetchAgain { new_t2: (Signature, u64) },
+    Completed {
+        newest_signature: Option<(Signature, u64)>,
+    },
+    FetchAgain {
+        new_t2: (Signature, u64),
+        newest_signature: Option<(Signature, u64)>,
+    },
 }
 
 #[derive(Clone)]
@@ -210,14 +216,25 @@ impl SignatureRangeFetcher {
             .context("fetching signatures with address")?;
 
         let total_signatures = fetched_signatures.len();
-        tracing::info!(total_signatures, "Fetched new set of signatures");
 
         if fetched_signatures.is_empty() {
             tracing::info!("No more signatures to fetch");
-            return Ok(FetchingState::Completed { new_t2: None });
+            return Ok(FetchingState::Completed {
+                newest_signature: None,
+            });
         }
 
         let chronologically_oldest_signature = fetched_signatures
+            .last()
+            .map(|x| {
+                (
+                    Signature::from_str(&x.signature).expect("rpc will return valid signatures"),
+                    // other variables besides `slot` are not available
+                    x.slot,
+                )
+            })
+            .expect("we checked that the vec is not empty");
+        let chronologically_newest_signature = fetched_signatures
             .first()
             .map(|x| {
                 (
@@ -243,19 +260,21 @@ impl SignatureRangeFetcher {
 
         if total_signatures < LIMIT {
             tracing::info!(
-                ?chronologically_oldest_signature,
+                ?chronologically_newest_signature,
                 "Fetched all available signatures in the range"
             );
             Ok(FetchingState::Completed {
-                new_t2: Some(chronologically_oldest_signature),
+                newest_signature: Some(chronologically_newest_signature),
             })
         } else {
             tracing::info!(
                 ?chronologically_oldest_signature,
+                ?chronologically_newest_signature,
                 "More signatures available, continuing fetch"
             );
             Ok(FetchingState::FetchAgain {
                 new_t2: chronologically_oldest_signature,
+                newest_signature: Some(chronologically_newest_signature),
             })
         }
     }
@@ -286,8 +305,8 @@ pub mod test {
     impl FetchingState {
         fn signature(&self) -> Option<Signature> {
             match self {
-                FetchingState::Completed { new_t2 } => new_t2.map(|x| x.0),
-                FetchingState::FetchAgain { new_t2 } => Some(new_t2.0),
+                FetchingState::Completed { newest_signature } => newest_signature.map(|x| x.0),
+                FetchingState::FetchAgain { .. } => unimplemented!(),
             }
         }
     }
