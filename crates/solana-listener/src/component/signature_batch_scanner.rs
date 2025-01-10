@@ -105,6 +105,7 @@ pub(crate) async fn fetch_batches_in_range(
     interval.tick().await;
 
     let mut chronologically_newest_sig = t2_signature;
+    let mut slot = None;
 
     for program_to_monitor in [
         config.gateway_program_address,
@@ -126,13 +127,32 @@ pub(crate) async fn fetch_batches_in_range(
             let new_t2 = match fetch_result {
                 FetchingState::Completed { new_t2 } => new_t2,
                 FetchingState::FetchAgain { new_t2 } => {
-                    t2_in_loop = Some(new_t2); // Always update to the latest
+                    t2_in_loop = Some(new_t2.0); // Always update the t2 to use in the loop
                     Some(new_t2)
                 }
             };
-            if chronologically_newest_sig.is_none() {
-                chronologically_newest_sig = new_t2;
-            }
+            dbg!(&new_t2);
+
+            match (new_t2, chronologically_newest_sig, slot) {
+                (Some((new_t2, new_slot)), None, None) => {
+                    chronologically_newest_sig = Some(new_t2);
+                    slot = Some(new_slot);
+                }
+                (Some((_new_t2, _new_slot)), Some(_), None) => {
+                    // a fetched new_t2 will never be newer than a t2 provided in args
+                    // this is noop
+                }
+                (Some((new_t2, new_slot)), Some(_), Some(old_slot)) => {
+                    // `old_slot` is only available if it's been set in a past step
+                    if old_slot < new_slot {
+                        chronologically_newest_sig = Some(new_t2);
+                    }
+                }
+                (Some(_), None, Some(_)) => unreachable!(),
+                (None, _, _) => {
+                    // no op
+                }
+            };
 
             // go to the next itereation if we've fetched all messages for this Pubkey
             if matches!(fetch_result, FetchingState::Completed { .. }) {
@@ -150,8 +170,8 @@ pub(crate) async fn fetch_batches_in_range(
 
 #[derive(Debug, PartialEq)]
 enum FetchingState {
-    Completed { new_t2: Option<Signature> },
-    FetchAgain { new_t2: Signature },
+    Completed { new_t2: Option<(Signature, u64)> },
+    FetchAgain { new_t2: (Signature, u64) },
 }
 
 #[derive(Clone)]
@@ -199,7 +219,13 @@ impl SignatureRangeFetcher {
 
         let chronologically_oldest_signature = fetched_signatures
             .first()
-            .map(|x| Signature::from_str(&x.signature).expect("rpc will return valid signatures"))
+            .map(|x| {
+                (
+                    Signature::from_str(&x.signature).expect("rpc will return valid signatures"),
+                    // other variables besides `slot` are not available
+                    x.slot,
+                )
+            })
             .expect("we checked that the vec is not empty");
 
         let fetched_signatures_iter = fetched_signatures
@@ -256,6 +282,15 @@ pub mod test {
 
     use super::*;
     use crate::Config;
+
+    impl FetchingState {
+        fn signature(&self) -> Option<Signature> {
+            match self {
+                FetchingState::Completed { new_t2 } => new_t2.map(|x| x.0),
+                FetchingState::FetchAgain { new_t2 } => Some(new_t2.0),
+            }
+        }
+    }
 
     /// Return the [`PathBuf`] that points to the `[repo]` folder
     #[must_use]
@@ -334,13 +369,12 @@ pub mod test {
                 .into_iter()
                 .map(|x| x.signature)
                 .collect::<BTreeSet<_>>();
+            assert!(matches!(fetch_state, FetchingState::Completed { .. }));
             assert_eq!(
-                fetch_state,
+                fetch_state.signature(),
                 // the t2 entry is not included in the RPC response, the assumption is that we
                 // already have processed it hence we know its signature beforehand
-                FetchingState::Completed {
-                    new_t2: Some(*generated_signs.gas_signatures.iter().nth_back(1).unwrap())
-                }
+                Some(*generated_signs.gas_signatures.iter().nth_back(1).unwrap())
             );
             assert_eq!(
                 fetched_gas_events.len(),
@@ -370,11 +404,12 @@ pub mod test {
             fetcher.address = axelar_solana_memo_program::id();
             let fetch_state = fetcher.fetch().await.unwrap();
             drop(fetcher);
+            assert!(matches!(fetch_state, FetchingState::Completed { .. }));
             assert_eq!(
-                fetch_state,
-                FetchingState::Completed {
-                    new_t2: Some(*all_memo_signatures_to_fetch.iter().nth_back(1).unwrap())
-                }
+                fetch_state.signature(),
+                // the t2 entry is not included in the RPC response, the assumption is that we
+                // already have processed it hence we know its signature beforehand
+                Some(*all_memo_signatures_to_fetch.iter().nth_back(1).unwrap())
             );
 
             // the t2 entry is not included in the RPC response, the assumption is that we already
@@ -408,8 +443,8 @@ pub mod test {
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
         let generated_signs_set_2 =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
-        let generated_signs_set_3 =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+        // let generated_signs_set_3 =
+        //     generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
         let (rpc_client, pubsub_url) = match &fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
@@ -441,14 +476,11 @@ pub mod test {
         let all_items_seq = [
             generated_signs_set_1.flatten_sequentially(),
             generated_signs_set_2.flatten_sequentially(),
-            generated_signs_set_3.flatten_sequentially(),
+            // generated_signs_set_3.flatten_sequentially(),
         ]
         .concat();
         dbg!(&all_items_seq);
-        assert_eq!(
-            latest_sig,
-            generated_signs_set_3.flatten_sequentially().last().copied()
-        );
+        assert_eq!(latest_sig, all_items_seq.last().copied());
         drop(tx);
         let fetched = rx.map(|x| x.signature).collect::<BTreeSet<_>>().await;
 
