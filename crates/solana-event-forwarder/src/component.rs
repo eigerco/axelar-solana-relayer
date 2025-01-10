@@ -75,7 +75,7 @@ impl SolanaEventForwarder {
         }
     }
 
-    // #[tracing::instrument(skip_all, name = "Solana log forwarder")]
+    #[tracing::instrument(skip_all, name = "Solana log forwarder")]
     pub(crate) async fn process_internal(mut self) -> eyre::Result<()> {
         let match_context = MatchContext::new(self.config.gateway_program_id.to_string().as_str());
 
@@ -84,6 +84,7 @@ impl SolanaEventForwarder {
                 build_program_event_stack(&match_context, &message.logs, parse_gateway_logs);
             let gas_events_program_stack =
                 build_program_event_stack(&match_context, &message.logs, parse_gas_service_log);
+            // todo -- total cost is not representative
             let total_cost = message.cost_in_lamports;
 
             // Collect all successful events into a vector
