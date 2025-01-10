@@ -100,6 +100,7 @@ mod tests {
         // Prepare JSON data
         let data = json!({
             "gateway_program_address": Pubkey::new_unique().to_string(),
+            "gas_service_config_pda": Pubkey::new_unique().to_string(),
             "signing_keypair": base58_encoded
         });
 
@@ -119,6 +120,7 @@ mod tests {
         // Prepare JSON data
         let data = json!({
             "gateway_program_address": Pubkey::new_unique().to_string(),
+            "gas_service_config_pda": Pubkey::new_unique().to_string(),
             "signing_keypair": keypair_bytes.to_vec()
         });
 

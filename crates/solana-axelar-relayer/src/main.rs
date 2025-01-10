@@ -127,7 +127,7 @@ mod tests {
         let gateway_program_address = Pubkey::new_unique();
         let gateway_program_address_as_str = gateway_program_address.to_string();
         let gas_service_config_pda = Pubkey::new_unique();
-        let gas_service_config_pda_as_str = Pubkey::new_unique();
+        let gas_service_config_pda_as_str = gas_service_config_pda.to_string();
         let solana_rpc = "https://api.solana-devnet.com".parse()?;
         let solana_ws = "wss://api.solana-devnet.com".parse()?;
         let solana_tx_scan_poll_period = Duration::from_millis(42);
