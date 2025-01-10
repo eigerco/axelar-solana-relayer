@@ -290,6 +290,7 @@ pub(crate) mod test {
     use std::path::PathBuf;
 
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
+    use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
     use futures::StreamExt as _;
     use pretty_assertions::assert_eq;
@@ -671,7 +672,6 @@ pub(crate) mod test {
     }
 
     pub(crate) async fn setup() -> SolanaAxelarIntegrationMetadata {
-        use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegration;
         use solana_test_validator::TestValidatorGenesis;
         let mut validator = TestValidatorGenesis::default();
 
@@ -723,11 +723,19 @@ pub(crate) mod test {
         let init_payer = fixture.payer.insecure_clone();
         fixture.payer = upgrade_authority.insecure_clone();
 
-        let mut fixture = SolanaAxelarIntegration::builder()
-            .initial_signer_weights(vec![42])
-            .fixture(fixture)
-            .build()
-            .stetup_without_deployment(upgrade_authority);
+        let operator = Keypair::new();
+        let domain_separator = [42; 32];
+        let initial_signers = make_verifiers_with_quorum(&vec![42], 0, 42, domain_separator);
+        let mut fixture = SolanaAxelarIntegrationMetadata {
+            domain_separator,
+            upgrade_authority,
+            fixture,
+            signers: initial_signers,
+            gateway_root_pda: axelar_solana_gateway::get_gateway_root_config_pda().0,
+            operator,
+            previous_signers_retention: 16,
+            minimum_rotate_signers_delay_seconds: 1,
+        };
 
         fixture.initialize_gateway_config_account().await.unwrap();
         fixture.payer = init_payer;
