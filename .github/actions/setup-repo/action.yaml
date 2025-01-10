@@ -17,3 +17,9 @@ runs:
     - uses: Swatinem/rust-cache@v2
       with:
         cache-on-failure: true
+
+    - name: Install needed tooling (needed for solana deps)
+      shell: bash
+      run: |
+        sudo apt-get install -y protobuf-compiler bzip2 clang
+
