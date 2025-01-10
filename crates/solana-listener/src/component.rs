@@ -186,39 +186,40 @@ mod tests {
             );
         }
 
-        // todo - left off -- for some reason the rx returns data that we already consumed in the
-        // block above. Why is that?
-        for _ in 0..2 {}
-        // 4. generate more test data
-        let generated_signs_set_2 =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
-        // 5. assert that we receive all the items we generated, and there's no overlap with the old
-        //    data
-        let new_items = generated_signs_set_2.flatten_sequentially();
-        let fetched = rx
-            .map(|x| {
-                assert!(!x.logs.is_empty(), "we expect txs to contain logs");
-                assert_ne!(!x.cost_in_lamports, 0, "tx cost should not be 0");
+        for _ in 0..2 {
+            // 4. generate more test data
+            let generated_signs_set_2 =
+                generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+            // 5. assert that we receive all the items we generated, and there's no overlap with the
+            //    old data
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let new_items = generated_signs_set_2.flatten_sequentially();
+            let fetched = rx
+                .by_ref()
+                .map(|x| {
+                    assert!(!x.logs.is_empty(), "we expect txs to contain logs");
+                    assert_ne!(!x.cost_in_lamports, 0, "tx cost should not be 0");
 
-                x.signature
-            })
-            // all init items + memo_and_gas signatures another time because
-            // it's picked up by both WS streams
-            .take(new_items.len() + generated_signs_set_2.memo_and_gas_signatures.len() + 2)
-            // .take(new_items.len() * 2 + 8)
-            .collect::<BTreeSet<_>>()
-            .await;
-        let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
-        dbg!(&fetched);
-        dbg!(&new_items_btree);
-        assert!(!processor.is_finished());
-        assert_eq!(
-            fetched
-                .intersection(&new_items_btree)
-                .copied()
-                .collect::<BTreeSet<_>>(),
-            new_items_btree,
-            "expect to have fetched every single item"
-        );
+                    x.signature
+                })
+                // all the new items
+                .take(new_items.len() + generated_signs_set_2.memo_and_gas_signatures.len())
+                .collect::<BTreeSet<_>>()
+                .await;
+            let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
+            dbg!(&fetched);
+            dbg!(&new_items_btree);
+            assert!(!processor.is_finished());
+            assert_eq!(
+                fetched
+                    .intersection(&new_items_btree)
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                new_items_btree,
+                "expect to have fetched every single item"
+            );
+        }
     }
 }
+
+// todo -- add backoff so we can get rid of the artificial sleeps
