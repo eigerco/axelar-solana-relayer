@@ -13,7 +13,7 @@ use gateway_event_stack::{
     build_program_event_stack, parse_gas_service_log, parse_gateway_logs, MatchContext,
     ProgramInvocationState,
 };
-use itertools::Itertools;
+use itertools::Itertools as _;
 use relayer_amplifier_api_integration::amplifier_api::types::{
     BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventId, EventMetadata,
     GasCreditEvent, GasRefundedEvent, GatewayV2Message, MessageApprovedEvent,
@@ -115,7 +115,7 @@ impl SolanaEventForwarder {
                                         x.destination_chain == destination_chain &&
                                         x.destination_address == destination_address
                                 });
-                                return desired_gas.map(|idx| pending_gas.remove(idx))
+                                desired_gas.map(|idx| pending_gas.remove(idx))
                             };
                         match evt {
                             GatewayOrGasEvent::GatewayEvent(gateway_evt) => {
@@ -284,7 +284,7 @@ fn map_gateway_event_to_amplifier_event(
                     tx_id,
                     message,
                     message_id,
-                    gas_paid_event,
+                    &gas_paid_event,
                 ));
             };
         }
@@ -298,7 +298,7 @@ fn map_gateway_event_to_amplifier_event(
                     tx_id.clone(),
                     message,
                     message_id.clone(),
-                    gas_paid_event,
+                    &gas_paid_event,
                 ));
             };
 
@@ -320,7 +320,7 @@ fn map_gateway_event_to_amplifier_event(
                     )
                     .message(
                         GatewayV2Message::builder()
-                            .message_id(message_id.clone())
+                            .message_id(message_id)
                             .source_chain(source_chain.to_owned())
                             .source_address(source_address)
                             .destination_address(call_contract.destination_contract_address)
@@ -423,7 +423,10 @@ fn map_gateway_event_to_amplifier_event(
         }
         GatewayAndGasEvent::NativeGasRefunded(event) => {
             let sig = Signature::from(event.tx_hash);
-            let message_id = MessageId::new(&sig.to_string(), event.log_index as usize);
+            let message_id = MessageId::new(
+                &sig.to_string(),
+                usize::try_from(event.log_index).expect("log index must fit into usize"),
+            );
             gas_event = Some(Event::GasRefunded(
                 GasRefundedEvent::builder()
                     .base(
@@ -459,7 +462,10 @@ fn map_gateway_event_to_amplifier_event(
         }
         GatewayAndGasEvent::NativeGasAdded(event) => {
             let sig = Signature::from(event.tx_hash);
-            let message_id = MessageId::new(&sig.to_string(), event.log_index as usize);
+            let message_id = MessageId::new(
+                &sig.to_string(),
+                usize::try_from(event.log_index).expect("log index must fit into usize"),
+            );
             gas_event = Some(Event::GasCredit(
                 GasCreditEvent::builder()
                     .base(
@@ -497,7 +503,7 @@ fn construct_gas_event(
     tx_id: TxId,
     message: &solana_listener::SolanaTransaction,
     message_id: TxEvent,
-    gas_paid_event: NativeGasPaidForContractCallEvent,
+    gas_paid_event: &NativeGasPaidForContractCallEvent,
 ) -> Event {
     Event::GasCredit(
         GasCreditEvent::builder()

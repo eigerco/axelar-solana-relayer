@@ -1,22 +1,20 @@
 use core::pin::Pin;
 use core::str::FromStr as _;
 use core::task::Context;
-use std::ops::ControlFlow;
+use core::time::Duration;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::BoxFuture;
 use futures::stream::{poll_fn, BoxStream, FuturesUnordered, StreamExt as _};
 use futures::task::Poll;
-use futures::{SinkExt as _, Stream, StreamExt};
-use solana_client::nonblocking::pubsub_client::PubsubClientResult;
+use futures::{SinkExt as _, Stream, StreamExt as _};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcTransactionLogsConfig, RpcTransactionLogsFilter};
 use solana_client::rpc_response::RpcLogsResponse;
 use solana_rpc_client_api::response::Response;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::signature::Signature;
-use tracing::{info_span, Instrument};
+use tracing::{info_span, Instrument as _};
 
 use super::MessageSender;
 use crate::component::log_processor::fetch_logs;
@@ -62,7 +60,7 @@ pub(crate) async fn process_realtime_logs(
         let mut ws_stream =
             round_robin_two_streams(gateway_ws_stream.fuse(), gas_service_ws_stream.fuse())
                 // only successful txs are checked
-                .filter(|x| std::future::ready(x.value.err.is_none()));
+                .filter(|x| core::future::ready(x.value.err.is_none()));
 
         // We have special handling for the very first message we receive:
         // We fetch messages in batches based on the config defitned strategy to recover old

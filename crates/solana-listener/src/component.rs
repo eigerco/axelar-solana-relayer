@@ -101,11 +101,10 @@ impl SolanaListener {
 
 #[cfg(test)]
 mod tests {
+    use core::time::Duration;
     use std::collections::BTreeSet;
-    use std::sync::Arc;
-    use std::time::Duration;
 
-    use futures::StreamExt;
+    use futures::StreamExt as _;
     use pretty_assertions::{assert_eq, assert_ne};
     use solana_sdk::commitment_config::CommitmentConfig;
 
@@ -187,8 +186,8 @@ mod tests {
                     .collect::<BTreeSet<_>>(),
                 init_items_btree,
                 "expect to have fetched every single item"
-            );
-        }
+            )
+        };
 
         for _ in 0..2 {
             // 4. generate more test data

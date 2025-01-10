@@ -1,14 +1,13 @@
 use core::str::FromStr as _;
 use std::sync::Arc;
-use std::time::Duration;
 
-use eyre::Context;
+use eyre::Context as _;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
-use tracing::{span, Instrument};
+use tracing::Instrument as _;
 
 use super::{MessageSender, SolanaTransaction};
 use crate::component::log_processor;
@@ -65,15 +64,15 @@ pub(crate) async fn scan_old_signatures(
                 ?latest_signature,
                 "Catching up all missed signatures starting from",
             );
-            let latest_signature = fetch_batches_in_range(
+
+            fetch_batches_in_range(
                 config,
                 Arc::clone(rpc_client),
                 signature_sender,
                 None,
                 latest_signature,
             )
-            .await?;
-            latest_signature
+            .await?
         }
     };
 
@@ -280,23 +279,22 @@ impl SignatureRangeFetcher {
 }
 
 #[cfg(test)]
-pub mod test {
-    use std::collections::{BTreeMap, BTreeSet, HashSet};
+pub(crate) mod test {
+    use core::time::Duration;
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
-    use std::time::Duration;
 
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
-    use futures::{SinkExt, StreamExt};
+    use futures::StreamExt as _;
     use pretty_assertions::assert_eq;
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::signature::Keypair;
-    use solana_sdk::signer::Signer;
+    use solana_sdk::signer::Signer as _;
     use solana_sdk::{bpf_loader_upgradeable, system_program};
-    use solana_test_validator::{TestValidator, UpgradeableProgramInfo};
-    use tokio::task::JoinSet;
+    use solana_test_validator::UpgradeableProgramInfo;
 
     use super::*;
     use crate::Config;
@@ -304,15 +302,15 @@ pub mod test {
     impl FetchingState {
         fn signature(&self) -> Option<Signature> {
             match self {
-                FetchingState::Completed { newest_signature } => newest_signature.map(|x| x.0),
-                FetchingState::FetchAgain { .. } => unimplemented!(),
+                Self::Completed { newest_signature } => newest_signature.map(|x| x.0),
+                Self::FetchAgain { .. } => unimplemented!(),
             }
         }
     }
 
     /// Return the [`PathBuf`] that points to the `[repo]` folder
     #[must_use]
-    pub fn workspace_root_dir() -> PathBuf {
+    pub(crate) fn workspace_root_dir() -> PathBuf {
         let dir = std::env::var("CARGO_MANIFEST_DIR")
             .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_owned());
         PathBuf::from(dir)
@@ -353,7 +351,7 @@ pub mod test {
             });
 
         let (tx, _rx) = futures::channel::mpsc::unbounded();
-        let mut fetcher = SignatureRangeFetcher {
+        let fetcher = SignatureRangeFetcher {
             t1: None,
             t2: None,
             rpc_client: Arc::clone(&rpc_client),
@@ -401,8 +399,8 @@ pub mod test {
                 5,
                 "the intersection does not include the `last` entry."
             );
-            assert_eq!(fetched_gas_events, all_gas_entries,);
-        }
+            assert_eq!(fetched_gas_events, all_gas_entries,)
+        };
         // test that t1=Some and t2=Some works
         {
             let (tx, rx) = futures::channel::mpsc::unbounded();
@@ -525,14 +523,14 @@ pub mod test {
     }
 
     #[derive(Debug)]
-    pub struct GenerateTestSolanaDataResult {
+    pub(crate) struct GenerateTestSolanaDataResult {
         pub memo_signatures: Vec<Signature>,
         pub memo_and_gas_signatures: Vec<Signature>,
         pub gas_signatures: Vec<Signature>,
     }
 
     impl GenerateTestSolanaDataResult {
-        pub fn flatten_sequentially(&self) -> Vec<Signature> {
+        pub(crate) fn flatten_sequentially(&self) -> Vec<Signature> {
             [
                 self.memo_signatures.clone(),
                 self.memo_and_gas_signatures.clone(),
@@ -542,7 +540,7 @@ pub mod test {
         }
     }
 
-    pub async fn generate_test_solana_data(
+    pub(crate) async fn generate_test_solana_data(
         fixture: &mut SolanaAxelarIntegrationMetadata,
         counter_pda: (Pubkey, u8),
         gas_config: &axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
@@ -554,8 +552,8 @@ pub mod test {
                 &fixture.gateway_root_pda,
                 &counter_pda.0,
                 format!("msg {i}"),
-                "evm".to_string(),
-                "0xdeadbeef".to_string(),
+                "evm".to_owned(),
+                "0xdeadbeef".to_owned(),
                 &axelar_solana_gateway::id(),
             )
             .unwrap();
@@ -566,13 +564,13 @@ pub mod test {
         let mut memo_and_gas_signatures = vec![];
         for i in 0..3 {
             let payload = format!("msg {i}");
-            let payload_hash = solana_sdk::keccak::hashv(&[payload.as_str().as_bytes()]).0;
+            let payload_hash = solana_sdk::keccak::hashv(&[payload.as_bytes()]).0;
             let destination_address = format!("0xdeadbeef-{i}");
             let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
                 &fixture.gateway_root_pda,
                 &counter_pda.0,
                 format!("msg {i}"),
-                "evm".to_string(),
+                "evm".to_owned(),
                 destination_address.clone(),
                 &axelar_solana_gateway::id(),
             )
@@ -582,7 +580,7 @@ pub mod test {
                     &axelar_solana_gas_service::id(),
                     &fixture.payer.pubkey(),
                     &gas_config.config_pda,
-                    "evm".to_string(),
+                    "evm".to_owned(),
                     destination_address.clone(),
                     payload_hash,
                     Pubkey::new_unique(),
@@ -620,7 +618,7 @@ pub mod test {
         }
     }
 
-    pub async fn setup_aux_contracts(
+    pub(crate) async fn setup_aux_contracts(
         fixture: &mut SolanaAxelarIntegrationMetadata,
     ) -> (
         axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
@@ -653,7 +651,7 @@ pub mod test {
         (gas_config, gas_init_sig, counter_pda, init_memo_sig)
     }
 
-    pub async fn setup() -> SolanaAxelarIntegrationMetadata {
+    pub(crate) async fn setup() -> SolanaAxelarIntegrationMetadata {
         use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegration;
         use solana_test_validator::TestValidatorGenesis;
         let mut validator = TestValidatorGenesis::default();
