@@ -17,7 +17,7 @@ use axelar_solana_encoding::borsh::BorshDeserialize as _;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
-use axelar_solana_gateway::state::incoming_message::command_id;
+use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage, MessageStatus};
 use axelar_solana_gateway::BytemuckedPda as _;
 use effective_tx_sender::ComputeBudgetError;
 use eyre::{Context as _, OptionExt as _};
@@ -366,6 +366,11 @@ async fn execute_task(
     let (gateway_incoming_message_pda, ..) =
         axelar_solana_gateway::get_incoming_message_pda(&command_id);
 
+    if incoming_message_already_executed(solana_rpc_client, &gateway_incoming_message_pda).await? {
+        tracing::warn!("incoming message already executed");
+        return Ok(());
+    }
+
     // Upload the message payload to a Gateway-owned PDA account and get its address back.
     let gateway_message_payload_pda = message_payload::upload(
         solana_rpc_client,
@@ -394,8 +399,14 @@ async fn execute_task(
             send_transaction(solana_rpc_client, keypair, ix).await?;
         }
         axelar_solana_governance::ID => {
-            // todo Governance specific handling
-            tracing::error!("governance program not yet supported");
+            let ix = axelar_solana_governance::instructions::builder::calculate_gmp_ix(
+                signer,
+                gateway_incoming_message_pda,
+                gateway_message_payload_pda,
+                &message,
+                &payload,
+            )?;
+            send_transaction(solana_rpc_client, keypair, ix).await?;
         }
         _ => {
             validate_relayer_not_in_payload(&payload, signer)?;
@@ -420,6 +431,20 @@ async fn execute_task(
     )
     .await?;
     Ok(())
+}
+
+/// Checks if the incoming message has already been executed.
+async fn incoming_message_already_executed(
+    solana_rpc_client: &RpcClient,
+    incoming_message_pda: &Pubkey,
+) -> eyre::Result<bool> {
+    let raw_incoming_message = solana_rpc_client
+        .get_account_data(incoming_message_pda)
+        .await?;
+    let incoming_message = IncomingMessage::read(&raw_incoming_message)
+        .ok_or_eyre("failed to read incoming message")?;
+
+    Ok(incoming_message.status == MessageStatus::Executed)
 }
 
 /// Validates that the relayer's signing account is not included in the transaction payload.
