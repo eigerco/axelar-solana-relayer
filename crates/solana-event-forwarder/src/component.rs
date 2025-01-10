@@ -96,7 +96,7 @@ impl SolanaEventForwarder {
                 .map(|(idx, event)| (idx, GatewayOrGasEvent::GasEveent(event)));
             let all_events = gateway_events_vec
                 .chain(gas_events)
-                .sorted_by(|(idx_a, _), (idx_b, _)| idx_a.cmp(idx_b));
+                .sorted_by(|event_a, event_b| event_a.0.cmp(&event_b.0));
 
             // we have to associate the gas events with the gateway events because for
             // NativeGasPaidForContractCallEvent event we need to attach the message_id that
@@ -203,14 +203,14 @@ impl SolanaEventForwarder {
             let events_to_send = combined_events
                 .into_iter()
                 .flat_map(|(log_index, event)| {
-                    let (ev1, ev2) = map_gateway_event_to_amplifier_event(
+                    let events = map_gateway_event_to_amplifier_event(
                         self.config.source_chain_name.as_str(),
                         event,
                         &message,
                         log_index,
                         price_for_event,
                     );
-                    [ev1, ev2].into_iter().flatten()
+                    <[Option<Event>; 2]>::from(events).into_iter().flatten()
                 })
                 .collect::<Vec<_>>();
 

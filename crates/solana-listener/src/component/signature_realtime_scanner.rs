@@ -7,7 +7,7 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 use futures::stream::{poll_fn, BoxStream, FuturesUnordered, StreamExt as _};
 use futures::task::Poll;
-use futures::{SinkExt as _, Stream, StreamExt as _};
+use futures::{SinkExt as _, Stream};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcTransactionLogsConfig, RpcTransactionLogsFilter};
 use solana_client::rpc_response::RpcLogsResponse;
@@ -172,29 +172,29 @@ where
     let mut poll_first = false;
 
     poll_fn(move |cx| {
-        // Flip which stream is polled first.
-        poll_first = !poll_first;
-
         // Helper to poll one stream first, then the other.
         fn poll_round<AS, BS>(
             cx: &mut Context<'_>,
-            a: &mut AS,
-            b: &mut BS,
+            stream_a: &mut AS,
+            stream_b: &mut BS,
         ) -> Poll<Option<AS::Item>>
         where
             AS: Stream + Unpin,
             BS: Stream<Item = AS::Item> + Unpin,
         {
-            match Pin::new(a).poll_next(cx) {
+            match Pin::new(stream_a).poll_next(cx) {
                 Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
                 Poll::Ready(None) => Poll::Ready(None),
-                Poll::Pending => match Pin::new(b).poll_next(cx) {
+                Poll::Pending => match Pin::new(stream_b).poll_next(cx) {
                     Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
                     Poll::Ready(None) => Poll::Ready(None),
                     Poll::Pending => Poll::Pending,
                 },
             }
         }
+
+        // Flip which stream is polled first.
+        poll_first = !poll_first;
 
         if poll_first {
             poll_round(cx, &mut s1, &mut s2)
@@ -206,12 +206,12 @@ where
 
 pub(crate) type UnsubscribeFn = Box<dyn FnOnce() -> BoxFuture<'static, ()> + Send>;
 
-async fn sub_to_logs<'a>(
-    client: &'a solana_client::nonblocking::pubsub_client::PubsubClient,
+async fn sub_to_logs(
+    client: &solana_client::nonblocking::pubsub_client::PubsubClient,
     pubkey: solana_sdk::pubkey::Pubkey,
     commitment: CommitmentConfig,
 ) -> Result<
-    (BoxStream<'a, Response<RpcLogsResponse>>, UnsubscribeFn),
+    (BoxStream<'_, Response<RpcLogsResponse>>, UnsubscribeFn),
     solana_client::pubsub_client::PubsubClientError,
 > {
     client

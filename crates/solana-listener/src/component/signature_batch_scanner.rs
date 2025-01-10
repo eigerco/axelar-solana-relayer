@@ -90,6 +90,10 @@ pub(crate) async fn scan_old_signatures(
 /// # Returns
 /// The chronologically newest/latest signature
 #[tracing::instrument(skip_all, err)]
+#[expect(
+    clippy::unreachable,
+    reason = "unreachable code in here, but the type system doesn't know that"
+)]
 pub(crate) async fn fetch_batches_in_range(
     config: &crate::Config,
     rpc_client: Arc<RpcClient>,
@@ -279,6 +283,7 @@ impl SignatureRangeFetcher {
 }
 
 #[cfg(test)]
+#[expect(clippy::unimplemented, reason = "needed for the test")]
 pub(crate) mod test {
     use core::time::Duration;
     use std::collections::BTreeSet;
@@ -329,7 +334,7 @@ pub(crate) mod test {
     #[test_log::test(tokio::test)]
     async fn signature_range_fetcher() {
         let mut fixture = setup().await;
-        let (gas_config, gas_init_sig, counter_pda, init_memo_sig) =
+        let (gas_config, gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         let generated_signs =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
@@ -455,7 +460,7 @@ pub(crate) mod test {
     #[test_log::test(tokio::test)]
     async fn fetch_large_range_of_signatures() {
         let mut fixture = setup().await;
-        let (gas_config, gas_init_sig, counter_pda, init_memo_sig) =
+        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         let generated_signs_set_1 =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
@@ -608,7 +613,14 @@ pub(crate) mod test {
                 Pubkey::new_unique(),
             )
             .unwrap();
-            let sig = fixture.send_tx_with_signatures(&[gas_ix]).await.unwrap().0[0];
+            let sig = fixture
+                .send_tx_with_signatures(&[gas_ix])
+                .await
+                .unwrap()
+                .0
+                .get(0)
+                .unwrap()
+                .clone();
             gas_signatures.push(sig);
         }
         GenerateTestSolanaDataResult {
@@ -637,7 +649,14 @@ pub(crate) mod test {
             gas_config.salt,
         )
         .unwrap();
-        let gas_init_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
+        let gas_init_sig = fixture
+            .send_tx_with_signatures(&[ix])
+            .await
+            .unwrap()
+            .0
+            .get(0)
+            .unwrap()
+            .clone();
 
         // init memo program
         let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);

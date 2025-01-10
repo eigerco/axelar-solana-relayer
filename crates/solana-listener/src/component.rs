@@ -114,6 +114,7 @@ mod tests {
     use crate::{Config, MissedSignatureCatchupStrategy, SolanaListener};
 
     #[test_log::test(tokio::test)]
+    #[expect(clippy::unimplemented, reason = "needed for the test")]
     async fn can_receive_realtime_tx_events() {
         // 1. setup
         let mut fixture = setup().await;
@@ -173,7 +174,12 @@ mod tests {
                 })
                 // all init items + the 2 deployment txs + memo_and_gas signatures another time
                 // because it's picked up by both WS streams
-                .take(init_items.len() + 2 + generated_signs_set_1.memo_and_gas_signatures.len())
+                .take(
+                    init_items
+                        .len()
+                        .saturating_add(2)
+                        .saturating_add(generated_signs_set_1.memo_and_gas_signatures.len()),
+                )
                 .collect::<BTreeSet<_>>()
                 .await;
             let init_items_btree = init_items.clone().into_iter().collect::<BTreeSet<_>>();
@@ -186,10 +192,10 @@ mod tests {
                     .collect::<BTreeSet<_>>(),
                 init_items_btree,
                 "expect to have fetched every single item"
-            )
+            );
         };
 
-        for _ in 0..2 {
+        for _ in 0..2_u8 {
             // 4. generate more test data
             let generated_signs_set_2 =
                 generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
@@ -205,7 +211,11 @@ mod tests {
                     x.signature
                 })
                 // all the new items
-                .take(new_items.len() + generated_signs_set_2.memo_and_gas_signatures.len())
+                .take(
+                    new_items
+                        .len()
+                        .saturating_add(generated_signs_set_2.memo_and_gas_signatures.len()),
+                )
                 .collect::<BTreeSet<_>>()
                 .await;
             let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
