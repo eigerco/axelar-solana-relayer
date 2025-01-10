@@ -24,7 +24,6 @@ solana-client.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status.workspace = true
 axelar-solana-gas-service.workspace = true
-pin-project.workspace = true
 solana-rpc-client-api.workspace = true
 
 [dev-dependencies]

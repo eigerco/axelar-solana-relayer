@@ -7490,7 +7490,6 @@ dependencies = [
  "common-serde-utils 0.1.1",
  "eyre",
  "futures 0.3.31",
- "pin-project",
  "pretty_assertions",
  "relayer-engine",
  "retrying-solana-http-sender",

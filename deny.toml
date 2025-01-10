@@ -76,6 +76,8 @@ ignore = [
   { id = "RUSTSEC-2022-0093", reason = "ed25519-dalek: need to wait for solana to upgrade internally" },
   { id = "RUSTSEC-2024-0375", reason = "dependency of solana lib" },
   { id = "RUSTSEC-2021-0145", reason = "dependency of solana lib" },
+  { id = "RUSTSEC-2020-0016", reason = "dependency of solana lib" },
+  { id = "RUSTSEC-2024-0421", reason = "dependency of solana lib" },
   { id = "RUSTSEC-2021-0139", reason = "dependency of solana lib" },
   { id = "RUSTSEC-2024-0384", reason = "updating `instant` is not feasible" },
   { id = "RUSTSEC-2024-0388", reason = "updating `derivative` is not feasible" },
@@ -107,6 +109,7 @@ allow = [
   "MPL-2.0",
   "CC0-1.0",
   "0BSD",
+  "Zlib",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
