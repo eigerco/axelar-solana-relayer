@@ -718,8 +718,13 @@ pub(crate) mod test {
                     .join("axelar_solana_memo_program.so"),
             },
         ]);
-        let mut fixture =
-            TestFixture::new_test_validator(validator, Duration::from_millis(500)).await;
+
+        let forced_sleep = if std::env::var("CI").is_ok() {
+            Duration::from_millis(1000)
+        } else {
+            Duration::from_millis(500)
+        };
+        let mut fixture = TestFixture::new_test_validator(validator, forced_sleep).await;
         let init_payer = fixture.payer.insecure_clone();
         fixture.payer = upgrade_authority.insecure_clone();
 
