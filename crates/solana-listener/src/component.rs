@@ -203,48 +203,47 @@ mod tests {
             );
         };
 
-        // for _ in 0..2_u8 {
-        // 4. generate more test data
-        let generated_signs_set_2 =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
-        generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
-        // 5. assert that we receive all the items we generated, and there's no overlap with the old
-        //    data
-        let new_items = generated_signs_set_2.flatten_sequentially();
-        let last_signature = new_items.last().unwrap();
-        let mut prev = *last_signature;
-        let fetched = rx
-            .by_ref()
-            .map(|x| {
-                assert!(!x.logs.is_empty(), "we expect txs to contain logs");
-                assert_ne!(!x.cost_in_lamports, 0, "tx cost should not be 0");
+        for _ in 0..2_u8 {
+            // 4. generate more test data
+            let generated_signs_set_2 =
+                generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+            // 5. assert that we receive all the items we generated, and there's no overlap with the
+            //    old data
+            let new_items = generated_signs_set_2.flatten_sequentially();
+            let last_signature = new_items.last().unwrap();
+            let mut prev = *last_signature;
+            let fetched = rx
+                .by_ref()
+                .map(|x| {
+                    assert!(!x.logs.is_empty(), "we expect txs to contain logs");
+                    assert_ne!(!x.cost_in_lamports, 0, "tx cost should not be 0");
 
-                x.signature
-            })
-            .take_while(|x| {
-                prev = *x;
-                future::ready(*last_signature != prev)
-            })
-            .chain(futures::stream::iter([*last_signature]))
-            .collect::<BTreeSet<_>>()
-            .await;
-        dbg!(last_signature);
-        dbg!(fetched.len());
-        dbg!(&fetched);
-        let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
-        let is_finished = processor.is_finished();
-        if is_finished {
-            assert!(processor.await.unwrap().is_ok());
-            panic!();
+                    x.signature
+                })
+                .take_while(|x| {
+                    prev = *x;
+                    future::ready(*last_signature != prev)
+                })
+                .chain(futures::stream::iter([*last_signature]))
+                .collect::<BTreeSet<_>>()
+                .await;
+            dbg!(last_signature);
+            dbg!(fetched.len());
+            dbg!(&fetched);
+            let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
+            let is_finished = processor.is_finished();
+            if is_finished {
+                assert!(processor.await.unwrap().is_ok());
+                panic!();
+            }
+            assert_eq!(
+                fetched
+                    .intersection(&new_items_btree)
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                new_items_btree,
+                "expect to have fetched every single item"
+            );
         }
-        assert_eq!(
-            fetched
-                .intersection(&new_items_btree)
-                .copied()
-                .collect::<BTreeSet<_>>(),
-            new_items_btree,
-            "expect to have fetched every single item"
-        );
-        // }
     }
 }
