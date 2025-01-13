@@ -720,7 +720,7 @@ pub(crate) mod test {
         ]);
 
         let forced_sleep = if std::env::var("CI").is_ok() {
-            Duration::from_millis(1000)
+            Duration::from_millis(1500)
         } else {
             Duration::from_millis(500)
         };
