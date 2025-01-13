@@ -21,6 +21,7 @@ use relayer_amplifier_api_integration::amplifier_api::types::{
     SignersRotatedMetadata, Token, TxEvent, TxId,
 };
 use relayer_amplifier_api_integration::AmplifierCommand;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 
 /// The core component that is responsible for ingesting raw Solana events.
@@ -282,7 +283,8 @@ fn map_gateway_event_to_amplifier_event(
                     tx_id,
                     message,
                     message_id,
-                    &gas_paid_event,
+                    gas_paid_event.gas_fee_amount,
+                    gas_paid_event.refund_address,
                 ));
             };
         }
@@ -296,7 +298,8 @@ fn map_gateway_event_to_amplifier_event(
                     tx_id.clone(),
                     message,
                     message_id.clone(),
-                    &gas_paid_event,
+                    gas_paid_event.gas_fee_amount,
+                    gas_paid_event.refund_address,
                 ));
             };
 
@@ -464,31 +467,13 @@ fn map_gateway_event_to_amplifier_event(
                 &sig.to_string(),
                 usize::try_from(event.log_index).expect("log index must fit into usize"),
             );
-            gas_event = Some(Event::GasCredit(
-                GasCreditEvent::builder()
-                    .base(
-                        EventBase::builder()
-                            .event_id(event_id)
-                            .meta(Some(
-                                EventMetadata::builder()
-                                    .tx_id(Some(tx_id))
-                                    .timestamp(message.timestamp)
-                                    .from_address(None)
-                                    .finalized(Some(true))
-                                    .extra(())
-                                    .build(),
-                            ))
-                            .build(),
-                    )
-                    .message_id(message_id)
-                    .payment(
-                        Token::builder()
-                            .amount(BigInt::from_u64(event.gas_fee_amount))
-                            .token_id(None)
-                            .build(),
-                    )
-                    .refund_address(event.refund_address.to_string())
-                    .build(),
+            gas_event = Some(construct_gas_event(
+                event_id,
+                tx_id,
+                message,
+                message_id,
+                event.gas_fee_amount,
+                event.refund_address,
             ));
         }
     };
@@ -501,7 +486,8 @@ fn construct_gas_event(
     tx_id: TxId,
     message: &solana_listener::SolanaTransaction,
     message_id: TxEvent,
-    gas_paid_event: &NativeGasPaidForContractCallEvent,
+    gas_fee_amount: u64,
+    refund_address: Pubkey,
 ) -> Event {
     Event::GasCredit(
         GasCreditEvent::builder()
@@ -522,11 +508,11 @@ fn construct_gas_event(
             .message_id(message_id)
             .payment(
                 Token::builder()
-                    .amount(BigInt::from_u64(gas_paid_event.gas_fee_amount))
+                    .amount(BigInt::from_u64(gas_fee_amount))
                     .token_id(None)
                     .build(),
             )
-            .refund_address(gas_paid_event.refund_address.to_string())
+            .refund_address(refund_address.to_string())
             .build(),
     )
 }
