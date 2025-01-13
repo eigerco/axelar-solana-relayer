@@ -193,7 +193,8 @@ mod tests {
                 assert!(processor.await.unwrap().is_ok());
                 panic!();
             }
-            dbg!(&init_items_btree);
+            dbg!(_gas_init_sig);
+            dbg!(_init_memo_sig);
             assert_eq!(
                 fetched
                     .intersection(&init_items_btree)
@@ -228,6 +229,8 @@ mod tests {
             )
             .collect::<BTreeSet<_>>()
             .await;
+        dbg!(fetched.len());
+        dbg!(&fetched);
         let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
         let is_finished = processor.is_finished();
         if is_finished {
@@ -235,10 +238,9 @@ mod tests {
             panic!();
         }
         assert_eq!(
-            fetched
-                .intersection(&new_items_btree)
-                .copied()
-                .collect::<BTreeSet<_>>(),
+            fetched, /* .intersection(&new_items_btree)
+                      * .copied()
+                      * .collect::<BTreeSet<_>>(),, */
             new_items_btree,
             "expect to have fetched every single item"
         );

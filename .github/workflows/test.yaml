@@ -22,4 +22,4 @@ jobs:
         uses: ./.github/actions/setup-repo
 
       - name: cargo coverage
-        run: cargo xtask test
+        run: RUST_LOG=solana_listener=debug cargo xtask test
