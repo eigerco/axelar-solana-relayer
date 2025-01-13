@@ -17,7 +17,8 @@ use itertools::Itertools as _;
 use relayer_amplifier_api_integration::amplifier_api::types::{
     BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventId, EventMetadata,
     GasCreditEvent, GasRefundedEvent, GatewayV2Message, MessageApprovedEvent,
-    MessageApprovedEventMetadata, MessageId, PublishEventsRequest, SignersRotatedEvent,
+    MessageApprovedEventMetadata, MessageExecutedEvent, MessageExecutedEventMetadata,
+    MessageExecutionStatus, MessageId, PublishEventsRequest, SignersRotatedEvent,
     SignersRotatedMetadata, Token, TxEvent, TxId,
 };
 use relayer_amplifier_api_integration::AmplifierCommand;
@@ -417,10 +418,45 @@ fn map_gateway_event_to_amplifier_event(
             ));
             tracing::info!("message approved");
         }
-        GatewayAndGasEvent::MessageExecuted(ref _executed_message) => {
-            tracing::warn!(
-                "current gateway event does not produce enough artifacts to relay this message"
-            );
+        GatewayAndGasEvent::MessageExecuted(executed_message) => {
+            let command_id = executed_message.command_id;
+            let span = tracing::info_span!("message", message_id = ?executed_message.cc_id_id);
+            let _g = span.enter();
+
+            let message_id = TxEvent(executed_message.cc_id_id);
+            gateway_event = Some(Event::MessageExecuted(
+                MessageExecutedEvent::builder()
+                    .base(
+                        EventBase::builder()
+                            .event_id(event_id)
+                            .meta(Some(
+                                EventMetadata::builder()
+                                    .tx_id(Some(tx_id))
+                                    .timestamp(message.timestamp)
+                                    .from_address(Some(executed_message.source_address.clone()))
+                                    .finalized(Some(true))
+                                    .extra(
+                                        MessageExecutedEventMetadata::builder()
+                                            .command_id(Some(CommandId(
+                                                bs58::encode(command_id).into_string(),
+                                            )))
+                                            .build(),
+                                    )
+                                    .build(),
+                            ))
+                            .build(),
+                    )
+                    .status(MessageExecutionStatus::Successful)
+                    .source_chain(executed_message.source_address)
+                    .message_id(message_id)
+                    .cost(
+                        Token::builder()
+                            .amount(BigInt::from_u64(price_per_event_in_lamports))
+                            .build(),
+                    )
+                    .build(),
+            ));
+            tracing::info!("message executed");
         }
         GatewayAndGasEvent::NativeGasRefunded(event) => {
             let sig = Signature::from(event.tx_hash);
