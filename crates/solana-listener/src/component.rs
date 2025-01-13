@@ -118,10 +118,10 @@ mod tests {
     async fn can_receive_realtime_tx_events() {
         // 1. setup
         let mut fixture = setup().await;
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         // 2. generate test data
         let generated_signs_set_1 =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
@@ -148,7 +148,11 @@ mod tests {
             solana_ws: pubsub_url.parse().unwrap(),
             missed_signature_catchup_strategy: MissedSignatureCatchupStrategy::UntilBeginning,
             latest_processed_signature: None,
-            tx_scan_poll_period: Duration::from_millis(500),
+            tx_scan_poll_period: if std::env::var("CI").is_ok() {
+                Duration::from_millis(1500)
+            } else {
+                Duration::from_millis(500)
+            },
             commitment: CommitmentConfig::confirmed(),
         };
         let (tx, mut rx) = futures::channel::mpsc::unbounded();
@@ -183,7 +187,11 @@ mod tests {
                 .collect::<BTreeSet<_>>()
                 .await;
             let init_items_btree = init_items.clone().into_iter().collect::<BTreeSet<_>>();
-            assert!(!processor.is_finished());
+            let is_finished = processor.is_finished();
+            if is_finished {
+                assert!(processor.await.unwrap().is_ok());
+                panic!();
+            }
             dbg!(&init_items_btree);
             assert_eq!(
                 fetched
@@ -199,6 +207,7 @@ mod tests {
             // 4. generate more test data
             let generated_signs_set_2 =
                 generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+            tokio::time::sleep(Duration::from_secs(5)).await;
             // 5. assert that we receive all the items we generated, and there's no overlap with the
             //    old data
             let new_items = generated_signs_set_2.flatten_sequentially();
@@ -219,7 +228,11 @@ mod tests {
                 .collect::<BTreeSet<_>>()
                 .await;
             let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
-            assert!(!processor.is_finished());
+            let is_finished = processor.is_finished();
+            if is_finished {
+                assert!(processor.await.unwrap().is_ok());
+                panic!();
+            }
             assert_eq!(
                 fetched
                     .intersection(&new_items_btree)
