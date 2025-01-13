@@ -12,7 +12,7 @@ concurrency:
 name: docs
 jobs:
   doc:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     name: doc
     steps:
       - uses: actions/checkout@v4

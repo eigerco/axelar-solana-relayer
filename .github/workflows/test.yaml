@@ -10,7 +10,7 @@ concurrency:
 name: test
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     name: test
     steps:
       - uses: actions/checkout@v4

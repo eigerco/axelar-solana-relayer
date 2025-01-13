@@ -12,8 +12,8 @@ concurrency:
 name: check
 jobs:
   fmt:
-    runs-on: ubuntu-22.04
-    name: fmt
+    runs-on: self-hosted
+    name: check
     steps:
       - uses: actions/checkout@v4
         with:
