@@ -254,6 +254,7 @@ impl SignatureRangeFetcher {
 
         // Fetch logs and send them via the sender
         log_processor::fetch_and_send(
+            self.commitment,
             fetched_signatures_iter,
             Arc::clone(&self.rpc_client),
             self.signature_sender.clone(),

@@ -74,7 +74,7 @@ pub(crate) async fn process_realtime_logs(
         // Process the first item
         let sig = Signature::from_str(&first_item.value.signature)
             .expect("signature from RPC must be valid");
-        let t2_signature = fetch_logs(sig, &rpc_client).await?;
+        let t2_signature = fetch_logs(config.commitment, sig, &rpc_client).await?;
         tracing::debug!(
             ?t2_signature.signature,
             ?latest_processed_signature,
@@ -122,7 +122,7 @@ pub(crate) async fn process_realtime_logs(
                         // Push fetch_logs future into fetch_futures
                         let rpc_client = Arc::clone(&rpc_client);
                         let fetch_future = async move {
-                            let log_item = fetch_logs(sig, &rpc_client).await?;
+                            let log_item = fetch_logs(config.commitment, sig, &rpc_client).await?;
                             tracing::info!(item = ?log_item.signature, "found tx");
                             eyre::Result::Ok(log_item)
                         };

@@ -18,6 +18,7 @@ use gateway_event_stack::{MatchContext, ProgramInvocationState};
 use relayer_amplifier_api_integration::AmplifierCommand;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_listener::{fetch_logs, SolanaTransaction};
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::signature::Signature;
 use thiserror::Error;
 
@@ -103,7 +104,8 @@ async fn try_build_and_push_event_with_data(
     solana_rpc_client: Arc<RpcClient>,
     mut amplifier_channel: UnboundedSender<AmplifierCommand>,
 ) -> Result<(), CallContractOffchainDataError> {
-    let solana_transaction = fetch_logs(signature, &solana_rpc_client).await?;
+    let solana_transaction =
+        fetch_logs(CommitmentConfig::confirmed(), signature, &solana_rpc_client).await?;
     let hash = solana_sdk::keccak::hash(&data).to_bytes();
     let match_context = MatchContext::new(&axelar_solana_gateway::id().to_string());
     let invocations = gateway_event_stack::build_program_event_stack(

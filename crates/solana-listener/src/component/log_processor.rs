@@ -14,6 +14,7 @@ use super::{MessageSender, SolanaTransaction};
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn fetch_and_send(
+    commitment: CommitmentConfig,
     fetched_signatures: impl Iterator<Item = Signature>,
     rpc_client: Arc<RpcClient>,
     signature_sender: MessageSender,
@@ -24,7 +25,7 @@ pub(crate) async fn fetch_and_send(
             let rpc_client = Arc::clone(&rpc_client);
             let mut signature_sender = signature_sender.clone();
             async move {
-                let tx = fetch_logs(signature, &rpc_client).await?;
+                let tx = fetch_logs(commitment, signature, &rpc_client).await?;
                 signature_sender.send(tx).await?;
                 Result::<_, eyre::Report>::Ok(())
             }
@@ -48,14 +49,15 @@ pub(crate) async fn fetch_and_send(
 /// - If the transaction was not successful
 #[tracing::instrument(skip_all, fields(signtaure))]
 pub async fn fetch_logs(
+    commitment: CommitmentConfig,
     signature: Signature,
     rpc_client: &RpcClient,
 ) -> eyre::Result<SolanaTransaction> {
     use solana_client::rpc_config::RpcTransactionConfig;
     let config = RpcTransactionConfig {
         encoding: Some(UiTransactionEncoding::Binary),
-        commitment: Some(CommitmentConfig::confirmed()),
-        max_supported_transaction_version: Some(0),
+        commitment: Some(commitment),
+        max_supported_transaction_version: None,
     };
 
     let EncodedConfirmedTransactionWithStatusMeta {
