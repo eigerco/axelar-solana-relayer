@@ -77,10 +77,11 @@ impl RetryingHttpSender {
             .await
             .inspect_err(|error| error!(%error))
             .map_err(|error| match *error.kind() {
-                // Retry on networking-io related errors
-                Io(_) | Reqwest(_) => backoff::Error::transient(error),
+                // Retry on networking-io related errors and cases where the node may need some
+                // catch-up time
+                Io(_) | Reqwest(_) | SerdeJson(_) | RpcError(_) => backoff::Error::transient(error),
                 // Fail instantly on other errors
-                SerdeJson(_) | RpcError(_) | SigningError(_) | TransactionError(_) | Custom(_) => {
+                SigningError(_) | TransactionError(_) | Custom(_) => {
                     backoff::Error::permanent(error)
                 }
                 Middleware(_) => backoff::Error::permanent(error),

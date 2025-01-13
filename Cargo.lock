@@ -7485,6 +7485,7 @@ dependencies = [
  "axelar-solana-gateway",
  "axelar-solana-gateway-test-fixtures",
  "axelar-solana-memo-program",
+ "backoff",
  "chrono",
  "common-serde-utils 0.1.0",
  "common-serde-utils 0.1.1",

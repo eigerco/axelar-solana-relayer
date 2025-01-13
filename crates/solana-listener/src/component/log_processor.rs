@@ -1,5 +1,7 @@
 use std::sync::Arc;
+use std::time::Duration;
 
+use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use chrono::DateTime;
 use eyre::OptionExt as _;
 use futures::SinkExt as _;
@@ -60,6 +62,37 @@ pub async fn fetch_logs(
         max_supported_transaction_version: None,
     };
 
+    // let operation = || async {
+    //     rpc_client
+    //         .get_transaction_with_config(&signature, config)
+    //         .await
+    //         .inspect_err(|error| error!(%error))
+    //         .map_err(|error| match *error.kind() {
+    //         //     solana_client::client_error::ClientErrorKind::Io(error) => todo!(),
+    //         //     solana_client::client_error::ClientErrorKind::Reqwest(error) => todo!(),
+    //         //     solana_client::client_error::ClientErrorKind::Middleware(error) => todo!(),
+    //         //     solana_client::client_error::ClientErrorKind::RpcError(rpc_error) => todo!(),
+    //         //     solana_client::client_error::ClientErrorKind::SerdeJson(error) => todo!(),
+    //         //     solana_client::client_error::ClientErrorKind::SigningError(signer_error) =>
+    // todo!(),         //
+    // solana_client::client_error::ClientErrorKind::TransactionError(transaction_error) => todo!(),
+    //         //     solana_client::client_error::ClientErrorKind::Custom(_) => todo!(),
+    //         // }
+    //             // Retry on networking-io related errors
+    //             // Io(_) | Reqwest(_) => backoff::Error::transient(error),
+    //             // // Fail instantly on other errors
+    //             // SerdeJson(_) | RpcError(_) | SigningError(_) | TransactionError(_) | Custom(_)
+    // => {             //     backoff::Error::permanent(error)
+    //             // }
+    //             // Middleware(_) => backoff::Error::permanent(error),
+    //         })
+    // };
+    // let res = backoff::future::retry(
+    //     ExponentialBackoffBuilder::new()
+    //         .with_max_interval(Duration::from_secs(60))
+    //         .build(),
+    //     operation,
+    // );
     let EncodedConfirmedTransactionWithStatusMeta {
         slot,
         transaction: transaction_with_meta,

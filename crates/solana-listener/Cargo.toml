@@ -25,6 +25,7 @@ solana-sdk.workspace = true
 solana-transaction-status.workspace = true
 axelar-solana-gas-service.workspace = true
 solana-rpc-client-api.workspace = true
+backoff.workspace = true
 
 [dev-dependencies]
 axelar-solana-gateway-test-fixtures.workspace = true
