@@ -98,100 +98,8 @@ impl SolanaEventForwarder {
                 .chain(gas_events)
                 .sorted_by(|event_a, event_b| event_a.0.cmp(&event_b.0));
 
-            // we have to associate the gas events with the gateway events because for
-            // NativeGasPaidForContractCallEvent event we need to attach the message_id that
-            // corresponds with the given CallContract event.
-            let combined_events = all_events
-                .fold(
-                    // (accumulated vector, pending NativeGasPaidForContractCallEvent)
-                    (vec![], Vec::<NativeGasPaidForContractCallEvent>::new()),
-                    |(mut acc, mut pending_gas), (idx, evt)| {
-                        let mut find_corresponding_gas_call =
-                            |payload_hash: &[u8; 32],
-                             destination_chain: &str,
-                             destination_address: &str| {
-                                let desired_gas = pending_gas.iter().position(|x| {
-                                    x.payload_hash == *payload_hash &&
-                                        x.destination_chain == destination_chain &&
-                                        x.destination_address == destination_address
-                                });
-                                desired_gas.map(|idx| pending_gas.remove(idx))
-                            };
-                        match evt {
-                            GatewayOrGasEvent::GatewayEvent(gateway_evt) => {
-                                // Check if we have a pending gas event to combine
-                                match gateway_evt {
-                                    GatewayEvent::CallContract(call_event) => {
-                                        let gas = find_corresponding_gas_call(
-                                            &call_event.payload_hash,
-                                            &call_event.destination_chain,
-                                            &call_event.destination_contract_address,
-                                        );
-                                        let event =
-                                            GatewayAndGasEvent::CallContract(gas, call_event);
-                                        acc.push((idx, event));
-                                        (acc, pending_gas)
-                                    }
-                                    GatewayEvent::CallContractOffchainData(call_event) => {
-                                        let gas = find_corresponding_gas_call(
-                                            &call_event.payload_hash,
-                                            &call_event.destination_chain,
-                                            &call_event.destination_contract_address,
-                                        );
-                                        let event = GatewayAndGasEvent::CallContractOffchainData(
-                                            gas, call_event,
-                                        );
-                                        acc.push((idx, event));
-                                        (acc, pending_gas)
-                                    }
-                                    GatewayEvent::VerifierSetRotated(evt) => {
-                                        let event = GatewayAndGasEvent::VerifierSetRotated(evt);
-                                        acc.push((idx, event));
-                                        (acc, pending_gas)
-                                    }
-                                    GatewayEvent::OperatorshipTransferred(event) => {
-                                        tracing::debug!(?event, "operator ship transferred");
-                                        (acc, pending_gas)
-                                    }
-                                    GatewayEvent::MessageApproved(evt) => {
-                                        let event = GatewayAndGasEvent::MessageApproved(evt);
-                                        acc.push((idx, event));
-                                        (acc, pending_gas)
-                                    }
-                                    GatewayEvent::MessageExecuted(evt) => {
-                                        let event = GatewayAndGasEvent::MessageExecuted(evt);
-                                        acc.push((idx, event));
-                                        (acc, pending_gas)
-                                    }
-                                }
-                            }
-                            GatewayOrGasEvent::GasEvent(evt) => {
-                                // Other gas events that aren't combined
-                                match evt {
-                                    GasServiceEvent::NativeGasAdded(evt) => {
-                                        acc.push((idx, GatewayAndGasEvent::NativeGasAdded(evt)));
-                                    }
-                                    GasServiceEvent::NativeGasRefunded(evt) => {
-                                        acc.push((idx, GatewayAndGasEvent::NativeGasRefunded(evt)));
-                                    }
-                                    GasServiceEvent::NativeGasPaidForContractCall(evt) => {
-                                        // Store this gas event and wait for the next CallContract /
-                                        // CallContractOffchainData
-                                        pending_gas.push(evt);
-                                    }
-                                    GasServiceEvent::SplGasPaidForContractCall(_) |
-                                    GasServiceEvent::SplGasAdded(_) |
-                                    GasServiceEvent::SplGasRefunded(_) => {
-                                        tracing::warn!("unsupported gas event");
-                                    }
-                                };
-                                (acc, pending_gas)
-                            }
-                        }
-                    },
-                )
-                .0; // Extract only the vector from the tuple, we ignore gas calls that don't have call
-                    // contract events attached
+            // combine gas events with the gateway events
+            let combined_events = merge_all_events(all_events);
 
             // Calculate the number of events
             let num_events = combined_events.len();
@@ -227,6 +135,96 @@ impl SolanaEventForwarder {
         }
         eyre::bail!("Listener has stopped unexpectedly");
     }
+}
+
+/// We have to associate the gas events with the gateway events because for
+/// `NativeGasPaidForContractCallEvent` event we need to attach the `message_id` that
+/// corresponds with the given `CallContract` event.
+fn merge_all_events(
+    all_events: std::vec::IntoIter<(usize, GatewayOrGasEvent)>,
+) -> Vec<(usize, GatewayAndGasEvent)> {
+    let combined_events = all_events.fold(
+        // (accumulated vector, pending NativeGasPaidForContractCallEvent)
+        (vec![], Vec::<NativeGasPaidForContractCallEvent>::new()),
+        |(mut acc, mut pending_gas), (idx, evt)| {
+            let mut find_corresponding_gas_call =
+                |payload_hash: &[u8; 32], destination_chain: &str, destination_address: &str| {
+                    let desired_gas = pending_gas.iter().position(|x| {
+                        x.payload_hash == *payload_hash &&
+                            x.destination_chain == destination_chain &&
+                            x.destination_address == destination_address
+                    });
+                    desired_gas.map(|idx| pending_gas.remove(idx))
+                };
+            match evt {
+                GatewayOrGasEvent::GatewayEvent(gateway_evt) => {
+                    // Check if we have a pending gas event to combine
+                    match gateway_evt {
+                        GatewayEvent::CallContract(call_event) => {
+                            let gas = find_corresponding_gas_call(
+                                &call_event.payload_hash,
+                                &call_event.destination_chain,
+                                &call_event.destination_contract_address,
+                            );
+                            let event = GatewayAndGasEvent::CallContract(gas, call_event);
+                            acc.push((idx, event));
+                        }
+                        GatewayEvent::CallContractOffchainData(call_event) => {
+                            let gas = find_corresponding_gas_call(
+                                &call_event.payload_hash,
+                                &call_event.destination_chain,
+                                &call_event.destination_contract_address,
+                            );
+                            let event =
+                                GatewayAndGasEvent::CallContractOffchainData(gas, call_event);
+                            acc.push((idx, event));
+                        }
+                        GatewayEvent::VerifierSetRotated(evt) => {
+                            let event = GatewayAndGasEvent::VerifierSetRotated(evt);
+                            acc.push((idx, event));
+                        }
+                        GatewayEvent::OperatorshipTransferred(event) => {
+                            tracing::debug!(?event, "operator ship transferred");
+                        }
+                        GatewayEvent::MessageApproved(evt) => {
+                            let event = GatewayAndGasEvent::MessageApproved(evt);
+                            acc.push((idx, event));
+                        }
+                        GatewayEvent::MessageExecuted(evt) => {
+                            let event = GatewayAndGasEvent::MessageExecuted(evt);
+                            acc.push((idx, event));
+                        }
+                    };
+                    (acc, pending_gas)
+                }
+                GatewayOrGasEvent::GasEvent(evt) => {
+                    // Other gas events that aren't combined
+                    match evt {
+                        GasServiceEvent::NativeGasAdded(evt) => {
+                            acc.push((idx, GatewayAndGasEvent::NativeGasAdded(evt)));
+                        }
+                        GasServiceEvent::NativeGasRefunded(evt) => {
+                            acc.push((idx, GatewayAndGasEvent::NativeGasRefunded(evt)));
+                        }
+                        GasServiceEvent::NativeGasPaidForContractCall(evt) => {
+                            // Store this gas event and wait for the next CallContract /
+                            // CallContractOffchainData
+                            pending_gas.push(evt);
+                        }
+                        GasServiceEvent::SplGasPaidForContractCall(_) |
+                        GasServiceEvent::SplGasAdded(_) |
+                        GasServiceEvent::SplGasRefunded(_) => {
+                            tracing::warn!("unsupported gas event");
+                        }
+                    };
+                    (acc, pending_gas)
+                }
+            }
+        },
+    );
+    // Extract only the vector from the tuple, we ignore gas calls that don't have matching gateway
+    // events
+    combined_events.0
 }
 
 fn keep_successful_events<T>(

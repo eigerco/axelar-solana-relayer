@@ -216,7 +216,7 @@ async fn sub_to_logs(
 > {
     client
         .logs_subscribe(
-            // we subscribe to all txs that contain the gateway program id
+            // we subscribe to all txs that contain the pubkey
             RpcTransactionLogsFilter::Mentions(vec![pubkey.to_string()]),
             RpcTransactionLogsConfig {
                 commitment: Some(commitment),
