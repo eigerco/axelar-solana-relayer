@@ -43,7 +43,7 @@ impl relayer_engine::RelayerComponent for SolanaEventForwarder {
 
 enum GatewayOrGasEvent {
     GatewayEvent(GatewayEvent),
-    GasEveent(GasServiceEvent),
+    GasEvent(GasServiceEvent),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,7 +93,7 @@ impl SolanaEventForwarder {
                 .map(|(idx, event)| (idx, GatewayOrGasEvent::GatewayEvent(event)));
             let gas_events = keep_successful_events(gas_events_program_stack)
                 .into_iter()
-                .map(|(idx, event)| (idx, GatewayOrGasEvent::GasEveent(event)));
+                .map(|(idx, event)| (idx, GatewayOrGasEvent::GasEvent(event)));
             let all_events = gateway_events_vec
                 .chain(gas_events)
                 .sorted_by(|event_a, event_b| event_a.0.cmp(&event_b.0));
@@ -165,7 +165,7 @@ impl SolanaEventForwarder {
                                     }
                                 }
                             }
-                            GatewayOrGasEvent::GasEveent(evt) => {
+                            GatewayOrGasEvent::GasEvent(evt) => {
                                 // Other gas events that aren't combined
                                 match evt {
                                     GasServiceEvent::NativeGasAdded(evt) => {
