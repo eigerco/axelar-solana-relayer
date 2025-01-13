@@ -115,6 +115,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     #[expect(clippy::unimplemented, reason = "needed for the test")]
+    #[serial_test::serial]
     async fn can_receive_realtime_tx_events() {
         // 1. setup
         let mut fixture = setup().await;
