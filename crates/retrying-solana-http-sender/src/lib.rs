@@ -24,7 +24,7 @@ use tracing::error;
 use typed_builder::TypedBuilder;
 
 /// The maximum elapsed time for retrying failed requests.
-const TWO_MINUTES: Duration = Duration::from_millis(2 * 60 * 1_000);
+const TWO_MINUTES: Duration = Duration::from_millis(60 * 1_000);
 
 /// Create a new Solana RPC client based on the provided config
 #[must_use]

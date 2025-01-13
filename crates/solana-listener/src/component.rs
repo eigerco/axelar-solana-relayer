@@ -213,7 +213,7 @@ mod tests {
         let new_items = generated_signs_set_2.flatten_sequentially();
         let last_signature = new_items.last().unwrap();
         let mut prev = *last_signature;
-        let mut fetched = rx
+        let fetched = rx
             .by_ref()
             .map(|x| {
                 assert!(!x.logs.is_empty(), "we expect txs to contain logs");
@@ -221,16 +221,10 @@ mod tests {
 
                 x.signature
             })
-            // all the new items
             .take_while(|x| {
                 prev = *x;
                 future::ready(*last_signature != prev)
             })
-            // .take(
-            //     new_items
-            //         .len()
-            //         .saturating_add(generated_signs_set_2.memo_and_gas_signatures.len()),
-            // )
             .chain(futures::stream::iter([*last_signature]))
             .collect::<BTreeSet<_>>()
             .await;

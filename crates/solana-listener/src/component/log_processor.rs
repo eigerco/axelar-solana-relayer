@@ -75,7 +75,7 @@ pub async fn fetch_logs(
         block_time,
     } = backoff::future::retry(
         ExponentialBackoffBuilder::new()
-            .with_max_interval(Duration::from_secs(5))
+            .with_max_elapsed_time(Some(Duration::from_secs(10)))
             .build(),
         operation,
     )
