@@ -328,13 +328,11 @@ pub(crate) mod test {
     }
 
     #[test_log::test(tokio::test)]
-    #[serial_test::serial]
     async fn can_initialize_gateway() {
         let _fixture = setup().await;
     }
 
     #[test_log::test(tokio::test)]
-    #[serial_test::serial]
     async fn signature_range_fetcher() {
         let mut fixture = setup().await;
         let (gas_config, gas_init_sig, counter_pda, _init_memo_sig) =
@@ -461,7 +459,6 @@ pub(crate) mod test {
     }
 
     #[test_log::test(tokio::test)]
-    #[serial_test::serial]
     async fn fetch_large_range_of_signatures() {
         let mut fixture = setup().await;
         let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
