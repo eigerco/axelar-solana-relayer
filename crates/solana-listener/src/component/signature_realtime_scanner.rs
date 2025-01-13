@@ -84,7 +84,6 @@ pub(crate) async fn process_realtime_logs(
         // Fetch missed batches
         // The sleep is required so that the node has time to settle internal state, otherwise we
         // get inconsistent results.
-        tokio::time::sleep(Duration::from_secs(1)).await;
         signature_batch_scanner::fetch_batches_in_range(
             &config,
             Arc::clone(&rpc_client),
