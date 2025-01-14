@@ -572,6 +572,9 @@ mod tests {
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
+    use futures::stream::FuturesUnordered;
+    use futures::StreamExt;
+    use solana_listener::fetch_logs;
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_sdk::account::AccountSharedData;
@@ -605,6 +608,15 @@ mod tests {
                 solana_http_rpc: rpc_client_url.parse().unwrap(),
                 commitment: CommitmentConfig::confirmed(),
             });
+        let logs = generated_signs
+            .flatten_sequentially()
+            .into_iter()
+            .map(|signature| fetch_logs(CommitmentConfig::confirmed(), signature, &rpc_client))
+            .collect::<FuturesUnordered<_>>()
+            .map(|x| x.unwrap());
+        let logs = logs.collect::<Vec<_>>().await;
+        dbg!(&logs);
+        panic!()
     }
 
     #[derive(Debug)]
