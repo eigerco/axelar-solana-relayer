@@ -285,6 +285,7 @@ impl SignatureRangeFetcher {
 
 #[cfg(test)]
 #[expect(clippy::unimplemented, reason = "needed for the test")]
+#[expect(clippy::indexing_slicing, reason = "simpler code")]
 pub(crate) mod test {
     use core::time::Duration;
     use std::collections::BTreeSet;
@@ -308,8 +309,10 @@ pub(crate) mod test {
 
     impl FetchingState {
         fn signature(&self) -> Option<Signature> {
-            match self {
-                Self::Completed { newest_signature } => newest_signature.map(|x| x.0),
+            match *self {
+                Self::Completed {
+                    ref newest_signature,
+                } => newest_signature.map(|x| x.0),
                 Self::FetchAgain { .. } => unimplemented!(),
             }
         }
@@ -341,9 +344,9 @@ pub(crate) mod test {
         let generated_signs =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
-        let rpc_client_url = match &fixture.fixture.test_node {
+        let rpc_client_url = match fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
-                validator,
+                ref validator,
                 ..
             } => validator.rpc_url(),
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
@@ -372,7 +375,7 @@ pub(crate) mod test {
         // test that t1=None and t2=Some works
         {
             let (tx, rx) = futures::channel::mpsc::unbounded();
-            let last = *generated_signs.gas_signatures.last().unwrap();
+            let last = *generated_signs.gas.last().unwrap();
             let mut fetcher = fetcher.clone();
             fetcher.t2 = Some(last);
             fetcher.t1 = None;
@@ -382,9 +385,9 @@ pub(crate) mod test {
             drop(fetcher);
 
             let mut all_gas_entries = generated_signs
-                .gas_signatures
+                .gas
                 .iter()
-                .chain(generated_signs.memo_and_gas_signatures.iter())
+                .chain(generated_signs.memo_and_gas.iter())
                 .copied()
                 .collect::<BTreeSet<_>>();
             all_gas_entries.remove(&last);
@@ -399,23 +402,23 @@ pub(crate) mod test {
                 fetch_state.signature(),
                 // the t2 entry is not included in the RPC response, the assumption is that we
                 // already have processed it hence we know its signature beforehand
-                Some(*generated_signs.gas_signatures.iter().nth_back(1).unwrap())
+                Some(*generated_signs.gas.iter().nth_back(1).unwrap())
             );
             assert_eq!(
                 fetched_gas_events.len(),
                 5,
                 "the intersection does not include the `last` entry."
             );
-            assert_eq!(fetched_gas_events, all_gas_entries,)
+            assert_eq!(fetched_gas_events, all_gas_entries);
         };
         // test that t1=Some and t2=Some works
         {
             let (tx, rx) = futures::channel::mpsc::unbounded();
             let items_in_range = 5;
             let all_memo_signatures_to_fetch = generated_signs
-                .memo_signatures
+                .memo
                 .iter()
-                .chain(generated_signs.memo_and_gas_signatures.iter())
+                .chain(generated_signs.memo_and_gas.iter())
                 .copied()
                 .take(items_in_range)
                 .collect::<Vec<_>>();
@@ -471,9 +474,9 @@ pub(crate) mod test {
         let generated_signs_set_3 =
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
-        let rpc_client_url = match &fixture.fixture.test_node {
+        let rpc_client_url = match fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
-                validator,
+                ref validator,
                 ..
             } => validator.rpc_url(),
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
@@ -524,24 +527,24 @@ pub(crate) mod test {
         assert_eq!(all_items_btree.len(), all_items_seq.len());
         assert_eq!(
             fetched.len(),
-            all_items_seq.len() + 2,
+            all_items_seq.len().saturating_add(2),
             "adding init / deployment tx counts in there"
         );
     }
 
     #[derive(Debug)]
     pub(crate) struct GenerateTestSolanaDataResult {
-        pub memo_signatures: Vec<Signature>,
-        pub memo_and_gas_signatures: Vec<Signature>,
-        pub gas_signatures: Vec<Signature>,
+        pub memo: Vec<Signature>,
+        pub memo_and_gas: Vec<Signature>,
+        pub gas: Vec<Signature>,
     }
 
     impl GenerateTestSolanaDataResult {
         pub(crate) fn flatten_sequentially(&self) -> Vec<Signature> {
             [
-                self.memo_signatures.clone(),
-                self.memo_and_gas_signatures.clone(),
-                self.gas_signatures.clone(),
+                self.memo.clone(),
+                self.memo_and_gas.clone(),
+                self.gas.clone(),
             ]
             .concat()
         }
@@ -554,7 +557,7 @@ pub(crate) mod test {
     ) -> GenerateTestSolanaDataResult {
         // solana memo program to evm raw message (3 logs)
         let mut memo_signatures = vec![];
-        for i in 0..3 {
+        for i in 0..3_u8 {
             let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
                 &fixture.gateway_root_pda,
                 &counter_pda.0,
@@ -569,7 +572,7 @@ pub(crate) mod test {
         }
         // solana memo program + gas service  (3 logs)
         let mut memo_and_gas_signatures = vec![];
-        for i in 0..3 {
+        for i in 0..3_u8 {
             let payload = format!("msg {i}");
             let payload_hash = solana_sdk::keccak::hashv(&[payload.as_bytes()]).0;
             let destination_address = format!("0xdeadbeef-{i}");
@@ -604,31 +607,30 @@ pub(crate) mod test {
         }
         // gas service to fund some arbitrary events from the past (2 logs)
         let mut gas_signatures = vec![];
-        for i in 0..2 {
+        for i in 0_u8..2 {
             let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
                 &axelar_solana_gas_service::id(),
                 &fixture.payer.pubkey(),
                 &gas_config.config_pda,
-                [42 + i; 64],
+                [i.saturating_add(42); 64],
                 123,
                 5000,
                 Pubkey::new_unique(),
             )
             .unwrap();
-            let sig = fixture
+            let sig = *fixture
                 .send_tx_with_signatures(&[gas_ix])
                 .await
                 .unwrap()
                 .0
-                .get(0)
-                .unwrap()
-                .clone();
+                .first()
+                .unwrap();
             gas_signatures.push(sig);
         }
         GenerateTestSolanaDataResult {
-            memo_signatures,
-            memo_and_gas_signatures,
-            gas_signatures,
+            memo: memo_signatures,
+            memo_and_gas: memo_and_gas_signatures,
+            gas: gas_signatures,
         }
     }
 
@@ -651,14 +653,13 @@ pub(crate) mod test {
             gas_config.salt,
         )
         .unwrap();
-        let gas_init_sig = fixture
+        let gas_init_sig = *fixture
             .send_tx_with_signatures(&[ix])
             .await
             .unwrap()
             .0
-            .get(0)
-            .unwrap()
-            .clone();
+            .first()
+            .unwrap();
 
         // init memo program
         let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
@@ -731,7 +732,7 @@ pub(crate) mod test {
 
         let operator = Keypair::new();
         let domain_separator = [42; 32];
-        let initial_signers = make_verifiers_with_quorum(&vec![42], 0, 42, domain_separator);
+        let initial_signers = make_verifiers_with_quorum(&[42], 0, 42, domain_separator);
         let mut fixture = SolanaAxelarIntegrationMetadata {
             domain_separator,
             upgrade_authority,

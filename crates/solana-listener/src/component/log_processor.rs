@@ -1,7 +1,7 @@
+use core::time::Duration;
 use std::sync::Arc;
-use std::time::Duration;
 
-use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
+use backoff::ExponentialBackoffBuilder;
 use chrono::DateTime;
 use eyre::OptionExt as _;
 use futures::SinkExt as _;

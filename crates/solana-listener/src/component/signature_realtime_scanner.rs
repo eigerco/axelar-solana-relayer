@@ -1,7 +1,6 @@
 use core::pin::Pin;
 use core::str::FromStr as _;
 use core::task::Context;
-use core::time::Duration;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;

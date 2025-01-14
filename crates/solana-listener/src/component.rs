@@ -101,11 +101,11 @@ impl SolanaListener {
 
 #[cfg(test)]
 mod tests {
+    use core::future;
     use core::time::Duration;
     use std::collections::BTreeSet;
-    use std::future;
 
-    use futures::StreamExt;
+    use futures::StreamExt as _;
     use pretty_assertions::{assert_eq, assert_ne};
     use solana_sdk::commitment_config::CommitmentConfig;
 
@@ -126,9 +126,9 @@ mod tests {
             generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
 
         // 3. setup client
-        let (rpc_client_url, pubsub_url) = match &fixture.fixture.test_node {
+        let (rpc_client_url, pubsub_url) = match fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
-                validator,
+                ref validator,
                 ..
             } => (validator.rpc_url(), validator.rpc_pubsub_url()),
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
@@ -181,18 +181,16 @@ mod tests {
                     init_items
                         .len()
                         .saturating_add(2)
-                        .saturating_add(generated_signs_set_1.memo_and_gas_signatures.len()),
+                        .saturating_add(generated_signs_set_1.memo_and_gas.len()),
                 )
                 .collect::<BTreeSet<_>>()
                 .await;
             let init_items_btree = init_items.clone().into_iter().collect::<BTreeSet<_>>();
             let is_finished = processor.is_finished();
             if is_finished {
-                assert!(processor.await.unwrap().is_ok());
+                processor.await.unwrap().unwrap();
                 panic!();
             }
-            dbg!(_gas_init_sig);
-            dbg!(_init_memo_sig);
             assert_eq!(
                 fetched
                     .intersection(&init_items_btree)
@@ -227,13 +225,10 @@ mod tests {
                 .chain(futures::stream::iter([*last_signature]))
                 .collect::<BTreeSet<_>>()
                 .await;
-            dbg!(last_signature);
-            dbg!(fetched.len());
-            dbg!(&fetched);
             let new_items_btree = new_items.clone().into_iter().collect::<BTreeSet<_>>();
             let is_finished = processor.is_finished();
             if is_finished {
-                assert!(processor.await.unwrap().is_ok());
+                processor.await.unwrap().unwrap();
                 panic!();
             }
             assert_eq!(
