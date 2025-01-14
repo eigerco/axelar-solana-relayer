@@ -11,6 +11,8 @@ pub struct Config {
     pub source_chain_name: String,
     /// The Solana gateway program id.
     pub gateway_program_id: Pubkey,
+    /// The gas service program id
+    pub gas_service_program_id: Pubkey,
 }
 
 impl Config {
@@ -20,10 +22,12 @@ impl Config {
     pub fn new(
         sol_listener_cfg: &solana_listener::Config,
         amplifier_cfg: &relayer_amplifier_api_integration::Config,
+        gas_service_program_id: Pubkey,
     ) -> Self {
         Self {
             source_chain_name: amplifier_cfg.chain.clone(),
             gateway_program_id: sol_listener_cfg.gateway_program_address,
+            gas_service_program_id,
         }
     }
 }

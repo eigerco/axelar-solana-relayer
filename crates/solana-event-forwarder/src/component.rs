@@ -79,13 +79,22 @@ impl SolanaEventForwarder {
 
     #[tracing::instrument(skip_all, name = "Solana log forwarder")]
     pub(crate) async fn process_internal(mut self) -> eyre::Result<()> {
-        let match_context = MatchContext::new(self.config.gateway_program_id.to_string().as_str());
+        let gateway_match_context =
+            MatchContext::new(self.config.gateway_program_id.to_string().as_str());
+        let gas_service_match_context =
+            MatchContext::new(self.config.gas_service_program_id.to_string().as_str());
 
         while let Some(message) = self.solana_listener_client.log_receiver.next().await {
-            let gateway_program_stack =
-                build_program_event_stack(&match_context, &message.logs, parse_gateway_logs);
-            let gas_events_program_stack =
-                build_program_event_stack(&match_context, &message.logs, parse_gas_service_log);
+            let gateway_program_stack = build_program_event_stack(
+                &gateway_match_context,
+                &message.logs,
+                parse_gateway_logs,
+            );
+            let gas_events_program_stack = build_program_event_stack(
+                &gas_service_match_context,
+                &message.logs,
+                parse_gas_service_log,
+            );
             // todo -- total cost is not representative
             let total_cost = message.cost_in_lamports;
 
@@ -551,4 +560,9 @@ fn construct_gas_event(
             .refund_address(refund_address.to_string())
             .build(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    // todo spin up solana test validator, run some txs,
 }
