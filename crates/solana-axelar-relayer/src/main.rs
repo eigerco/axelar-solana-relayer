@@ -31,6 +31,7 @@ async fn main() {
     let rpc_client = retrying_solana_http_sender::new_client(&config.solana_rpc);
     let event_forwarder_config = solana_event_forwarder::Config::new(
         &config.solana_listener_component,
+        &config.solana_gateway_task_processor,
         &config.amplifier_component,
     );
     let name_on_amplifier = config.amplifier_component.chain.clone();
@@ -128,6 +129,8 @@ mod tests {
         let gateway_program_address_as_str = gateway_program_address.to_string();
         let gas_service_config_pda = Pubkey::new_unique();
         let gas_service_config_pda_as_str = gas_service_config_pda.to_string();
+        let gas_service_program_id = Pubkey::new_unique();
+        let gas_service_program_id_as_str = gas_service_program_id.to_string();
         let solana_rpc = "https://api.solana-devnet.com".parse()?;
         let solana_ws = "wss://api.solana-devnet.com".parse()?;
         let solana_tx_scan_poll_period = Duration::from_millis(42);
@@ -166,6 +169,7 @@ mod tests {
             [solana_gateway_task_processor]
             signing_keypair = "{signing_keypair_as_str}"
             gateway_program_address = "{gateway_program_address_as_str}"
+            gas_service_program_address = "{gas_service_program_id_as_str}"
             gas_service_config_pda = "{gas_service_config_pda_as_str}"
 
             [solana_rpc]            
@@ -200,6 +204,7 @@ mod tests {
             },
             solana_gateway_task_processor: solana_gateway_task_processor::Config {
                 gateway_program_address,
+                gas_service_program_address: gas_service_program_id,
                 gas_service_config_pda,
                 signing_keypair,
             },

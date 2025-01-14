@@ -17,7 +17,8 @@ use itertools::Itertools as _;
 use relayer_amplifier_api_integration::amplifier_api::types::{
     BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventId, EventMetadata,
     GasCreditEvent, GasRefundedEvent, GatewayV2Message, MessageApprovedEvent,
-    MessageApprovedEventMetadata, MessageId, PublishEventsRequest, SignersRotatedEvent,
+    MessageApprovedEventMetadata, MessageExecutedEvent, MessageExecutedEventMetadata,
+    MessageExecutionStatus, MessageId, PublishEventsRequest, SignersRotatedEvent,
     SignersRotatedMetadata, Token, TxEvent, TxId,
 };
 use relayer_amplifier_api_integration::AmplifierCommand;
@@ -78,13 +79,22 @@ impl SolanaEventForwarder {
 
     #[tracing::instrument(skip_all, name = "Solana log forwarder")]
     pub(crate) async fn process_internal(mut self) -> eyre::Result<()> {
-        let match_context = MatchContext::new(self.config.gateway_program_id.to_string().as_str());
+        let gateway_match_context =
+            MatchContext::new(self.config.gateway_program_id.to_string().as_str());
+        let gas_service_match_context =
+            MatchContext::new(self.config.gas_service_program_id.to_string().as_str());
 
         while let Some(message) = self.solana_listener_client.log_receiver.next().await {
-            let gateway_program_stack =
-                build_program_event_stack(&match_context, &message.logs, parse_gateway_logs);
-            let gas_events_program_stack =
-                build_program_event_stack(&match_context, &message.logs, parse_gas_service_log);
+            let gateway_program_stack = build_program_event_stack(
+                &gateway_match_context,
+                &message.logs,
+                parse_gateway_logs,
+            );
+            let gas_events_program_stack = build_program_event_stack(
+                &gas_service_match_context,
+                &message.logs,
+                parse_gas_service_log,
+            );
             // todo -- total cost is not representative
             let total_cost = message.cost_in_lamports;
 
@@ -417,10 +427,45 @@ fn map_gateway_event_to_amplifier_event(
             ));
             tracing::info!("message approved");
         }
-        GatewayAndGasEvent::MessageExecuted(ref _executed_message) => {
-            tracing::warn!(
-                "current gateway event does not produce enough artifacts to relay this message"
-            );
+        GatewayAndGasEvent::MessageExecuted(executed_message) => {
+            let command_id = executed_message.command_id;
+            let span = tracing::info_span!("message", message_id = ?executed_message.cc_id_id);
+            let _g = span.enter();
+
+            let message_id = TxEvent(executed_message.cc_id_id);
+            gateway_event = Some(Event::MessageExecuted(
+                MessageExecutedEvent::builder()
+                    .base(
+                        EventBase::builder()
+                            .event_id(event_id)
+                            .meta(Some(
+                                EventMetadata::builder()
+                                    .tx_id(Some(tx_id))
+                                    .timestamp(message.timestamp)
+                                    .from_address(Some(executed_message.source_address.clone()))
+                                    .finalized(Some(true))
+                                    .extra(
+                                        MessageExecutedEventMetadata::builder()
+                                            .command_id(Some(CommandId(
+                                                bs58::encode(command_id).into_string(),
+                                            )))
+                                            .build(),
+                                    )
+                                    .build(),
+                            ))
+                            .build(),
+                    )
+                    .status(MessageExecutionStatus::Successful)
+                    .source_chain(executed_message.source_address)
+                    .message_id(message_id)
+                    .cost(
+                        Token::builder()
+                            .amount(BigInt::from_u64(price_per_event_in_lamports))
+                            .build(),
+                    )
+                    .build(),
+            ));
+            tracing::info!("message executed");
         }
         GatewayAndGasEvent::NativeGasRefunded(event) => {
             let sig = Signature::from(event.tx_hash);
@@ -515,4 +560,355 @@ fn construct_gas_event(
             .refund_address(refund_address.to_string())
             .build(),
     )
+}
+
+#[cfg(test)]
+#[expect(clippy::unimplemented, reason = "needed for the test")]
+#[expect(clippy::indexing_slicing, reason = "simpler code")]
+mod tests {
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use axelar_solana_gateway_test_fixtures::base::TestFixture;
+    use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
+    use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
+    use futures::stream::FuturesUnordered;
+    use futures::{SinkExt, StreamExt};
+    use pretty_assertions::assert_eq;
+    use relayer_amplifier_api_integration::amplifier_api::types::{
+        CallEvent, CallEventMetadata, Event, EventBase, EventMetadata, GatewayV2Message,
+        PublishEventsRequest, TxEvent, TxId,
+    };
+    use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
+    use solana_listener::{fetch_logs, SolanaListenerClient};
+    use solana_rpc::rpc::JsonRpcConfig;
+    use solana_rpc::rpc_pubsub_service::PubSubConfig;
+    use solana_sdk::account::AccountSharedData;
+    use solana_sdk::commitment_config::CommitmentConfig;
+    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::signature::{Keypair, Signature};
+    use solana_sdk::signer::Signer;
+    use solana_sdk::{bpf_loader_upgradeable, keccak, system_program};
+    use solana_test_validator::UpgradeableProgramInfo;
+
+    use crate::SolanaEventForwarder;
+
+    #[test_log::test(tokio::test)]
+    async fn event_forwrding_only_call_contract() {
+        // setup
+        let config = crate::Config {
+            source_chain_name: "solana".to_string(),
+            gateway_program_id: axelar_solana_gateway::id(),
+            gas_service_program_id: axelar_solana_gas_service::id(),
+        };
+        let (tx_amplifier, mut rx_amplifier) = futures::channel::mpsc::unbounded();
+        let (mut tx_listener, rx_listener) = futures::channel::mpsc::unbounded();
+        let amplifier_client = AmplifierCommandClient {
+            sender: tx_amplifier,
+        };
+        let solana_listener_client = SolanaListenerClient {
+            log_receiver: rx_listener,
+        };
+        let event_forwarder =
+            SolanaEventForwarder::new(config, solana_listener_client, amplifier_client);
+        let _task = tokio::spawn(event_forwarder.process_internal());
+
+        let mut fixture = setup().await;
+        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+            setup_aux_contracts(&mut fixture).await;
+
+        // solana memo program to evm raw message
+        let payload = format!("msg memo only");
+        let payload_hash = keccak::hash(payload.as_bytes()).0;
+        let destination_chain = "evm".to_owned();
+        let destination_contract = "0xdeadbeef".to_owned();
+        let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
+            &fixture.gateway_root_pda,
+            &counter_pda.0,
+            payload.clone(),
+            destination_chain.clone(),
+            destination_contract.clone(),
+            &axelar_solana_gateway::id(),
+        )
+        .unwrap();
+        let only_call_contract_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
+
+        let rpc_client_url = match fixture.fixture.test_node {
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                ref validator,
+                ..
+            } => validator.rpc_url(),
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                unimplemented!()
+            }
+        };
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 1,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
+        let tx = fetch_logs(
+            CommitmentConfig::confirmed(),
+            only_call_contract_sig,
+            &rpc_client,
+        )
+        .await
+        .unwrap();
+        tx_listener.send(tx.clone()).await.unwrap();
+        let item = rx_amplifier.next().await.unwrap();
+        let event_id = TxEvent::new(only_call_contract_sig.to_string().as_str(), 5);
+        let expected_event = CallEvent {
+            base: EventBase {
+                event_id: event_id.clone(),
+                meta: Some(EventMetadata {
+                    tx_id: Some(TxId(only_call_contract_sig.to_string())),
+                    timestamp: tx.timestamp,
+                    from_address: Some(counter_pda.0.to_string()),
+                    finalized: Some(true),
+                    extra: CallEventMetadata {
+                        parent_message_id: None,
+                    },
+                }),
+            },
+            message: GatewayV2Message {
+                message_id: event_id.clone(),
+                source_chain: "solana".to_string(),
+                source_address: counter_pda.0.to_string(),
+                destination_address: destination_contract.clone(),
+                payload_hash: payload_hash.to_vec(),
+            },
+            destination_chain,
+            payload: payload.into_bytes(),
+        };
+
+        assert_eq!(
+            item,
+            AmplifierCommand::PublishEvents(
+                PublishEventsRequest::builder()
+                    .events(vec![Event::Call(expected_event)])
+                    .build()
+            )
+        );
+    }
+
+    #[derive(Debug)]
+    pub(crate) struct GenerateTestSolanaDataResult {
+        pub gas_add_sig: Signature,
+        pub gas_and_call_contract_sig: Signature,
+        pub only_call_contract_sig: Signature,
+    }
+
+    impl GenerateTestSolanaDataResult {
+        pub(crate) fn flatten_sequentially(&self) -> [Signature; 3] {
+            [
+                self.gas_add_sig.clone(),
+                self.gas_and_call_contract_sig.clone(),
+                self.only_call_contract_sig.clone(),
+            ]
+        }
+    }
+
+    pub(crate) async fn setup_aux_contracts(
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+    ) -> (
+        axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
+        Signature,
+        (Pubkey, u8),
+        Signature,
+    ) {
+        // init gas config
+        let gas_service_upgr_auth = fixture.payer.insecure_clone();
+        let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth);
+        let ix = axelar_solana_gas_service::instructions::init_config(
+            &axelar_solana_gas_service::ID,
+            &fixture.payer.pubkey(),
+            &gas_config.config_authority.pubkey(),
+            &gas_config.config_pda,
+            gas_config.salt,
+        )
+        .unwrap();
+        let gas_init_sig = *fixture
+            .send_tx_with_signatures(&[ix])
+            .await
+            .unwrap()
+            .0
+            .first()
+            .unwrap();
+
+        // init memo program
+        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
+        let ix = axelar_solana_memo_program::instruction::initialize(
+            &fixture.payer.pubkey(),
+            &fixture.gateway_root_pda,
+            &counter_pda,
+        )
+        .unwrap();
+        let init_memo_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
+        (gas_config, gas_init_sig, counter_pda, init_memo_sig)
+    }
+
+    pub(crate) async fn generate_test_solana_data(
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+        counter_pda: (Pubkey, u8),
+        gas_config: &axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
+    ) -> GenerateTestSolanaDataResult {
+        // solana memo program to evm raw message
+        let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
+            &fixture.gateway_root_pda,
+            &counter_pda.0,
+            format!("msg memo only"),
+            "evm".to_owned(),
+            "0xdeadbeef".to_owned(),
+            &axelar_solana_gateway::id(),
+        )
+        .unwrap();
+        let only_call_contract_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
+
+        // solana memo program + gas service
+        let payload = format!("msg memo and gas");
+        let payload_hash = solana_sdk::keccak::hashv(&[payload.as_bytes()]).0;
+        let destination_address = format!("0xdeadbeef");
+        let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
+            &fixture.gateway_root_pda,
+            &counter_pda.0,
+            payload,
+            "evm".to_owned(),
+            destination_address.clone(),
+            &axelar_solana_gateway::id(),
+        )
+        .unwrap();
+        let gas_ix =
+            axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
+                &axelar_solana_gas_service::id(),
+                &fixture.payer.pubkey(),
+                &gas_config.config_pda,
+                "evm".to_owned(),
+                destination_address.clone(),
+                payload_hash,
+                Pubkey::new_unique(),
+                vec![],
+                5000,
+            )
+            .unwrap();
+        let gas_and_call_contract_sig = fixture
+            .send_tx_with_signatures(&[ix, gas_ix])
+            .await
+            .unwrap()
+            .0[0];
+
+        // gas service to fund some arbitrary events from the past
+        let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
+            &axelar_solana_gas_service::id(),
+            &fixture.payer.pubkey(),
+            &gas_config.config_pda,
+            [111; 64],
+            123,
+            5000,
+            Pubkey::new_unique(),
+        )
+        .unwrap();
+        let gas_add_sig = *fixture
+            .send_tx_with_signatures(&[gas_ix])
+            .await
+            .unwrap()
+            .0
+            .first()
+            .unwrap();
+
+        GenerateTestSolanaDataResult {
+            gas_add_sig,
+            gas_and_call_contract_sig,
+            only_call_contract_sig,
+        }
+    }
+
+    /// Return the [`PathBuf`] that points to the `[repo]` folder
+    #[must_use]
+    pub(crate) fn workspace_root_dir() -> PathBuf {
+        let dir = std::env::var("CARGO_MANIFEST_DIR")
+            .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_owned());
+        PathBuf::from(dir)
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned()
+    }
+
+    pub(crate) async fn setup() -> SolanaAxelarIntegrationMetadata {
+        use solana_test_validator::TestValidatorGenesis;
+        let mut validator = TestValidatorGenesis::default();
+
+        let mut rpc_config = JsonRpcConfig::default_for_test();
+        rpc_config.enable_rpc_transaction_history = true;
+        rpc_config.enable_extended_tx_metadata_storage = true;
+        validator.rpc_config(rpc_config);
+
+        let mut pubsub_config = PubSubConfig::default_for_tests();
+        pubsub_config.enable_block_subscription = true;
+        validator.pubsub_config(pubsub_config);
+
+        let upgrade_authority = Keypair::new();
+        validator.add_account(
+            upgrade_authority.pubkey(),
+            AccountSharedData::new(u64::MAX, 0, &system_program::ID),
+        );
+        validator.add_upgradeable_programs_with_path(&[
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_gateway::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_gateway.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_gas_service::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_gas_service.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_memo_program::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_memo_program.so"),
+            },
+        ]);
+
+        let forced_sleep = if std::env::var("CI").is_ok() {
+            Duration::from_millis(1500)
+        } else {
+            Duration::from_millis(500)
+        };
+        let mut fixture = TestFixture::new_test_validator(validator, forced_sleep).await;
+        let init_payer = fixture.payer.insecure_clone();
+        fixture.payer = upgrade_authority.insecure_clone();
+
+        let operator = Keypair::new();
+        let domain_separator = [42; 32];
+        let initial_signers = make_verifiers_with_quorum(&[42], 0, 42, domain_separator);
+        let mut fixture = SolanaAxelarIntegrationMetadata {
+            domain_separator,
+            upgrade_authority,
+            fixture,
+            signers: initial_signers,
+            gateway_root_pda: axelar_solana_gateway::get_gateway_root_config_pda().0,
+            operator,
+            previous_signers_retention: 16,
+            minimum_rotate_signers_delay_seconds: 1,
+        };
+
+        fixture.initialize_gateway_config_account().await.unwrap();
+        fixture.payer = init_payer;
+        fixture
+    }
 }

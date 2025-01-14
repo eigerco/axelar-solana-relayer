@@ -12,6 +12,12 @@ pub struct Config {
     #[serde(default = "config_defaults::gateway_program_address")]
     pub gateway_program_address: Pubkey,
 
+    /// Gas service program id
+    #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
+    #[builder(default = config_defaults::gas_service_program_address())]
+    #[serde(default = "config_defaults::gas_service_program_address")]
+    pub gas_service_program_address: Pubkey,
+
     /// The PDA used to store the gas service configuration associated with this relayer instance.
     #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
     pub gas_service_config_pda: Pubkey,
@@ -27,6 +33,10 @@ pub(crate) mod config_defaults {
 
     pub(crate) const fn gateway_program_address() -> Pubkey {
         axelar_solana_gateway::id()
+    }
+
+    pub(crate) const fn gas_service_program_address() -> Pubkey {
+        axelar_solana_gas_service::id()
     }
 }
 
