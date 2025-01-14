@@ -10,6 +10,7 @@ edition.workspace = true
 [dependencies]
 futures.workspace = true
 axelar-solana-gas-service.workspace = true
+solana-gateway-task-processor.workspace = true
 relayer-amplifier-api-integration.workspace = true
 solana-listener.workspace = true
 relayer-engine.workspace = true
@@ -23,8 +24,15 @@ gateway-event-stack.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
-pretty_assertions.workspace = true
+axelar-solana-gateway-test-fixtures.workspace = true
+retrying-solana-http-sender.workspace = true
+axelar-solana-memo-program.workspace = true
+solana-test-validator.workspace = true
+solana-rpc-client-api.workspace = true
+solana-rpc.workspace = true
 test-log.workspace = true
+tokio.workspace = true
+pretty_assertions.workspace = true
 
 [lints]
 workspace = true

@@ -155,6 +155,7 @@ impl<S: State> SolanaTxPusher<S> {
             gateway_root_pda,
             name_of_the_solana_chain: self.name_on_amplifier.clone(),
             gas_service_config_pda: self.config.gas_service_config_pda,
+            gas_service_program_id: self.config.gas_service_program_address,
         }
     }
 }
@@ -164,10 +165,15 @@ async fn ensure_gas_service_authority(
     solana_rpc_client: &RpcClient,
     metadata: &ConfigMetadata,
 ) -> eyre::Result<()> {
-    let account_data = solana_rpc_client
-        .get_account_data(&metadata.gas_service_config_pda)
+    let account = solana_rpc_client
+        .get_account(&metadata.gas_service_config_pda)
         .await?;
-    let config = axelar_solana_gas_service::state::Config::read(&account_data)
+    if account.owner != metadata.gas_service_program_id {
+        eyre::bail!(
+            "gas service program id is not the owner of the provided gas service config PDA"
+        )
+    }
+    let config = axelar_solana_gas_service::state::Config::read(&account.data)
         .ok_or_eyre("gas service config PDA account not initialized")?;
 
     if config.authority != *key {
@@ -181,6 +187,7 @@ struct ConfigMetadata {
     name_of_the_solana_chain: String,
     gateway_root_pda: Pubkey,
     gas_service_config_pda: Pubkey,
+    gas_service_program_id: Pubkey,
 }
 
 #[instrument(skip_all)]
@@ -581,7 +588,7 @@ async fn refund_task(
         eyre::bail!("non-native token refunds are not supported");
     } else {
         let instruction = axelar_solana_gas_service::instructions::refund_native_fees_instruction(
-            &axelar_solana_gas_service::id(),
+            &metadata.gas_service_program_id,
             &keypair.pubkey(),
             &receiver,
             &metadata.gas_service_config_pda,

@@ -7249,6 +7249,8 @@ version = "0.1.0"
 dependencies = [
  "axelar-solana-gas-service",
  "axelar-solana-gateway",
+ "axelar-solana-gateway-test-fixtures",
+ "axelar-solana-memo-program",
  "base64 0.22.1",
  "bs58",
  "eyre",
@@ -7258,9 +7260,15 @@ dependencies = [
  "pretty_assertions",
  "relayer-amplifier-api-integration",
  "relayer-engine",
+ "retrying-solana-http-sender",
+ "solana-gateway-task-processor",
  "solana-listener",
+ "solana-rpc",
+ "solana-rpc-client-api",
  "solana-sdk",
+ "solana-test-validator",
  "test-log",
+ "tokio",
  "tracing",
 ]
 
@@ -7496,6 +7504,7 @@ dependencies = [
  "retrying-solana-http-sender",
  "serde",
  "solana-client",
+ "solana-gateway-task-processor",
  "solana-rpc",
  "solana-rpc-client-api",
  "solana-sdk",
