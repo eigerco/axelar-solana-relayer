@@ -73,11 +73,11 @@ solana-gateway-task-processor = { path = "crates/solana-gateway-task-processor" 
 effective-tx-sender = { path = "crates/effective-tx-sender" }
 
 # Relayer core
-amplifier-api = { git = "https://github.com/eigerco/axelar-relayer-core.git", branch = "main" }
-relayer-engine = { git = "https://github.com/eigerco/axelar-relayer-core.git", branch = "main" }
-relayer-amplifier-api-integration = { git = "https://github.com/eigerco/axelar-relayer-core.git", branch = "main" }
-relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-core.git", branch = "main" }
-core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core.git", package = "common-serde-utils", branch = "main" }
+amplifier-api = { git = "https://github.com/eigerco/axelar-relayer-core.git", rev = "7f84b8d" }
+relayer-engine = { git = "https://github.com/eigerco/axelar-relayer-core.git", rev = "7f84b8d" }
+relayer-amplifier-api-integration = { git = "https://github.com/eigerco/axelar-relayer-core.git", rev = "7f84b8d" }
+relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-core.git", rev = "7f84b8d" }
+core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core.git", package = "common-serde-utils", rev = "7f84b8d" }
 
 # Solana Gateway
 axelar-solana-gateway = { git = "https://github.com/eigerco/solana-axelar.git", rev = "c08f0925", features = ["no-entrypoint"] }
