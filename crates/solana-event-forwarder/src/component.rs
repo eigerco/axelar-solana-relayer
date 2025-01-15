@@ -567,18 +567,17 @@ fn construct_gas_event(
 #[expect(clippy::unimplemented, reason = "needed for the test")]
 #[expect(clippy::indexing_slicing, reason = "simpler code")]
 mod tests {
+    use core::time::Duration;
     use std::path::PathBuf;
-    use std::time::Duration;
 
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
-    use futures::stream::FuturesUnordered;
-    use futures::{SinkExt, StreamExt};
+    use futures::{SinkExt as _, StreamExt as _};
     use pretty_assertions::assert_eq;
     use relayer_amplifier_api_integration::amplifier_api::types::{
         BigInt, CallEvent, CallEventMetadata, Event, EventBase, EventMetadata, GasCreditEvent,
-        GatewayV2Message, PublishEventsRequest, SignersRotatedEvent, Token, TokenId, TxEvent, TxId,
+        GatewayV2Message, PublishEventsRequest, Token, TxEvent, TxId,
     };
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
     use solana_listener::{fetch_logs, SolanaListenerClient};
@@ -588,7 +587,7 @@ mod tests {
     use solana_sdk::commitment_config::CommitmentConfig;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::{Keypair, Signature};
-    use solana_sdk::signer::Signer;
+    use solana_sdk::signer::Signer as _;
     use solana_sdk::{bpf_loader_upgradeable, keccak, system_program};
     use solana_test_validator::UpgradeableProgramInfo;
 
@@ -598,7 +597,7 @@ mod tests {
     async fn event_forwrding_only_call_contract() {
         // setup
         let config = crate::Config {
-            source_chain_name: "solana".to_string(),
+            source_chain_name: "solana".to_owned(),
             gateway_program_id: axelar_solana_gateway::id(),
             gas_service_program_id: axelar_solana_gas_service::id(),
         };
@@ -615,11 +614,11 @@ mod tests {
         let _task = tokio::spawn(event_forwarder.process_internal());
 
         let mut fixture = setup().await;
-        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+        let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
 
         // solana memo program to evm raw message
-        let payload = format!("msg memo only");
+        let payload = "msg memo only".to_owned();
         let payload_hash = keccak::hash(payload.as_bytes()).0;
         let destination_chain = "evm".to_owned();
         let destination_contract = "0xdeadbeef".to_owned();
@@ -673,8 +672,8 @@ mod tests {
                 }),
             },
             message: GatewayV2Message {
-                message_id: event_id.clone(),
-                source_chain: "solana".to_string(),
+                message_id: event_id,
+                source_chain: "solana".to_owned(),
                 source_address: counter_pda.0.to_string(),
                 destination_address: destination_contract.clone(),
                 payload_hash: payload_hash.to_vec(),
@@ -697,7 +696,7 @@ mod tests {
     async fn event_forwrding_only_gas_event() {
         // setup
         let config = crate::Config {
-            source_chain_name: "solana".to_string(),
+            source_chain_name: "solana".to_owned(),
             gateway_program_id: axelar_solana_gateway::id(),
             gas_service_program_id: axelar_solana_gas_service::id(),
         };
@@ -714,14 +713,10 @@ mod tests {
         let _task = tokio::spawn(event_forwarder.process_internal());
 
         let mut fixture = setup().await;
-        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
 
         // solana memo program to evm raw message
-        let payload = format!("msg memo only");
-        let payload_hash = keccak::hash(payload.as_bytes()).0;
-        let destination_chain = "evm".to_owned();
-        let destination_contract = "0xdeadbeef".to_owned();
         let signature_to_fund = [111; 64];
         let idx_to_fund = 123;
         let refund_address = Pubkey::new_unique();
@@ -771,7 +766,7 @@ mod tests {
         );
         let expected_event = GasCreditEvent {
             base: EventBase {
-                event_id: event_id.clone(),
+                event_id,
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(only_gas_add_sig.to_string())),
                     timestamp: tx.timestamp,
@@ -780,7 +775,7 @@ mod tests {
                     extra: (),
                 }),
             },
-            message_id: message_id_to_fund.clone(),
+            message_id: message_id_to_fund,
             refund_address: refund_address.to_string(),
             payment: Token {
                 token_id: None,
@@ -802,7 +797,7 @@ mod tests {
     async fn event_forwrding_with_gas_and_contract_call() {
         // setup
         let config = crate::Config {
-            source_chain_name: "solana".to_string(),
+            source_chain_name: "solana".to_owned(),
             gateway_program_id: axelar_solana_gateway::id(),
             gas_service_program_id: axelar_solana_gas_service::id(),
         };
@@ -822,10 +817,10 @@ mod tests {
         let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
 
-        let payload = format!("msg memo and gas");
+        let payload = "msg memo and gas".to_owned();
         let destination_chain_name = "evm".to_owned();
         let payload_hash = solana_sdk::keccak::hashv(&[payload.as_bytes()]).0;
-        let destination_address = format!("0xdeadbeef");
+        let destination_address = "0xdeadbeef".to_owned();
         let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
             &fixture.gateway_root_pda,
             &counter_pda.0,
@@ -896,7 +891,7 @@ mod tests {
             },
             message: GatewayV2Message {
                 message_id: event_id.clone(),
-                source_chain: "solana".to_string(),
+                source_chain: "solana".to_owned(),
                 source_address: counter_pda.0.to_string(),
                 destination_address: destination_address.clone(),
                 payload_hash: payload_hash.to_vec(),
@@ -915,7 +910,7 @@ mod tests {
                     extra: (),
                 }),
             },
-            message_id: event_id.clone(),
+            message_id: event_id,
             refund_address: refund_address.to_string(),
             payment: Token {
                 token_id: None,
@@ -934,13 +929,6 @@ mod tests {
                     .build()
             )
         );
-    }
-
-    #[derive(Debug)]
-    pub(crate) struct GenerateTestSolanaDataResult {
-        pub gas_add_sig: Signature,
-        pub gas_and_call_contract_sig: Signature,
-        pub only_call_contract_sig: Signature,
     }
 
     pub(crate) async fn setup_aux_contracts(
@@ -980,81 +968,6 @@ mod tests {
         .unwrap();
         let init_memo_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
         (gas_config, gas_init_sig, counter_pda, init_memo_sig)
-    }
-
-    pub(crate) async fn generate_test_solana_data(
-        fixture: &mut SolanaAxelarIntegrationMetadata,
-        counter_pda: (Pubkey, u8),
-        gas_config: &axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
-    ) -> GenerateTestSolanaDataResult {
-        // solana memo program to evm raw message
-        let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
-            &fixture.gateway_root_pda,
-            &counter_pda.0,
-            format!("msg memo only"),
-            "evm".to_owned(),
-            "0xdeadbeef".to_owned(),
-            &axelar_solana_gateway::id(),
-        )
-        .unwrap();
-        let only_call_contract_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
-
-        // solana memo program + gas service
-        let payload = format!("msg memo and gas");
-        let payload_hash = solana_sdk::keccak::hashv(&[payload.as_bytes()]).0;
-        let destination_address = format!("0xdeadbeef");
-        let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
-            &fixture.gateway_root_pda,
-            &counter_pda.0,
-            payload,
-            "evm".to_owned(),
-            destination_address.clone(),
-            &axelar_solana_gateway::id(),
-        )
-        .unwrap();
-        let gas_ix =
-            axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
-                &axelar_solana_gas_service::id(),
-                &fixture.payer.pubkey(),
-                &gas_config.config_pda,
-                "evm".to_owned(),
-                destination_address.clone(),
-                payload_hash,
-                Pubkey::new_unique(),
-                vec![],
-                5000,
-            )
-            .unwrap();
-        let gas_and_call_contract_sig = fixture
-            .send_tx_with_signatures(&[ix, gas_ix])
-            .await
-            .unwrap()
-            .0[0];
-
-        // gas service to fund some arbitrary events from the past
-        let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
-            &axelar_solana_gas_service::id(),
-            &fixture.payer.pubkey(),
-            &gas_config.config_pda,
-            [111; 64],
-            123,
-            5000,
-            Pubkey::new_unique(),
-        )
-        .unwrap();
-        let gas_add_sig = *fixture
-            .send_tx_with_signatures(&[gas_ix])
-            .await
-            .unwrap()
-            .0
-            .first()
-            .unwrap();
-
-        GenerateTestSolanaDataResult {
-            gas_add_sig,
-            gas_and_call_contract_sig,
-            only_call_contract_sig,
-        }
     }
 
     /// Return the [`PathBuf`] that points to the `[repo]` folder

@@ -21,7 +21,6 @@ axelar-solana-gateway.workspace = true
 common-serde-utils.workspace = true
 core-common-serde-utils.workspace = true
 solana-client.workspace = true
-solana-gateway-task-processor.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status.workspace = true
 axelar-solana-gas-service.workspace = true

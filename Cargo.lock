@@ -7526,7 +7526,6 @@ dependencies = [
  "retrying-solana-http-sender",
  "serde",
  "solana-client",
- "solana-gateway-task-processor",
  "solana-rpc",
  "solana-rpc-client-api",
  "solana-sdk",
