@@ -91,15 +91,11 @@ impl SolanaEventForwarder {
                 &message.logs,
                 parse_gateway_logs,
             );
-            dbg!(&message.logs);
             let gas_events_program_stack = build_program_event_stack(
                 &gas_service_match_context,
                 &message.logs,
                 parse_gas_service_log,
             );
-            dbg!(&self.config.gas_service_program_id);
-            dbg!(&gas_events_program_stack);
-            dbg!(&gateway_program_stack);
             // todo -- total cost is not representative
             let total_cost = message.cost_in_lamports;
 
@@ -163,8 +159,6 @@ fn merge_all_events(
         // (accumulated vector, pending NativeGasPaidForContractCallEvent)
         (vec![], Vec::<NativeGasPaidForContractCallEvent>::new()),
         |(mut acc, mut pending_gas), (idx, evt)| {
-            dbg!(&pending_gas);
-            dbg!(&evt);
             let mut find_corresponding_gas_call =
                 |payload_hash: &[u8; 32], destination_chain: &str, destination_address: &str| {
                     let desired_gas = pending_gas.iter().position(|x| {
