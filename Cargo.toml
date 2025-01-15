@@ -85,8 +85,8 @@ axelar-solana-its = { git = "https://github.com/eigerco/solana-axelar.git", rev 
 axelar-solana-governance = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460", features = ["no-entrypoint"] }
 gateway-event-stack = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460" }
 axelar-solana-encoding = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460" }
-axelar-solana-gas-service = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460" }
-axelar-solana-memo-program = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460" }
+axelar-solana-gas-service = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460", features = ["no-entrypoint"] }
+axelar-solana-memo-program = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460", features = ["no-entrypoint"] }
 axelar-solana-gateway-test-fixtures = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460" }
 axelar-message-primitives = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460" }
 axelar-executable = { git = "https://github.com/eigerco/solana-axelar.git", rev = "61b074d460" }
