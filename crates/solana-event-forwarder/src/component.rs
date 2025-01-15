@@ -797,6 +797,144 @@ mod tests {
         );
     }
 
+    #[test_log::test(tokio::test)]
+    async fn event_forwrding_with_gas_and_contract_call() {
+        // setup
+        let config = crate::Config {
+            source_chain_name: "solana".to_string(),
+            gateway_program_id: axelar_solana_gateway::id(),
+            gas_service_program_id: axelar_solana_gas_service::id(),
+        };
+        let (tx_amplifier, mut rx_amplifier) = futures::channel::mpsc::unbounded();
+        let (mut tx_listener, rx_listener) = futures::channel::mpsc::unbounded();
+        let amplifier_client = AmplifierCommandClient {
+            sender: tx_amplifier,
+        };
+        let solana_listener_client = SolanaListenerClient {
+            log_receiver: rx_listener,
+        };
+        let event_forwarder =
+            SolanaEventForwarder::new(config, solana_listener_client, amplifier_client);
+        let _task = tokio::spawn(event_forwarder.process_internal());
+
+        let mut fixture = setup().await;
+        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+            setup_aux_contracts(&mut fixture).await;
+
+        let payload = format!("msg memo and gas");
+        let destination_chain_name = "evm".to_owned();
+        let payload_hash = solana_sdk::keccak::hashv(&[payload.as_bytes()]).0;
+        let destination_address = format!("0xdeadbeef");
+        let ix = axelar_solana_memo_program::instruction::call_gateway_with_memo(
+            &fixture.gateway_root_pda,
+            &counter_pda.0,
+            payload.clone(),
+            destination_chain_name.clone(),
+            destination_address.clone(),
+            &axelar_solana_gateway::id(),
+        )
+        .unwrap();
+        let refund_address = Pubkey::new_unique();
+        let gas_fee_amount = 5000;
+        let gas_ix =
+            axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
+                &axelar_solana_gas_service::id(),
+                &fixture.payer.pubkey(),
+                &gas_config.config_pda,
+                destination_chain_name.clone(),
+                destination_address.clone(),
+                payload_hash,
+                refund_address,
+                vec![],
+                gas_fee_amount,
+            )
+            .unwrap();
+        let gas_and_call_contract_sig = fixture
+            .send_tx_with_signatures(&[ix, gas_ix])
+            .await
+            .unwrap()
+            .0[0];
+
+        let rpc_client_url = match fixture.fixture.test_node {
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                ref validator,
+                ..
+            } => validator.rpc_url(),
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                unimplemented!()
+            }
+        };
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 1,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
+        let tx = fetch_logs(
+            CommitmentConfig::confirmed(),
+            gas_and_call_contract_sig,
+            &rpc_client,
+        )
+        .await
+        .unwrap();
+        tx_listener.send(tx.clone()).await.unwrap();
+        let item = rx_amplifier.next().await.unwrap();
+        let event_id = TxEvent::new(gas_and_call_contract_sig.to_string().as_str(), 5);
+        let expected_call_event = CallEvent {
+            base: EventBase {
+                event_id: event_id.clone(),
+                meta: Some(EventMetadata {
+                    tx_id: Some(TxId(gas_and_call_contract_sig.to_string())),
+                    timestamp: tx.timestamp,
+                    from_address: Some(counter_pda.0.to_string()),
+                    finalized: Some(true),
+                    extra: CallEventMetadata {
+                        parent_message_id: None,
+                    },
+                }),
+            },
+            message: GatewayV2Message {
+                message_id: event_id.clone(),
+                source_chain: "solana".to_string(),
+                source_address: counter_pda.0.to_string(),
+                destination_address: destination_address.clone(),
+                payload_hash: payload_hash.to_vec(),
+            },
+            destination_chain: destination_chain_name.clone(),
+            payload: payload.into_bytes(),
+        };
+        let expected_gas_event = GasCreditEvent {
+            base: EventBase {
+                event_id: event_id.clone(),
+                meta: Some(EventMetadata {
+                    tx_id: Some(TxId(gas_and_call_contract_sig.to_string())),
+                    timestamp: tx.timestamp,
+                    from_address: None,
+                    finalized: Some(true),
+                    extra: (),
+                }),
+            },
+            message_id: event_id.clone(),
+            refund_address: refund_address.to_string(),
+            payment: Token {
+                token_id: None,
+                amount: BigInt::from_u64(gas_fee_amount),
+            },
+        };
+
+        assert_eq!(
+            item,
+            AmplifierCommand::PublishEvents(
+                PublishEventsRequest::builder()
+                    .events(vec![
+                        Event::Call(expected_call_event),
+                        Event::GasCredit(expected_gas_event)
+                    ])
+                    .build()
+            )
+        );
+    }
+
     #[derive(Debug)]
     pub(crate) struct GenerateTestSolanaDataResult {
         pub gas_add_sig: Signature,
