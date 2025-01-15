@@ -708,13 +708,13 @@ dependencies = [
 [[package]]
 name = "axelar-executable"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "alloy-sol-types",
  "axelar-solana-encoding",
  "axelar-solana-gateway",
  "borsh 1.5.3",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "solana-program",
  "thiserror 1.0.69",
@@ -723,7 +723,7 @@ dependencies = [
 [[package]]
 name = "axelar-message-primitives"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -739,7 +739,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-encoding"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "arrayref",
  "borsh 1.5.3",
@@ -756,7 +756,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gas-service"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "borsh 1.5.3",
  "bytemuck",
@@ -770,7 +770,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "axelar-message-primitives",
  "axelar-solana-encoding",
@@ -782,7 +782,7 @@ dependencies = [
  "hex",
  "itertools 0.12.1",
  "libsecp256k1",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "program-utils",
  "role-management",
@@ -793,7 +793,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway-test-fixtures"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "axelar-executable",
  "axelar-solana-encoding",
@@ -819,7 +819,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-governance"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "alloy-sol-types",
  "axelar-executable",
@@ -835,7 +835,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-its"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -847,31 +847,29 @@ dependencies = [
  "bitflags 2.7.0",
  "borsh 1.5.3",
  "interchain-token-transfer-gmp",
+ "mpl-token-metadata",
  "program-utils",
  "role-management",
  "solana-program",
  "spl-associated-token-account 5.0.1",
- "spl-pod 0.4.0",
  "spl-token",
  "spl-token-2022 5.0.2",
- "spl-token-metadata-interface 0.5.1",
  "typed-builder 0.20.0",
 ]
 
 [[package]]
 name = "axelar-solana-memo-program"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "axelar-executable",
  "axelar-solana-encoding",
  "axelar-solana-gateway",
  "axelar-solana-its",
  "borsh 1.5.3",
+ "mpl-token-metadata",
  "program-utils",
  "solana-program",
- "spl-token-2022 5.0.2",
- "spl-token-metadata-interface 0.5.1",
 ]
 
 [[package]]
@@ -2688,7 +2686,7 @@ dependencies = [
 [[package]]
 name = "gateway-event-stack"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "axelar-solana-gas-service",
  "axelar-solana-gateway",
@@ -2816,7 +2814,7 @@ dependencies = [
 [[package]]
 name = "governance-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3579,7 +3577,7 @@ dependencies = [
 [[package]]
 name = "interchain-token-transfer-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3634,7 +3632,7 @@ checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 [[package]]
 name = "its-instruction-builder"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "async-recursion",
  "axelar-executable",
@@ -4304,6 +4302,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpl-token-metadata"
+version = "5.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "989e6a3000e761d3b2d685662a3a9ee99826f9369fb033bd1bc7011b1cf02ed9"
+dependencies = [
+ "borsh 0.10.4",
+ "num-derive 0.3.3",
+ "num-traits",
+ "solana-program",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "multimap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4426,6 +4437,17 @@ name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
+
+[[package]]
+name = "num-derive"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
+dependencies = [
+ "proc-macro2 1.0.92",
+ "quote 1.0.38",
+ "syn 1.0.109",
+]
 
 [[package]]
 name = "num-derive"
@@ -5143,7 +5165,7 @@ dependencies = [
 [[package]]
 name = "program-utils"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "borsh 1.5.3",
  "bytemuck",
@@ -5972,7 +5994,7 @@ dependencies = [
 [[package]]
 name = "role-management"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=c08f0925#c08f0925c3edcf345b9cefbc11bdb985390d5008"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61b074d46004#61b074d46004be34f9a77829bb2034814b588d3b"
 dependencies = [
  "bincode",
  "bitflags 2.7.0",
@@ -6813,7 +6835,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "log",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "rustc_version 0.4.1",
  "solana-program",
@@ -7693,7 +7715,7 @@ dependencies = [
  "log",
  "memoffset",
  "num-bigint 0.4.6",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "parking_lot 0.12.3",
  "rand 0.8.5",
@@ -7722,7 +7744,7 @@ dependencies = [
  "itertools 0.12.1",
  "libc",
  "log",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "percentage",
  "rand 0.8.5",
@@ -7840,7 +7862,7 @@ dependencies = [
  "console",
  "dialoguer",
  "log",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "parking_lot 0.12.3",
  "qstring",
@@ -8003,7 +8025,7 @@ dependencies = [
  "memmap2 0.5.10",
  "mockall 0.11.4",
  "modular-bitfield",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "num_cpus",
  "num_enum",
@@ -8525,7 +8547,7 @@ checksum = "c767b55ffbe8fdbdcbf20b910fd13e697d4ef4ab9ebdec2899f7ea3beb4820be"
 dependencies = [
  "bincode",
  "log",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "rustc_version 0.4.1",
  "serde",
@@ -8569,7 +8591,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6be103cdf655e48867d6648f08bf3792c05c9cbfe9c2b3da18710fd7975bff4"
 dependencies = [
  "bytemuck",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "solana-program-runtime",
  "solana-sdk",
@@ -8591,7 +8613,7 @@ dependencies = [
  "itertools 0.12.1",
  "lazy_static",
  "merlin",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "rand 0.7.3",
  "serde",
@@ -8612,7 +8634,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2e8436c58c93c8b08617a7dc7a825fdd5260b51b9a59543d38a87bedc6cc4ac"
 dependencies = [
  "bytemuck",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "solana-program-runtime",
  "solana-sdk",
@@ -8635,7 +8657,7 @@ dependencies = [
  "itertools 0.12.1",
  "lazy_static",
  "merlin",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "rand 0.7.3",
  "serde",
@@ -8699,7 +8721,7 @@ checksum = "68034596cf4804880d265f834af1ff2f821ad5293e41fa0f8f59086c181fc38e"
 dependencies = [
  "assert_matches",
  "borsh 1.5.3",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "solana-program",
  "spl-token",
@@ -8714,7 +8736,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "714b53f7312c2802c62f14bc8a07916c2c872761e3d6be97e99fd432be7799ca"
 dependencies = [
  "borsh 1.5.3",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "solana-program",
  "spl-associated-token-account-client",
@@ -8811,7 +8833,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7b28bed65356558133751cc32b48a7a5ddfc59ac4e941314630bbed1ac10532"
 dependencies = [
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "solana-program",
  "spl-program-error-derive",
@@ -8866,7 +8888,7 @@ checksum = "70a0f06ac7f23dc0984931b1fe309468f14ea58e32660439c1cef19456f5d0e3"
 dependencies = [
  "arrayref",
  "bytemuck",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "num_enum",
  "solana-program",
@@ -8881,7 +8903,7 @@ checksum = "d9c10f3483e48679619c76598d4e4aebb955bc49b0a5cc63323afbf44135c9bf"
 dependencies = [
  "arrayref",
  "bytemuck",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "num_enum",
  "solana-program",
@@ -8906,7 +8928,7 @@ dependencies = [
  "arrayref",
  "base64 0.22.1",
  "bytemuck",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "num_enum",
  "serde",
@@ -9009,7 +9031,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c7a6d2a2a4f23c8f051ba2f7edb5689f1b534b4126bd9b4ae4177685e9a341"
 dependencies = [
  "borsh 1.5.3",
- "serde",
  "solana-program",
  "spl-discriminator",
  "spl-pod 0.4.0",

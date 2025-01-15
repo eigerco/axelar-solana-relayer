@@ -17,7 +17,7 @@ use axelar_solana_encoding::borsh::BorshDeserialize as _;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
-use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage, MessageStatus};
+use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage};
 use axelar_solana_gateway::BytemuckedPda as _;
 use effective_tx_sender::ComputeBudgetError;
 use eyre::{Context as _, OptionExt as _};
@@ -451,7 +451,7 @@ async fn incoming_message_already_executed(
     let incoming_message = IncomingMessage::read(&raw_incoming_message)
         .ok_or_eyre("failed to read incoming message")?;
 
-    Ok(incoming_message.status == MessageStatus::Executed)
+    Ok(incoming_message.status.is_executed())
 }
 
 /// Validates that the relayer's signing account is not included in the transaction payload.
