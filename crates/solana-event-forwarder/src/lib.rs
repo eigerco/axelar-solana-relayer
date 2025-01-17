@@ -3,5 +3,6 @@
 
 mod component;
 mod config;
+mod gas_cost_computation;
 pub use component::SolanaEventForwarder;
 pub use config::Config;

@@ -7286,6 +7286,7 @@ dependencies = [
  "solana-gateway-task-processor",
  "solana-listener",
  "solana-rpc",
+ "solana-rpc-client",
  "solana-rpc-client-api",
  "solana-sdk",
  "solana-test-validator",
