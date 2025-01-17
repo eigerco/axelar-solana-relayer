@@ -99,6 +99,7 @@ impl<S: State> SolanaTxPusher<S> {
                 Poll::Ready(Some(task)) => {
                     // spawn the task on the joinset, returning the error
                     tracing::info!(?task, "received task from amplifier API");
+
                     futures_ordered.push_back({
                         let solana_rpc_client = Arc::clone(&self.rpc_client);
                         let keypair = Arc::clone(&keypair);
@@ -658,4 +659,582 @@ async fn send_transaction(
         .await?
         .send_tx()
         .await
+}
+
+#[cfg(test)]
+#[expect(clippy::unimplemented, reason = "needed for the test")]
+#[expect(clippy::indexing_slicing, reason = "simpler code")]
+mod tests {
+    use core::str::FromStr as _;
+    use core::time::Duration;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use amplifier_api::chrono::DateTime;
+    use amplifier_api::types::uuid::Uuid;
+    use amplifier_api::types::{
+        CannotExecuteMessageEventV2, Event, ExecuteTask, GatewayV2Message, MessageId,
+        PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
+    };
+    use axelar_executable::{AxelarMessagePayload, EncodingScheme, SolanaAccountRepr};
+    use axelar_solana_encoding::borsh;
+    use axelar_solana_encoding::types::messages::{CrossChainId, Message};
+    use axelar_solana_gateway_test_fixtures::base::TestFixture;
+    use axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils;
+    use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
+    use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
+    use axelar_solana_memo_program::instruction::AxelarMemoInstruction;
+    use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+    use futures::{SinkExt as _, StreamExt as _};
+    use interchain_token_transfer_gmp::{
+        DeployInterchainToken, GMPPayload, InterchainTransfer, ReceiveFromHub,
+    };
+    use pretty_assertions::assert_eq;
+    use relayer_amplifier_api_integration::{
+        AmplifierCommand, AmplifierCommandClient, AmplifierTaskReceiver,
+    };
+    use relayer_amplifier_state::State;
+    use solana_client::nonblocking::rpc_client::RpcClient;
+    use solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
+    use solana_client::rpc_config::RpcTransactionConfig;
+    use solana_rpc::rpc::JsonRpcConfig;
+    use solana_rpc::rpc_pubsub_service::PubSubConfig;
+    use solana_sdk::account::AccountSharedData;
+    use solana_sdk::commitment_config::{CommitmentConfig, CommitmentLevel};
+    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::signature::{Keypair, Signature};
+    use solana_sdk::signer::Signer as _;
+    use solana_sdk::{bpf_loader_upgradeable, keccak, system_program};
+    use solana_test_validator::UpgradeableProgramInfo;
+    use solana_transaction_status::option_serializer::OptionSerializer;
+    use solana_transaction_status::{
+        EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding,
+    };
+    use tokio::task::JoinHandle;
+
+    use super::SolanaTxPusher;
+    use crate::config;
+
+    const ITS_HUB_CHAIN_NAME: &str = "axelar";
+    const ITS_HUB_SOURCE_ADDRESS: &str =
+        "axelar157hl7gpuknjmhtac2qnphuazv2yerfagva7lsu9vuj2pgn32z22qa26dk4";
+    const TEST_TOKEN_NAME: &str = "MyToken";
+    const TEST_TOKEN_SYMBOL: &str = "MTK";
+
+    #[test_log::test(tokio::test)]
+    async fn process_successfull_token_deployment() {
+        let mut fixture = setup().await;
+        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
+            setup_aux_contracts(&mut fixture).await;
+        let (pusher_task, mut task_sender, mut rx_amplifier, _) =
+            setup_tx_pusher(&fixture, &gas_config);
+        let token_id = axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+        let deploy_interchain_token_message =
+            GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                selector: 1_u32.try_into().unwrap(),
+                token_id: token_id.into(),
+                name: TEST_TOKEN_NAME.to_owned(),
+                symbol: TEST_TOKEN_SYMBOL.to_owned(),
+                decimals: 9,
+                minter: fixture.payer.pubkey().to_bytes().into(),
+            });
+
+        send_its_message(
+            deploy_interchain_token_message,
+            ITS_HUB_CHAIN_NAME.to_owned(),
+            ITS_HUB_SOURCE_ADDRESS.to_owned(),
+            &mut fixture,
+            &mut task_sender,
+        )
+        .await;
+
+        task_sender.close_channel();
+        let _result = pusher_task.await;
+
+        assert_eq!(rx_amplifier.next().await, None);
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn process_failed_token_deployment_untrusted_source_address() {
+        let mut fixture = setup().await;
+        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
+            setup_aux_contracts(&mut fixture).await;
+        let (pusher_task, mut task_sender, mut rx_amplifier, _) =
+            setup_tx_pusher(&fixture, &gas_config);
+        let token_id = axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+        let deploy_interchain_token_message =
+            GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                selector: 1_u32.try_into().unwrap(),
+                token_id: token_id.into(),
+                name: TEST_TOKEN_NAME.to_owned(),
+                symbol: TEST_TOKEN_SYMBOL.to_owned(),
+                decimals: 9,
+                minter: fixture.payer.pubkey().to_bytes().into(),
+            });
+
+        send_its_message(
+            deploy_interchain_token_message,
+            ITS_HUB_CHAIN_NAME.to_owned(),
+            "invalid address".to_owned(),
+            &mut fixture,
+            &mut task_sender,
+        )
+        .await;
+
+        task_sender.close_channel();
+        let _result = pusher_task.await;
+
+        let amplifier_command = rx_amplifier
+            .next()
+            .await
+            .expect("should have received amplifier command");
+        let AmplifierCommand::PublishEvents(PublishEventsRequest { mut events }) =
+            amplifier_command;
+        let Some(Event::CannotExecuteMessageV2(CannotExecuteMessageEventV2 { details, .. })) =
+            events.pop()
+        else {
+            panic!("could not find expected event");
+        };
+
+        assert!(details.contains("Untrusted source address"));
+    }
+
+    #[test_log::test(tokio::test)]
+    #[expect(clippy::non_ascii_literal, reason = "it's cool")]
+    async fn process_successfull_transfer_with_executable() {
+        let mut fixture = setup().await;
+        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig, _init_its_sig) =
+            setup_aux_contracts(&mut fixture).await;
+        let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
+            setup_tx_pusher(&fixture, &gas_config);
+        let token_id = axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+        let deploy_interchain_token_message =
+            GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                selector: 1_u32.try_into().unwrap(),
+                token_id: token_id.into(),
+                name: TEST_TOKEN_NAME.to_owned(),
+                symbol: TEST_TOKEN_SYMBOL.to_owned(),
+                decimals: 9,
+                minter: fixture.payer.pubkey().to_bytes().into(),
+            });
+
+        send_its_message(
+            deploy_interchain_token_message,
+            ITS_HUB_CHAIN_NAME.to_owned(),
+            ITS_HUB_SOURCE_ADDRESS.to_owned(),
+            &mut fixture,
+            &mut task_sender,
+        )
+        .await;
+
+        let memo_instruction = AxelarMemoInstruction::ProcessMemo {
+            memo: "🦖".to_owned(),
+        };
+
+        let data = AxelarMessagePayload::new(
+            &borsh::to_vec(&memo_instruction).unwrap(),
+            &[SolanaAccountRepr {
+                pubkey: counter_pda.0.to_bytes().into(),
+                is_signer: false,
+                is_writable: true,
+            }],
+            EncodingScheme::AbiEncoding,
+        )
+        .encode()
+        .unwrap()
+        .into();
+
+        let interchain_transfer_message = GMPPayload::InterchainTransfer(InterchainTransfer {
+            selector: 0_u32.try_into().unwrap(),
+            token_id: token_id.into(),
+            source_address: b"source wallet address".into(),
+            destination_address: axelar_solana_memo_program::id().to_bytes().into(),
+            amount: 5120.0_f64.try_into().unwrap(),
+            data,
+        });
+
+        send_its_message(
+            interchain_transfer_message,
+            ITS_HUB_CHAIN_NAME.to_owned(),
+            ITS_HUB_SOURCE_ADDRESS.to_owned(),
+            &mut fixture,
+            &mut task_sender,
+        )
+        .await;
+
+        task_sender.close_channel();
+        let _result = pusher_task.await;
+
+        let logs = fetch_latest_tx_logs(&axelar_solana_memo_program::id(), &rpc_client).await;
+
+        logs.iter()
+            .find(|log| log.contains("🦖"))
+            .map(std::string::String::as_str)
+            .expect("could not find expected log emmited by the memo program");
+
+        assert_eq!(rx_amplifier.next().await, None);
+    }
+
+    #[derive(Clone)]
+    struct MockState;
+    impl State for MockState {
+        type Err = std::io::Error;
+
+        fn latest_processed_task_id(&self) -> Option<TaskItemId> {
+            None
+        }
+
+        fn latest_queried_task_id(&self) -> Option<TaskItemId> {
+            None
+        }
+
+        fn set_latest_processed_task_id(&self, _task_item_id: TaskItemId) -> Result<(), Self::Err> {
+            Ok(())
+        }
+
+        fn set_latest_queried_task_id(&self, _task_item_id: TaskItemId) -> Result<(), Self::Err> {
+            Ok(())
+        }
+    }
+
+    async fn fetch_latest_tx_logs(program: &Pubkey, rpc_client: &RpcClient) -> Vec<String> {
+        let tx_signature = rpc_client
+            .get_signatures_for_address_with_config(
+                program,
+                GetConfirmedSignaturesForAddress2Config {
+                    limit: Some(1),
+                    commitment: Some(CommitmentConfig {
+                        commitment: CommitmentLevel::Confirmed,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("failed to fetch transactions")
+            .pop()
+            .expect("no transaction found for given program")
+            .signature;
+        let signature =
+            Signature::from_str(&tx_signature).expect("invalid signature returned from rpc");
+
+        let EncodedConfirmedTransactionWithStatusMeta {
+            transaction: transaction_with_meta,
+            ..
+        } = rpc_client
+            .get_transaction_with_config(
+                &signature,
+                RpcTransactionConfig {
+                    encoding: Some(UiTransactionEncoding::Binary),
+                    commitment: Some(CommitmentConfig {
+                        commitment: CommitmentLevel::Confirmed,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("could not get transaction");
+
+        let meta = transaction_with_meta
+            .meta
+            .expect("transaction is missing metadata");
+
+        let OptionSerializer::Some(logs) = meta.log_messages else {
+            panic!("transaction contains no logs");
+        };
+
+        logs
+    }
+
+    async fn send_its_message(
+        its_message: GMPPayload,
+        source_chain: String,
+        source_address: String,
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+        task_sender: &mut UnboundedSender<TaskItem>,
+    ) {
+        let hub_payload = GMPPayload::ReceiveFromHub(ReceiveFromHub {
+            selector: 4_i32.try_into().unwrap(),
+            source_chain: "axelar".to_owned(),
+            payload: its_message.encode().into(),
+        })
+        .encode();
+
+        let fake_hash = Signature::new_unique();
+        let message_id = MessageId::new(&fake_hash.to_string(), 1);
+        let payload_hash = keccak::hash(&hub_payload).to_bytes();
+        let message = Message {
+            cc_id: CrossChainId {
+                chain: source_chain.clone(),
+                id: message_id.0.clone(),
+            },
+            source_address: source_address.clone(),
+            destination_chain: "solana".to_owned(),
+            destination_address: axelar_solana_its::id().to_string(),
+            payload_hash,
+        };
+
+        fixture
+            .sign_session_and_approve_messages(&fixture.signers.clone(), &[message])
+            .await
+            .unwrap();
+
+        let message = GatewayV2Message::builder()
+            .message_id(message_id)
+            .destination_address(axelar_solana_its::id().to_string())
+            .source_chain(source_chain.clone())
+            .source_address(source_address.clone())
+            .payload_hash(payload_hash.to_vec())
+            .build();
+
+        let task_item = TaskItem::builder()
+            .id(TaskItemId(Uuid::new_v4()))
+            .task(Task::Execute(
+                ExecuteTask::builder()
+                    .message(message)
+                    .payload(hub_payload)
+                    .available_gas_balance(
+                        Token::builder()
+                            .amount(amplifier_api::types::BigInt(100_i32.into()))
+                            .build(),
+                    )
+                    .build(),
+            ))
+            .timestamp(DateTime::default())
+            .build();
+
+        task_sender.send(task_item).await.unwrap();
+    }
+
+    fn setup_tx_pusher(
+        fixture: &SolanaAxelarIntegrationMetadata,
+        gas_config: &GasServiceUtils,
+    ) -> (
+        JoinHandle<eyre::Result<()>>,
+        UnboundedSender<TaskItem>,
+        UnboundedReceiver<AmplifierCommand>,
+        Arc<RpcClient>,
+    ) {
+        let config = config::Config {
+            gateway_program_address: axelar_solana_gateway::id(),
+            gas_service_program_address: axelar_solana_gas_service::id(),
+            gas_service_config_pda: gas_config.config_pda,
+            signing_keypair: fixture.payer.insecure_clone(),
+        };
+        let (tx_amplifier, rx_amplifier) = futures::channel::mpsc::unbounded();
+        let (task_sender, task_receiver) = futures::channel::mpsc::unbounded();
+        let amplifier_client = AmplifierCommandClient {
+            sender: tx_amplifier,
+        };
+        let amplifier_task_receiver = AmplifierTaskReceiver {
+            receiver: task_receiver,
+        };
+
+        let rpc_client_url = match fixture.fixture.test_node {
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                ref validator,
+                ..
+            } => validator.rpc_url(),
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                unimplemented!()
+            }
+        };
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 1,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
+
+        let solana_tx_pusher = SolanaTxPusher::new(
+            config,
+            "solana".to_owned(),
+            Arc::clone(&rpc_client),
+            amplifier_task_receiver,
+            amplifier_client,
+            MockState,
+        );
+        let task = tokio::task::spawn(solana_tx_pusher.process_internal());
+
+        (task, task_sender, rx_amplifier, rpc_client)
+    }
+
+    pub(crate) async fn setup_aux_contracts(
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+    ) -> (
+        axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
+        Signature,
+        (Pubkey, u8),
+        Signature,
+        Signature,
+    ) {
+        let salt = keccak::hash(b"my gas service").0;
+        let (config_pda, ..) = axelar_solana_gas_service::get_config_pda(
+            &axelar_solana_gas_service::ID,
+            &salt,
+            &fixture.payer.pubkey(),
+        );
+
+        let gas_config = GasServiceUtils {
+            upgrade_authority: fixture.payer.insecure_clone(),
+            config_authority: fixture.payer.insecure_clone(),
+            config_pda,
+            salt,
+        };
+
+        let ix = axelar_solana_gas_service::instructions::init_config(
+            &axelar_solana_gas_service::ID,
+            &fixture.payer.pubkey(),
+            &gas_config.config_authority.pubkey(),
+            &gas_config.config_pda,
+            gas_config.salt,
+        )
+        .unwrap();
+        let gas_init_sig = *fixture
+            .send_tx_with_signatures(&[ix])
+            .await
+            .unwrap()
+            .0
+            .first()
+            .unwrap();
+
+        // init memo program
+        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
+        let ix = axelar_solana_memo_program::instruction::initialize(
+            &fixture.payer.pubkey(),
+            &fixture.gateway_root_pda,
+            &counter_pda,
+        )
+        .unwrap();
+        let init_memo_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
+
+        let ix = axelar_solana_its::instructions::initialize(
+            fixture.upgrade_authority.pubkey(),
+            fixture.gateway_root_pda,
+            fixture.payer.pubkey(),
+        )
+        .unwrap();
+        let upgrade_authority = fixture.upgrade_authority.insecure_clone();
+        let payer = fixture.payer.insecure_clone();
+        let init_its_sig = fixture
+            .send_tx_with_custom_signers_and_signature(&[ix], &[upgrade_authority, payer])
+            .await
+            .unwrap()
+            .0[0];
+
+        (
+            gas_config,
+            gas_init_sig,
+            counter_pda,
+            init_memo_sig,
+            init_its_sig,
+        )
+    }
+
+    /// Return the [`PathBuf`] that points to the `[repo]` folder
+    #[must_use]
+    pub(crate) fn workspace_root_dir() -> PathBuf {
+        let dir = std::env::var("CARGO_MANIFEST_DIR")
+            .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_owned());
+        PathBuf::from(dir)
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned()
+    }
+
+    pub(crate) async fn setup() -> SolanaAxelarIntegrationMetadata {
+        use solana_test_validator::TestValidatorGenesis;
+        let mut validator = TestValidatorGenesis::default();
+
+        let mut rpc_config = JsonRpcConfig::default_for_test();
+        rpc_config.enable_rpc_transaction_history = true;
+        rpc_config.enable_extended_tx_metadata_storage = true;
+        validator.rpc_config(rpc_config);
+
+        let mut pubsub_config = PubSubConfig::default_for_tests();
+        pubsub_config.enable_block_subscription = true;
+        validator.pubsub_config(pubsub_config);
+
+        let upgrade_authority = Keypair::new();
+        validator.add_account(
+            upgrade_authority.pubkey(),
+            AccountSharedData::new(u64::MAX, 0, &system_program::ID),
+        );
+        validator.add_upgradeable_programs_with_path(&[
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_gateway::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_gateway.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_gas_service::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_gas_service.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_memo_program::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_memo_program.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: axelar_solana_its::id(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("axelar_solana_its.so"),
+            },
+            UpgradeableProgramInfo {
+                program_id: Pubkey::from_str("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+                    .unwrap(),
+                loader: bpf_loader_upgradeable::id(),
+                upgrade_authority: upgrade_authority.pubkey(),
+                program_path: workspace_root_dir()
+                    .join("tests")
+                    .join("fixtures")
+                    .join("mpl_token_metadata.so"),
+            },
+        ]);
+
+        let forced_sleep = if std::env::var("CI").is_ok() {
+            Duration::from_millis(1500)
+        } else {
+            Duration::from_millis(500)
+        };
+        let mut fixture = TestFixture::new_test_validator(validator, forced_sleep).await;
+        let init_payer = fixture.payer.insecure_clone();
+        fixture.payer = upgrade_authority.insecure_clone();
+
+        let operator = Keypair::new();
+        let domain_separator = [42; 32];
+        let initial_signers = make_verifiers_with_quorum(&[42], 0, 42, domain_separator);
+        let mut fixture = SolanaAxelarIntegrationMetadata {
+            domain_separator,
+            upgrade_authority,
+            fixture,
+            signers: initial_signers,
+            gateway_root_pda: axelar_solana_gateway::get_gateway_root_config_pda().0,
+            operator,
+            previous_signers_retention: 16,
+            minimum_rotate_signers_delay_seconds: 1,
+        };
+
+        fixture.initialize_gateway_config_account().await.unwrap();
+        fixture.payer = init_payer;
+        fixture
+    }
 }
