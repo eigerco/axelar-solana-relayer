@@ -190,7 +190,7 @@ struct ConfigMetadata {
     gas_service_program_id: Pubkey,
 }
 
-#[instrument(skip_all)]
+// #[instrument(skip_all)]
 async fn process_task(
     keypair: &Keypair,
     solana_rpc_client: &RpcClient,
@@ -211,51 +211,52 @@ async fn process_task(
             let message_id = task.message.message_id.clone();
 
             // communicate with the destination program
-            if let Err(error) = execute_task(task, metadata, signer, solana_rpc_client, keypair)
+            let Err(error) = execute_task(task, metadata, signer, solana_rpc_client, keypair)
                 .instrument(info_span!("execute task"))
                 .in_current_span()
                 .await
-            {
-                let event = match error.downcast_ref::<ComputeBudgetError>() {
-                    Some(&ComputeBudgetError::TransactionError {
-                        source: ref _source,
-                        signature,
-                    }) => {
-                        let (meta, maybe_block_time) =
-                            get_confirmed_transaction_metadata(solana_rpc_client, &signature)
-                                .await?;
-
-                        message_executed_event(
-                            signature,
-                            source_chain,
-                            message_id,
-                            MessageExecutionStatus::Reverted,
-                            maybe_block_time,
-                            Token {
-                                token_id: None,
-                                amount: BigInt::from_u64(meta.fee),
-                            },
-                        )
-                    }
-                    _ => {
-                        // Any other error, probably happening before execution: Simulation error,
-                        // error building an instruction, parsing pubkey, rpc transport error,
-                        // etc.
-                        cannot_execute_message_event(
-                            task_item.id,
-                            source_chain,
-                            message_id,
-                            CannotExecuteMessageReason::Error,
-                            error.to_string(),
-                        )
-                    }
-                };
-
-                let command = AmplifierCommand::PublishEvents(PublishEventsRequest {
-                    events: vec![event],
-                });
-                amplifier_client.sender.send(command).await?;
+            else {
+                return Ok(());
             };
+
+            let event = match error.downcast_ref::<ComputeBudgetError>() {
+                Some(&ComputeBudgetError::TransactionError {
+                    source: ref _source,
+                    signature,
+                }) => {
+                    let (meta, maybe_block_time) =
+                        get_confirmed_transaction_metadata(solana_rpc_client, &signature).await?;
+
+                    message_executed_event(
+                        signature,
+                        source_chain,
+                        message_id,
+                        MessageExecutionStatus::Reverted,
+                        maybe_block_time,
+                        Token {
+                            token_id: None,
+                            amount: BigInt::from_u64(meta.fee),
+                        },
+                    )
+                }
+                _ => {
+                    // Any other error, probably happening before execution: Simulation error,
+                    // error building an instruction, parsing pubkey, rpc transport error,
+                    // etc.
+                    cannot_execute_message_event(
+                        task_item.id,
+                        source_chain,
+                        message_id,
+                        CannotExecuteMessageReason::Error,
+                        error.to_string(),
+                    )
+                }
+            };
+
+            let command = AmplifierCommand::PublishEvents(PublishEventsRequest {
+                events: vec![event],
+            });
+            amplifier_client.sender.send(command).await?;
         }
         Task::Refund(task) => {
             refund_task(task, metadata, solana_rpc_client, keypair).await?;
