@@ -229,7 +229,7 @@ dependencies = [
 [[package]]
 name = "amplifier-api"
 version = "0.1.1"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=7f84b8d#7f84b8d20ec399cce16bd4a2deb26d848afa7760"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=5c909d2#5c909d2d0f8f5395899c4679e676a278e4340d2d"
 dependencies = [
  "base64 0.22.1",
  "bnum 0.12.1",
@@ -1614,7 +1614,7 @@ dependencies = [
 [[package]]
 name = "common-serde-utils"
 version = "0.1.1"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=7f84b8d#7f84b8d20ec399cce16bd4a2deb26d848afa7760"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=5c909d2#5c909d2d0f8f5395899c4679e676a278e4340d2d"
 dependencies = [
  "serde",
 ]
@@ -5702,7 +5702,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 [[package]]
 name = "relayer-amplifier-api-integration"
 version = "0.1.1"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=7f84b8d#7f84b8d20ec399cce16bd4a2deb26d848afa7760"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=5c909d2#5c909d2d0f8f5395899c4679e676a278e4340d2d"
 dependencies = [
  "amplifier-api",
  "common-serde-utils 0.1.1",
@@ -5723,7 +5723,7 @@ dependencies = [
 [[package]]
 name = "relayer-amplifier-state"
 version = "0.1.1"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=7f84b8d#7f84b8d20ec399cce16bd4a2deb26d848afa7760"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=5c909d2#5c909d2d0f8f5395899c4679e676a278e4340d2d"
 dependencies = [
  "amplifier-api",
 ]
@@ -5731,7 +5731,7 @@ dependencies = [
 [[package]]
 name = "relayer-engine"
 version = "0.1.1"
-source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=7f84b8d#7f84b8d20ec399cce16bd4a2deb26d848afa7760"
+source = "git+https://github.com/eigerco/axelar-relayer-core.git?rev=5c909d2#5c909d2d0f8f5395899c4679e676a278e4340d2d"
 dependencies = [
  "eyre",
  "serde",

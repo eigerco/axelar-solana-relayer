@@ -198,18 +198,15 @@ async fn process_task(
     task_item: TaskItem,
     metadata: &ConfigMetadata,
 ) -> eyre::Result<()> {
-    use amplifier_api::types::Task::{Execute, GatewayTx, Refund, Verify};
+    use amplifier_api::types::Task;
     let signer = keypair.pubkey();
     let gateway_root_pda = metadata.gateway_root_pda;
 
     match task_item.task {
-        Verify(_verify_task) => {
-            tracing::warn!("solana blockchain is not supposed to receive the `verify_task`");
-        }
-        GatewayTx(task) => {
+        Task::GatewayTx(task) => {
             gateway_tx_task(task, gateway_root_pda, signer, solana_rpc_client, keypair).await?;
         }
-        Execute(task) => {
+        Task::Execute(task) => {
             let source_chain = task.message.source_chain.clone();
             let message_id = task.message.message_id.clone();
 
@@ -260,8 +257,14 @@ async fn process_task(
                 amplifier_client.sender.send(command).await?;
             };
         }
-        Refund(task) => {
+        Task::Refund(task) => {
             refund_task(task, metadata, solana_rpc_client, keypair).await?;
+        }
+        Task::Verify(_verify_task) => {
+            tracing::warn!("solana blockchain is not supposed to receive the `verify_task`");
+        }
+        Task::ConstructProof(_) => {
+            // no op
         }
     };
 
