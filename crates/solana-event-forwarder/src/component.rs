@@ -654,6 +654,7 @@ mod tests {
             &rpc_client,
         )
         .await
+        .unwrap()
         .unwrap();
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
@@ -756,6 +757,7 @@ mod tests {
             });
         let tx = fetch_logs(CommitmentConfig::confirmed(), only_gas_add_sig, &rpc_client)
             .await
+            .unwrap()
             .unwrap();
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
@@ -872,6 +874,7 @@ mod tests {
             &rpc_client,
         )
         .await
+        .unwrap()
         .unwrap();
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();

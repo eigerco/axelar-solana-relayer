@@ -18,7 +18,7 @@ use tracing::{info_span, Instrument as _};
 use super::MessageSender;
 use crate::component::log_processor::fetch_logs;
 use crate::component::signature_batch_scanner;
-use crate::SolanaTransaction;
+use crate::{SolanaTransaction, TxStatus};
 
 #[tracing::instrument(skip_all, err, name = "realtime log ingestion")]
 pub(crate) async fn process_realtime_logs(
@@ -61,19 +61,25 @@ pub(crate) async fn process_realtime_logs(
                 // only successful txs are checked
                 .filter(|x| core::future::ready(x.value.err.is_none()));
 
-        // We have special handling for the very first message we receive:
-        // We fetch messages in batches based on the config defitned strategy to recover old
-        // messages
-        // Get the first item from the ws_stream
-        let first_item = ws_stream.next().await;
-        let Some(first_item) = first_item else {
-            // Reconnect if connection dropped
-            continue 'outer;
+        let t2_signature = loop {
+            // We have special handling for the very first message we receive:
+            // We fetch messages in batches based on the config defitned strategy to recover old
+            // messages
+            // Get the first item from the ws_stream
+            let first_item = ws_stream.next().await;
+            let Some(first_item) = first_item else {
+                // Reconnect if connection dropped
+                continue 'outer;
+            };
+            // Process the first successful item
+            let sig = Signature::from_str(&first_item.value.signature)
+                .expect("signature from RPC must be valid");
+            let tx = fetch_logs(config.commitment, sig, &rpc_client).await?;
+            if let TxStatus::Successful(tx) = tx {
+                break tx;
+            };
         };
-        // Process the first item
-        let sig = Signature::from_str(&first_item.value.signature)
-            .expect("signature from RPC must be valid");
-        let t2_signature = fetch_logs(config.commitment, sig, &rpc_client).await?;
+
         tracing::debug!(
             ?t2_signature.signature,
             ?latest_processed_signature,
@@ -121,8 +127,11 @@ pub(crate) async fn process_realtime_logs(
                         let rpc_client = Arc::clone(&rpc_client);
                         let fetch_future = async move {
                             let log_item = fetch_logs(config.commitment, sig, &rpc_client).await?;
+                            let TxStatus::Successful(log_item) = log_item else {
+                                return Ok(None)
+                            };
                             tracing::info!(item = ?log_item.signature, "found tx");
-                            eyre::Result::Ok(log_item)
+                            eyre::Result::Ok(Some(log_item))
                         };
                         fetch_futures.push(fetch_future);
                     }
@@ -141,13 +150,16 @@ pub(crate) async fn process_realtime_logs(
         });
 
         // Process the merged stream
-        while let Option::<eyre::Result<SolanaTransaction>>::Some(result) =
+        while let Option::<eyre::Result<Option<SolanaTransaction>>>::Some(result) =
             merged_stream.next().await
         {
             match result {
-                Ok(log_item) => {
+                Ok(Some(log_item)) => {
                     // Send the fetched log item
                     signature_sender.send(log_item).await?;
+                }
+                Ok(None) => {
+                    // no op
                 }
                 Err(err) => {
                     // Handle error in fetch_logs

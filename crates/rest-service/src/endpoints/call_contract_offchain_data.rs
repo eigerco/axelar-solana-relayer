@@ -17,7 +17,7 @@ use futures::SinkExt as _;
 use gateway_event_stack::{MatchContext, ProgramInvocationState};
 use relayer_amplifier_api_integration::AmplifierCommand;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_listener::{fetch_logs, SolanaTransaction};
+use solana_listener::{fetch_logs, SolanaTransaction, TxStatus};
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::signature::Signature;
 use thiserror::Error;
@@ -106,6 +106,11 @@ async fn try_build_and_push_event_with_data(
 ) -> Result<(), CallContractOffchainDataError> {
     let solana_transaction =
         fetch_logs(CommitmentConfig::confirmed(), signature, &solana_rpc_client).await?;
+    let TxStatus::Successful(solana_transaction) = solana_transaction else {
+        return Err(CallContractOffchainDataError::FailedToFetchTransactionLogs(
+            eyre::Report::msg("tx was not successful"),
+        ));
+    };
     let hash = solana_sdk::keccak::hash(&data).to_bytes();
     let match_context = MatchContext::new(&axelar_solana_gateway::id().to_string());
     let invocations = gateway_event_stack::build_program_event_stack(

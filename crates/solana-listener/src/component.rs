@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
+use solana_sdk::transaction::TransactionError;
 
 use crate::config;
 
@@ -13,9 +15,8 @@ mod signature_batch_scanner;
 mod signature_realtime_scanner;
 
 pub use log_processor::fetch_logs;
+
 /// Typical message with the produced work.
-/// Contains the handle to a task that resolves into a
-/// [`SolanaTransaction`].
 #[derive(Debug, Clone)]
 pub struct SolanaTransaction {
     /// signature of the transaction (id)
@@ -24,10 +25,39 @@ pub struct SolanaTransaction {
     pub timestamp: Option<DateTime<Utc>>,
     /// The raw transaction logs
     pub logs: Vec<String>,
+    /// The accounts that were passed to an instructoin.
+    /// Each inner vector represents an instruction.
+    /// The first element in the tuple is the program id for a given ix
+    pub instruction_accounts: Vec<(Pubkey, Vec<Pubkey>)>,
     /// the slot number of the tx
     pub slot: u64,
     /// How expensive was the transaction expressed in lamports
     pub cost_in_lamports: u64,
+}
+
+#[derive(Debug, Clone)]
+/// Transaction status
+pub enum TxStatus {
+    Successful(SolanaTransaction),
+    Failed {
+        tx: SolanaTransaction,
+        error: TransactionError,
+    },
+}
+
+impl TxStatus {
+    pub fn unwrap(self) -> SolanaTransaction {
+        match self {
+            TxStatus::Successful(solana_transaction) => solana_transaction,
+            TxStatus::Failed { .. } => panic!(),
+        }
+    }
+    pub fn unwrap_err(self) -> (SolanaTransaction, TransactionError) {
+        match self {
+            TxStatus::Successful(..) => panic!(),
+            TxStatus::Failed { tx, error } => (tx, error),
+        }
+    }
 }
 
 pub(crate) type MessageSender = futures::channel::mpsc::UnboundedSender<SolanaTransaction>;

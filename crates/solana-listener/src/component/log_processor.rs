@@ -12,7 +12,7 @@ use solana_transaction_status::option_serializer::OptionSerializer;
 use solana_transaction_status::{EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding};
 use tokio::task::JoinSet;
 
-use super::{MessageSender, SolanaTransaction};
+use super::{MessageSender, SolanaTransaction, TxStatus};
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn fetch_and_send(
@@ -28,6 +28,9 @@ pub(crate) async fn fetch_and_send(
             let mut signature_sender = signature_sender.clone();
             async move {
                 let tx = fetch_logs(commitment, signature, &rpc_client).await?;
+                let TxStatus::Successful(tx) = tx else {
+                    return Ok(());
+                };
                 signature_sender.send(tx).await?;
                 Result::<_, eyre::Report>::Ok(())
             }
@@ -48,13 +51,12 @@ pub(crate) async fn fetch_and_send(
 /// - If request to the Solana RPC fails
 /// - If the metadata is not included with the logs
 /// - If the logs are not included
-/// - If the transaction was not successful
 #[tracing::instrument(skip_all, fields(signtaure))]
 pub async fn fetch_logs(
     commitment: CommitmentConfig,
     signature: Signature,
     rpc_client: &RpcClient,
-) -> eyre::Result<SolanaTransaction> {
+) -> eyre::Result<TxStatus> {
     use solana_client::rpc_config::RpcTransactionConfig;
     let config = RpcTransactionConfig {
         encoding: Some(UiTransactionEncoding::Binary),
@@ -81,6 +83,20 @@ pub async fn fetch_logs(
     )
     .await?;
 
+    // parse the provided accounts
+    let message = transaction_with_meta.transaction.decode().unwrap().message;
+    let ixs = message.instructions();
+    let accounts = message.static_account_keys();
+    let mut instruction_accounts = Vec::with_capacity(ixs.len());
+    for ix in ixs {
+        let mut tmp_accounts = Vec::with_capacity(ix.accounts.len());
+        let program_id = accounts[ix.program_id_index as usize];
+        for account_idx in ix.accounts.iter().copied() {
+            tmp_accounts.push(accounts[account_idx as usize]);
+        }
+        instruction_accounts.push((program_id, tmp_accounts));
+    }
+
     let meta = transaction_with_meta
         .meta
         .ok_or_eyre("metadata not included with logs")?;
@@ -88,17 +104,19 @@ pub async fn fetch_logs(
     let OptionSerializer::Some(logs) = meta.log_messages else {
         eyre::bail!("logs not included");
     };
-    if meta.err.is_some() {
-        eyre::bail!("tx was not successful");
-    }
 
-    let transaction = SolanaTransaction {
+    let tx = SolanaTransaction {
         signature,
         logs,
         slot,
         timestamp: block_time.and_then(|secs| DateTime::from_timestamp(secs, 0)),
         cost_in_lamports: meta.fee,
+        instruction_accounts,
     };
 
-    Ok(transaction)
+    let tx = match meta.err {
+        Some(error) => TxStatus::Failed { tx, error },
+        None => TxStatus::Successful(tx),
+    };
+    Ok(tx)
 }
