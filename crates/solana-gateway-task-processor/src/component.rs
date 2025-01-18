@@ -407,7 +407,7 @@ async fn execute_task(
             )
             .await?;
 
-            send_transaction(solana_rpc_client, keypair, ix).await?;
+            send_gateway_tx(solana_rpc_client, keypair, ix).await?;
         }
         axelar_solana_governance::ID => {
             let ix = axelar_solana_governance::instructions::builder::calculate_gmp_ix(
@@ -417,7 +417,7 @@ async fn execute_task(
                 &message,
                 &payload,
             )?;
-            send_transaction(solana_rpc_client, keypair, ix).await?;
+            send_gateway_tx(solana_rpc_client, keypair, ix).await?;
         }
         _ => {
             validate_relayer_not_in_payload(&payload, signer)?;
@@ -429,7 +429,7 @@ async fn execute_task(
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
             )?;
-            send_transaction(solana_rpc_client, keypair, ix).await?;
+            send_gateway_tx(solana_rpc_client, keypair, ix).await?;
         }
     }
 

@@ -21,6 +21,7 @@ solana-sdk.workspace = true
 axelar-solana-gateway.workspace = true
 itertools.workspace = true
 borsh.workspace = true
+axelar-executable.workspace = true
 gateway-event-stack.workspace = true
 solana-rpc-client.workspace = true
 

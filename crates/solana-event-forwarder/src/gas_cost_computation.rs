@@ -2,10 +2,12 @@ use std::future;
 use std::ops::DivAssign;
 
 use axelar_solana_gateway::instructions::GatewayInstruction;
+use axelar_solana_gateway::processor::GatewayEvent;
 use borsh::BorshDeserialize;
 use futures::stream::FuturesUnordered;
 use futures::{StreamExt, TryStreamExt};
 use gateway_event_stack::{build_program_event_stack, MatchContext, ProgramInvocationState};
+use itertools::Itertools;
 use solana_listener::{fetch_logs, SolanaTransaction, TxStatus};
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 use solana_rpc_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
@@ -48,15 +50,16 @@ use solana_sdk::signature::Signature;
 /// sends many small txs again. The same approach as before, we just parse for different accounts.
 pub async fn compute_total_gas(
     gateway_program_id: Pubkey,
-    tx: SolanaTransaction,
+    tx: &SolanaTransaction,
     rpc: RpcClient,
     commitment: CommitmentConfig,
 ) -> eyre::Result<u64> {
     let mut total_gas_cost = tx.cost_in_lamports;
 
-    for (program_id, accounts, mut payload) in tx.ixs {
+    // handle approve messages / rotate signers ixs
+    for (program_id, accounts, payload) in tx.ixs.iter() {
         match program_id {
-            id if id == gateway_program_id => {
+            id if *id == gateway_program_id => {
                 let Ok(ix) = borsh::from_slice::<GatewayInstruction>(&payload) else {
                     continue;
                 };
@@ -103,12 +106,26 @@ pub async fn compute_total_gas(
                     }
                 }
             }
-            _ => {
-                continue;
+            _other => {
+                const MESSAGE_PAYLOAD_PDA_IDX: usize = 1;
+                // check if this is `axelar_executable` call
+                let Some(Ok(_message)) = axelar_executable::parse_axelar_message(&payload) else {
+                    continue;
+                };
+
+                let message_payload_pda = *accounts.get(MESSAGE_PAYLOAD_PDA_IDX).unwrap();
+                let upload_payload_costs = cost_of_payload_uploading(
+                    &rpc,
+                    commitment,
+                    message_payload_pda,
+                    gateway_program_id,
+                )
+                .await?;
+
+                total_gas_cost = total_gas_cost.saturating_add(upload_payload_costs);
             }
         }
     }
-
     Ok(total_gas_cost)
 }
 
@@ -152,6 +169,46 @@ async fn cost_of_signature_verification(
         }
     }
     Ok(verify_signatures_costs)
+}
+
+async fn cost_of_payload_uploading(
+    rpc: &RpcClient,
+    commitment: CommitmentConfig,
+    message_payload_pda: Pubkey,
+    gateway_program_id: Pubkey,
+) -> Result<u64, eyre::Error> {
+    let signatures = fetch_signatures(rpc, commitment, &message_payload_pda).await?;
+    let mut tx_logs = signatures
+        .into_iter()
+        .map(|x| fetch_logs(commitment, x, rpc))
+        .collect::<FuturesUnordered<_>>();
+    let tx_logs = tx_logs.try_collect::<Vec<_>>().await?;
+    let mut total_gas_costs = 0_u64;
+    for tx in tx_logs {
+        let TxStatus::Successful(tx) = tx else {
+            continue;
+        };
+        for (program_id, _accounts, payload) in tx.ixs {
+            let Ok(instruction_data) = borsh::from_slice::<GatewayInstruction>(&payload) else {
+                continue;
+            };
+
+            if program_id != gateway_program_id {
+                continue;
+            }
+
+            match instruction_data {
+                GatewayInstruction::InitializeMessagePayload { .. } |
+                GatewayInstruction::WriteMessagePayload { .. } |
+                GatewayInstruction::CommitMessagePayload { .. } |
+                GatewayInstruction::CloseMessagePayload { .. } => {
+                    total_gas_costs = total_gas_costs.saturating_add(tx.cost_in_lamports);
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(total_gas_costs)
 }
 
 async fn fetch_signatures(
