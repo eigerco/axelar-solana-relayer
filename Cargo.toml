@@ -98,6 +98,7 @@ xshell = "0.2"
 
 # Utils
 arrayvec = "0.7"
+borsh = "1"
 url = { version = "2.5", features = ["serde"] }
 temp-env = "0.3"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }

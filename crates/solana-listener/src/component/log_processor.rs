@@ -87,14 +87,15 @@ pub async fn fetch_logs(
     let message = transaction_with_meta.transaction.decode().unwrap().message;
     let ixs = message.instructions();
     let accounts = message.static_account_keys();
-    let mut instruction_accounts = Vec::with_capacity(ixs.len());
+    let mut parsed_ixs = Vec::with_capacity(ixs.len());
     for ix in ixs {
         let mut tmp_accounts = Vec::with_capacity(ix.accounts.len());
         let program_id = accounts[ix.program_id_index as usize];
         for account_idx in ix.accounts.iter().copied() {
             tmp_accounts.push(accounts[account_idx as usize]);
         }
-        instruction_accounts.push((program_id, tmp_accounts));
+        // todo: get rid of clone
+        parsed_ixs.push((program_id, tmp_accounts, ix.data.clone()));
     }
 
     let meta = transaction_with_meta
@@ -111,7 +112,7 @@ pub async fn fetch_logs(
         slot,
         timestamp: block_time.and_then(|secs| DateTime::from_timestamp(secs, 0)),
         cost_in_lamports: meta.fee,
-        instruction_accounts,
+        ixs: parsed_ixs,
     };
 
     let tx = match meta.err {

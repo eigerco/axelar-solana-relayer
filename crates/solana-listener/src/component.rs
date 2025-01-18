@@ -26,9 +26,10 @@ pub struct SolanaTransaction {
     /// The raw transaction logs
     pub logs: Vec<String>,
     /// The accounts that were passed to an instructoin.
-    /// Each inner vector represents an instruction.
-    /// The first element in the tuple is the program id for a given ix
-    pub instruction_accounts: Vec<(Pubkey, Vec<Pubkey>)>,
+    /// - first item: the program id
+    /// - second item: the Pubkeys provided to the ix
+    /// - third item: payload data
+    pub ixs: Vec<(Pubkey, Vec<Pubkey>, Vec<u8>)>,
     /// the slot number of the tx
     pub slot: u64,
     /// How expensive was the transaction expressed in lamports
