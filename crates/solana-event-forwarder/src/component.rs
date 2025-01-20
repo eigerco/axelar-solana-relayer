@@ -589,8 +589,9 @@ mod tests {
     use futures::{SinkExt as _, StreamExt as _};
     use pretty_assertions::assert_eq;
     use relayer_amplifier_api_integration::amplifier_api::types::{
-        BigInt, CallEvent, CallEventMetadata, Event, EventBase, EventMetadata, GasCreditEvent,
-        GatewayV2Message, PublishEventsRequest, Token, TxEvent, TxId,
+        BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventMetadata,
+        GasCreditEvent, GatewayV2Message, MessageApprovedEvent, MessageApprovedEventMetadata,
+        PublishEventsRequest, Token, TxEvent, TxId,
     };
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
     use solana_listener::{fetch_logs, SolanaListenerClient};
@@ -687,14 +688,17 @@ mod tests {
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
         // solana memo program to evm raw message
+        let mut signatures_to_sum = vec![];
         let payload = "msg memo only".to_owned();
         let payload_hash = keccak::hash(payload.as_bytes()).0;
+        let source_address = "0xdeadbeef".to_string();
+        let cc_id_id = "0xhash-123".to_string();
         let message = Message {
             cc_id: CrossChainId {
                 chain: "ethereum".to_string(),
-                id: "123".to_string(),
+                id: cc_id_id.clone(),
             },
-            source_address: "0xdeadbeef".to_string(),
+            source_address: source_address.clone(),
             destination_chain: "solana".to_string(),
             destination_address: axelar_solana_memo_program::ID.to_string(),
             payload_hash,
@@ -708,7 +712,9 @@ mod tests {
             execute_data.payload_merkle_root,
         )
         .unwrap();
-        fixture.send_tx_with_signatures(&[ix]).await.unwrap();
+        let sigs = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        signatures_to_sum.push(sigs[0]);
 
         let (verifier_set_tracker_pda, _verifier_set_tracker_bump) =
             get_verifier_set_tracker_pda(execute_data.signing_verifier_set_merkle_root);
@@ -729,6 +735,8 @@ mod tests {
                 ])
                 .await
                 .unwrap();
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            signatures_to_sum.push(sigs[0]);
         }
 
         // Check that the PDA contains the expected data
@@ -758,19 +766,65 @@ mod tests {
             incoming_message_pda,
         )
         .unwrap();
-        let (sig, ..) = fixture.send_tx_with_signatures(&[ix]).await.unwrap();
-        let sig = sig[0];
+        let (sigs, ..) = fixture.send_tx_with_signatures(&[ix]).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let approve_signature = sigs[0];
+        signatures_to_sum.push(approve_signature);
 
-        let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
-            .await
-            .unwrap()
-            .unwrap();
+        let tx = fetch_logs(
+            CommitmentConfig::confirmed(),
+            approve_signature,
+            &rpc_client,
+        )
+        .await
+        .unwrap()
+        .unwrap();
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
 
+        let mut expected_sum = 0;
+        for sig in signatures_to_sum {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
+                .await
+                .unwrap()
+                .unwrap();
+            expected_sum += tx.cost_in_lamports;
+        }
+
+        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
+        let event = MessageApprovedEvent {
+            base: EventBase {
+                event_id: event_id.clone(),
+                meta: Some(EventMetadata {
+                    tx_id: Some(TxId(approve_signature.to_string())),
+                    timestamp: tx.timestamp,
+                    from_address: Some(source_address.clone()),
+                    finalized: Some(true),
+                    extra: MessageApprovedEventMetadata {
+                        command_id: Some(CommandId(bs58::encode(command_id).into_string())),
+                    },
+                }),
+            },
+            message: GatewayV2Message {
+                message_id: TxEvent(cc_id_id.clone()),
+                source_chain: "ethereum".to_string(),
+                source_address: "0xdeadbeef".to_string(),
+                destination_address: axelar_solana_memo_program::ID.to_string(),
+                payload_hash: payload_hash.to_vec(),
+            },
+            cost: Token {
+                token_id: None,
+                amount: BigInt::from_u64(expected_sum),
+            },
+        };
         assert_eq!(
             item,
-            AmplifierCommand::PublishEvents(PublishEventsRequest::builder().events(vec![]).build())
+            AmplifierCommand::PublishEvents(
+                PublishEventsRequest::builder()
+                    .events(vec![Event::MessageApproved(event)])
+                    .build()
+            )
         );
     }
 
@@ -1122,7 +1176,7 @@ mod tests {
 
         let operator = Keypair::new();
         let domain_separator = [42; 32];
-        let initial_signers = make_verifiers_with_quorum(&[42], 0, 42, domain_separator);
+        let initial_signers = make_verifiers_with_quorum(&[42, 33, 26], 0, 100, domain_separator);
         let mut fixture = SolanaAxelarIntegrationMetadata {
             domain_separator,
             upgrade_authority,
