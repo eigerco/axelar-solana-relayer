@@ -704,72 +704,17 @@ mod tests {
             payload_hash,
         };
         let messages = [message];
-        let payload = Payload::Messages(Messages(messages.to_vec()));
-        let execute_data = fixture.construct_execute_data(&fixture.signers.clone(), payload);
-        let ix = axelar_solana_gateway::instructions::initialize_payload_verification_session(
-            fixture.payer.pubkey(),
-            fixture.gateway_root_pda,
-            execute_data.payload_merkle_root,
-        )
-        .unwrap();
-        let sigs = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0;
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        signatures_to_sum.push(sigs[0]);
-
-        let (verifier_set_tracker_pda, _verifier_set_tracker_bump) =
-            get_verifier_set_tracker_pda(execute_data.signing_verifier_set_merkle_root);
-
-        for signature_leaves in &execute_data.signing_verifier_set_leaves {
-            // Verify the signature
-            let ix = axelar_solana_gateway::instructions::verify_signature(
-                fixture.gateway_root_pda,
-                verifier_set_tracker_pda,
-                execute_data.payload_merkle_root,
-                signature_leaves.clone(),
-            )
-            .unwrap();
-            let (sigs, ..) = fixture
-                .send_tx_with_signatures(&[
-                    ComputeBudgetInstruction::set_compute_unit_limit(250_000),
-                    ix,
-                ])
-                .await
-                .unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            signatures_to_sum.push(sigs[0]);
-        }
-
-        // Check that the PDA contains the expected data
-        let (verification_pda, _bump) = axelar_solana_gateway::get_signature_verification_pda(
-            &fixture.gateway_root_pda,
-            &execute_data.payload_merkle_root,
-        );
-
-        let MerkleisedPayload::NewMessages { messages } = execute_data.payload_items else {
-            unreachable!("we constructed a message batch");
-        };
+        let (execute_data, verification_pda, messages) =
+            verify_signatures(&messages, &mut fixture, &mut signatures_to_sum).await;
         let message = messages[0].clone();
-        let command_id = command_id(
-            &message.leaf.message.cc_id.chain,
-            &message.leaf.message.cc_id.id,
-        );
-
-        let (incoming_message_pda, _incoming_message_pda_bump) =
-            get_incoming_message_pda(&command_id);
-
-        let ix = axelar_solana_gateway::instructions::approve_messages(
+        let (command_id, approve_signature) = approve_message(
             message,
-            execute_data.payload_merkle_root,
-            fixture.gateway_root_pda,
-            fixture.payer.pubkey(),
+            execute_data,
+            &mut fixture,
             verification_pda,
-            incoming_message_pda,
+            &mut signatures_to_sum,
         )
-        .unwrap();
-        let (sigs, ..) = fixture.send_tx_with_signatures(&[ix]).await.unwrap();
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let approve_signature = sigs[0];
-        signatures_to_sum.push(approve_signature);
+        .await;
 
         let tx = fetch_logs(
             CommitmentConfig::confirmed(),
@@ -783,8 +728,8 @@ mod tests {
         let item = rx_amplifier.next().await.unwrap();
 
         let mut expected_sum = 0;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         for sig in signatures_to_sum {
-            tokio::time::sleep(Duration::from_secs(1)).await;
             let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
                 .await
                 .unwrap()
@@ -826,6 +771,93 @@ mod tests {
                     .build()
             )
         );
+    }
+
+    async fn approve_message(
+        message: axelar_solana_encoding::types::execute_data::MerkleisedMessage,
+        execute_data: axelar_solana_encoding::types::execute_data::ExecuteData,
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+        verification_pda: Pubkey,
+        signatures_to_sum: &mut Vec<Signature>,
+    ) -> ([u8; 32], Signature) {
+        let command_id = command_id(
+            &message.leaf.message.cc_id.chain,
+            &message.leaf.message.cc_id.id,
+        );
+
+        let (incoming_message_pda, _incoming_message_pda_bump) =
+            get_incoming_message_pda(&command_id);
+
+        let ix = axelar_solana_gateway::instructions::approve_messages(
+            message,
+            execute_data.payload_merkle_root,
+            fixture.gateway_root_pda,
+            fixture.payer.pubkey(),
+            verification_pda,
+            incoming_message_pda,
+        )
+        .unwrap();
+        let (sigs, ..) = fixture.send_tx_with_signatures(&[ix]).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let approve_signature = sigs[0];
+        signatures_to_sum.push(approve_signature);
+        (command_id, approve_signature)
+    }
+
+    async fn verify_signatures(
+        messages: &[Message],
+        fixture: &mut SolanaAxelarIntegrationMetadata,
+        signatures_to_sum: &mut Vec<Signature>,
+    ) -> (
+        axelar_solana_encoding::types::execute_data::ExecuteData,
+        Pubkey,
+        Vec<axelar_solana_encoding::types::execute_data::MerkleisedMessage>,
+    ) {
+        let payload = Payload::Messages(Messages(messages.to_vec()));
+        let execute_data = fixture.construct_execute_data(&fixture.signers.clone(), payload);
+        let ix = axelar_solana_gateway::instructions::initialize_payload_verification_session(
+            fixture.payer.pubkey(),
+            fixture.gateway_root_pda,
+            execute_data.payload_merkle_root,
+        )
+        .unwrap();
+        let sigs = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        signatures_to_sum.push(sigs[0]);
+
+        let (verifier_set_tracker_pda, _verifier_set_tracker_bump) =
+            get_verifier_set_tracker_pda(execute_data.signing_verifier_set_merkle_root);
+
+        for signature_leaves in &execute_data.signing_verifier_set_leaves {
+            // Verify the signature
+            let ix = axelar_solana_gateway::instructions::verify_signature(
+                fixture.gateway_root_pda,
+                verifier_set_tracker_pda,
+                execute_data.payload_merkle_root,
+                signature_leaves.clone(),
+            )
+            .unwrap();
+            let (sigs, ..) = fixture
+                .send_tx_with_signatures(&[
+                    ComputeBudgetInstruction::set_compute_unit_limit(250_000),
+                    ix,
+                ])
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            signatures_to_sum.push(sigs[0]);
+        }
+
+        // Check that the PDA contains the expected data
+        let (verification_pda, _bump) = axelar_solana_gateway::get_signature_verification_pda(
+            &fixture.gateway_root_pda,
+            &execute_data.payload_merkle_root,
+        );
+
+        let MerkleisedPayload::NewMessages { messages } = execute_data.payload_items.clone() else {
+            unreachable!("we constructed a message batch");
+        };
+        (execute_data, verification_pda, messages)
     }
 
     fn setup_forwarder(
