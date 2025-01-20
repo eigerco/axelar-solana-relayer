@@ -33,6 +33,7 @@ async fn main() {
         &config.solana_listener_component,
         &config.solana_gateway_task_processor,
         &config.amplifier_component,
+        Arc::clone(&rpc_client),
     );
     let name_on_amplifier = config.amplifier_component.chain.clone();
     let (amplifier_component, amplifier_client, amplifier_task_receiver) =

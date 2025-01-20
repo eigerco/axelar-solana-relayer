@@ -1,5 +1,6 @@
 use core::future::Future;
 use core::pin::Pin;
+use std::sync::Arc;
 
 use axelar_solana_gas_service::processor::{
     GasServiceEvent, NativeGasAddedEvent, NativeGasPaidForContractCallEvent, NativeGasRefundedEvent,
@@ -25,10 +26,11 @@ use relayer_amplifier_api_integration::AmplifierCommand;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 
+use crate::gas_cost_computation::compute_total_gas;
+
 /// The core component that is responsible for ingesting raw Solana events.
 ///
 /// As a result, the logs get parsed, filtererd and mapped to Amplifier API events.
-#[derive(Debug)]
 pub struct SolanaEventForwarder {
     config: crate::Config,
     solana_listener_client: solana_listener::SolanaListenerClient,
@@ -96,8 +98,13 @@ impl SolanaEventForwarder {
                 &message.logs,
                 parse_gas_service_log,
             );
-            // todo -- total cost is not representative
-            let total_cost = message.cost_in_lamports;
+            let total_cost = compute_total_gas(
+                self.config.gateway_program_id,
+                &message,
+                &self.config.rpc,
+                self.config.commitment,
+            )
+            .await?;
 
             // Collect all successful events into a vector
             let gateway_events_vec = keep_successful_events(gateway_program_stack)
@@ -569,6 +576,7 @@ fn construct_gas_event(
 mod tests {
     use core::time::Duration;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
@@ -582,7 +590,9 @@ mod tests {
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
     use solana_listener::{fetch_logs, SolanaListenerClient};
     use solana_rpc::rpc::JsonRpcConfig;
+    use solana_rpc::rpc_completed_slots_service::RpcCompletedSlotsService;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
+    use solana_rpc_client::nonblocking::rpc_client::RpcClient;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::commitment_config::CommitmentConfig;
     use solana_sdk::pubkey::Pubkey;
@@ -596,26 +606,10 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn event_forwrding_only_call_contract() {
         // setup
-        let config = crate::Config {
-            source_chain_name: "solana".to_owned(),
-            gateway_program_id: axelar_solana_gateway::id(),
-            gas_service_program_id: axelar_solana_gas_service::id(),
-        };
-        let (tx_amplifier, mut rx_amplifier) = futures::channel::mpsc::unbounded();
-        let (mut tx_listener, rx_listener) = futures::channel::mpsc::unbounded();
-        let amplifier_client = AmplifierCommandClient {
-            sender: tx_amplifier,
-        };
-        let solana_listener_client = SolanaListenerClient {
-            log_receiver: rx_listener,
-        };
-        let event_forwarder =
-            SolanaEventForwarder::new(config, solana_listener_client, amplifier_client);
-        let _task = tokio::spawn(event_forwarder.process_internal());
-
-        let mut fixture = setup().await;
+        let (mut fixture, rpc_client) = setup().await;
         let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
+        let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
         // solana memo program to evm raw message
         let payload = "msg memo only".to_owned();
@@ -633,21 +627,6 @@ mod tests {
         .unwrap();
         let only_call_contract_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
 
-        let rpc_client_url = match fixture.fixture.test_node {
-            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
-                ref validator,
-                ..
-            } => validator.rpc_url(),
-            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
-                unimplemented!()
-            }
-        };
-        let rpc_client =
-            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
-                max_concurrent_rpc_requests: 1,
-                solana_http_rpc: rpc_client_url.parse().unwrap(),
-                commitment: CommitmentConfig::confirmed(),
-            });
         let tx = fetch_logs(
             CommitmentConfig::confirmed(),
             only_call_contract_sig,
@@ -693,13 +672,19 @@ mod tests {
         );
     }
 
-    #[test_log::test(tokio::test)]
-    async fn event_forwrding_only_gas_event() {
-        // setup
+    fn setup_forwarder(
+        rpc_client: &Arc<RpcClient>,
+    ) -> (
+        futures::channel::mpsc::UnboundedReceiver<AmplifierCommand>,
+        futures::channel::mpsc::UnboundedSender<solana_listener::SolanaTransaction>,
+    ) {
+        let commitment = CommitmentConfig::confirmed();
         let config = crate::Config {
             source_chain_name: "solana".to_owned(),
             gateway_program_id: axelar_solana_gateway::id(),
             gas_service_program_id: axelar_solana_gas_service::id(),
+            rpc: rpc_client.clone(),
+            commitment,
         };
         let (tx_amplifier, mut rx_amplifier) = futures::channel::mpsc::unbounded();
         let (mut tx_listener, rx_listener) = futures::channel::mpsc::unbounded();
@@ -712,10 +697,16 @@ mod tests {
         let event_forwarder =
             SolanaEventForwarder::new(config, solana_listener_client, amplifier_client);
         let _task = tokio::spawn(event_forwarder.process_internal());
+        (rx_amplifier, tx_listener)
+    }
 
-        let mut fixture = setup().await;
-        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig) =
+    #[test_log::test(tokio::test)]
+    async fn event_forwrding_only_gas_event() {
+        // setup
+        let (mut fixture, rpc_client) = setup().await;
+        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
+        let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
         // solana memo program to evm raw message
         let signature_to_fund = [111; 64];
@@ -798,26 +789,10 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn event_forwrding_with_gas_and_contract_call() {
         // setup
-        let config = crate::Config {
-            source_chain_name: "solana".to_owned(),
-            gateway_program_id: axelar_solana_gateway::id(),
-            gas_service_program_id: axelar_solana_gas_service::id(),
-        };
-        let (tx_amplifier, mut rx_amplifier) = futures::channel::mpsc::unbounded();
-        let (mut tx_listener, rx_listener) = futures::channel::mpsc::unbounded();
-        let amplifier_client = AmplifierCommandClient {
-            sender: tx_amplifier,
-        };
-        let solana_listener_client = SolanaListenerClient {
-            log_receiver: rx_listener,
-        };
-        let event_forwarder =
-            SolanaEventForwarder::new(config, solana_listener_client, amplifier_client);
-        let _task = tokio::spawn(event_forwarder.process_internal());
-
-        let mut fixture = setup().await;
+        let (mut fixture, rpc_client) = setup().await;
         let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
+        let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
         let payload = "msg memo and gas".to_owned();
         let destination_chain_name = "evm".to_owned();
@@ -986,7 +961,7 @@ mod tests {
             .to_owned()
     }
 
-    pub(crate) async fn setup() -> SolanaAxelarIntegrationMetadata {
+    pub(crate) async fn setup() -> (SolanaAxelarIntegrationMetadata, Arc<RpcClient>) {
         use solana_test_validator::TestValidatorGenesis;
         let mut validator = TestValidatorGenesis::default();
 
@@ -1059,6 +1034,23 @@ mod tests {
 
         fixture.initialize_gateway_config_account().await.unwrap();
         fixture.payer = init_payer;
-        fixture
+
+        let rpc_client_url = match fixture.fixture.test_node {
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                ref validator,
+                ..
+            } => validator.rpc_url(),
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                unimplemented!()
+            }
+        };
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 1,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
+
+        (fixture, rpc_client)
     }
 }

@@ -51,12 +51,11 @@ use solana_sdk::signature::Signature;
 pub async fn compute_total_gas(
     gateway_program_id: Pubkey,
     tx: &SolanaTransaction,
-    rpc: RpcClient,
+    rpc: &RpcClient,
     commitment: CommitmentConfig,
 ) -> eyre::Result<u64> {
     let mut total_gas_cost = tx.cost_in_lamports;
 
-    // handle approve messages / rotate signers ixs
     for (program_id, accounts, payload) in tx.ixs.iter() {
         match program_id {
             id if *id == gateway_program_id => {
