@@ -578,6 +578,11 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use axelar_solana_encoding::types::execute_data::MerkleisedPayload;
+    use axelar_solana_encoding::types::messages::{CrossChainId, Message, Messages};
+    use axelar_solana_encoding::types::payload::Payload;
+    use axelar_solana_gateway::state::incoming_message::command_id;
+    use axelar_solana_gateway::{get_incoming_message_pda, get_verifier_set_tracker_pda};
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
@@ -595,6 +600,7 @@ mod tests {
     use solana_rpc_client::nonblocking::rpc_client::RpcClient;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::commitment_config::CommitmentConfig;
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::{Keypair, Signature};
     use solana_sdk::signer::Signer as _;
@@ -669,6 +675,102 @@ mod tests {
                     .events(vec![Event::Call(expected_event)])
                     .build()
             )
+        );
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn event_forwrding_message_approved() {
+        // setup
+        let (mut fixture, rpc_client) = setup().await;
+        let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+            setup_aux_contracts(&mut fixture).await;
+        let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
+
+        // solana memo program to evm raw message
+        let payload = "msg memo only".to_owned();
+        let payload_hash = keccak::hash(payload.as_bytes()).0;
+        let message = Message {
+            cc_id: CrossChainId {
+                chain: "ethereum".to_string(),
+                id: "123".to_string(),
+            },
+            source_address: "0xdeadbeef".to_string(),
+            destination_chain: "solana".to_string(),
+            destination_address: axelar_solana_memo_program::ID.to_string(),
+            payload_hash,
+        };
+        let messages = [message];
+        let payload = Payload::Messages(Messages(messages.to_vec()));
+        let execute_data = fixture.construct_execute_data(&fixture.signers.clone(), payload);
+        let ix = axelar_solana_gateway::instructions::initialize_payload_verification_session(
+            fixture.payer.pubkey(),
+            fixture.gateway_root_pda,
+            execute_data.payload_merkle_root,
+        )
+        .unwrap();
+        fixture.send_tx_with_signatures(&[ix]).await.unwrap();
+
+        let (verifier_set_tracker_pda, _verifier_set_tracker_bump) =
+            get_verifier_set_tracker_pda(execute_data.signing_verifier_set_merkle_root);
+
+        for signature_leaves in &execute_data.signing_verifier_set_leaves {
+            // Verify the signature
+            let ix = axelar_solana_gateway::instructions::verify_signature(
+                fixture.gateway_root_pda,
+                verifier_set_tracker_pda,
+                execute_data.payload_merkle_root,
+                signature_leaves.clone(),
+            )
+            .unwrap();
+            let (sigs, ..) = fixture
+                .send_tx_with_signatures(&[
+                    ComputeBudgetInstruction::set_compute_unit_limit(250_000),
+                    ix,
+                ])
+                .await
+                .unwrap();
+        }
+
+        // Check that the PDA contains the expected data
+        let (verification_pda, _bump) = axelar_solana_gateway::get_signature_verification_pda(
+            &fixture.gateway_root_pda,
+            &execute_data.payload_merkle_root,
+        );
+
+        let MerkleisedPayload::NewMessages { messages } = execute_data.payload_items else {
+            unreachable!("we constructed a message batch");
+        };
+        let message = messages[0].clone();
+        let command_id = command_id(
+            &message.leaf.message.cc_id.chain,
+            &message.leaf.message.cc_id.id,
+        );
+
+        let (incoming_message_pda, _incoming_message_pda_bump) =
+            get_incoming_message_pda(&command_id);
+
+        let ix = axelar_solana_gateway::instructions::approve_messages(
+            message,
+            execute_data.payload_merkle_root,
+            fixture.gateway_root_pda,
+            fixture.payer.pubkey(),
+            verification_pda,
+            incoming_message_pda,
+        )
+        .unwrap();
+        let (sig, ..) = fixture.send_tx_with_signatures(&[ix]).await.unwrap();
+        let sig = sig[0];
+
+        let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
+            .await
+            .unwrap()
+            .unwrap();
+        tx_listener.send(tx.clone()).await.unwrap();
+        let item = rx_amplifier.next().await.unwrap();
+
+        assert_eq!(
+            item,
+            AmplifierCommand::PublishEvents(PublishEventsRequest::builder().events(vec![]).build())
         );
     }
 

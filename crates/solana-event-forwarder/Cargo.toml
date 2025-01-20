@@ -36,6 +36,7 @@ solana-rpc.workspace = true
 test-log.workspace = true
 tokio.workspace = true
 pretty_assertions.workspace = true
+axelar-solana-encoding.workspace = true
 
 [lints]
 workspace = true
