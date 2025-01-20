@@ -74,7 +74,6 @@ pub async fn compute_total_gas(
                             commitment,
                             verification_session_pda,
                             gateway_program_id,
-                            &mut total_gas_cost,
                         )
                         .await?;
 
@@ -94,7 +93,6 @@ pub async fn compute_total_gas(
                             commitment,
                             verification_session_pda,
                             gateway_program_id,
-                            &mut total_gas_cost,
                         )
                         .await?;
 
@@ -133,7 +131,6 @@ async fn cost_of_signature_verification(
     commitment: CommitmentConfig,
     verification_session_pda: Pubkey,
     gateway_program_id: Pubkey,
-    total_gas_cost: &mut u64,
 ) -> Result<u64, eyre::Error> {
     let signatures = fetch_signatures(rpc, commitment, &verification_session_pda).await?;
     let mut tx_logs = signatures
@@ -157,7 +154,8 @@ async fn cost_of_signature_verification(
 
             match instruction_data {
                 GatewayInstruction::InitializePayloadVerificationSession { .. } => {
-                    *total_gas_cost = total_gas_cost.saturating_add(tx.cost_in_lamports);
+                    verify_signatures_costs =
+                        verify_signatures_costs.saturating_add(tx.cost_in_lamports);
                 }
                 GatewayInstruction::VerifySignature { .. } => {
                     verify_signatures_costs =

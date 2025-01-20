@@ -709,7 +709,7 @@ mod tests {
         let message = messages[0].clone();
         let (command_id, approve_signature) = approve_message(
             message,
-            execute_data,
+            &execute_data,
             &mut fixture,
             verification_pda,
             &mut signatures_to_sum,
@@ -773,9 +773,132 @@ mod tests {
         );
     }
 
+    #[test_log::test(tokio::test)]
+    async fn event_forwrding_two_message_approved() {
+        // setup
+        let (mut fixture, rpc_client) = setup().await;
+        let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+            setup_aux_contracts(&mut fixture).await;
+        let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
+
+        // solana memo program to evm raw message
+        let payload = "msg memo only".to_owned();
+        let payload_hash = keccak::hash(payload.as_bytes()).0;
+        let source_address = "0xdeadbeef".to_string();
+        let cc_id_id = "0xhash-123".to_string();
+        let message_one = Message {
+            cc_id: CrossChainId {
+                chain: "ethereum".to_string(),
+                id: cc_id_id.clone(),
+            },
+            source_address: source_address.clone(),
+            destination_chain: "solana".to_string(),
+            destination_address: axelar_solana_memo_program::ID.to_string(),
+            payload_hash,
+        };
+        let message_two = Message {
+            cc_id: CrossChainId {
+                chain: "ethereum".to_string(),
+                id: "0xhash-333".to_string(),
+            },
+            source_address: source_address.clone(),
+            destination_chain: "solana".to_string(),
+            destination_address: axelar_solana_memo_program::ID.to_string(),
+            payload_hash,
+        };
+        let messages = [message_one, message_two];
+        let mut verify_sigs = vec![];
+        let (execute_data, verification_pda, messages) =
+            verify_signatures(&messages, &mut fixture, &mut verify_sigs).await;
+        let message_one = messages[0].clone();
+        let message_two = messages[1].clone();
+        let mut approve_sigs = vec![];
+        let (command_id, approve_signature) = approve_message(
+            message_one,
+            &execute_data,
+            &mut fixture,
+            verification_pda,
+            &mut approve_sigs,
+        )
+        .await;
+        approve_message(
+            message_two,
+            &execute_data,
+            &mut fixture,
+            verification_pda,
+            &mut Vec::new(),
+        )
+        .await;
+
+        let tx = fetch_logs(
+            CommitmentConfig::confirmed(),
+            approve_signature,
+            &rpc_client,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        tx_listener.send(tx.clone()).await.unwrap();
+        let item = rx_amplifier.next().await.unwrap();
+
+        let mut expected_sum = 0;
+        for sig in verify_sigs.iter() {
+            let tx = fetch_logs(CommitmentConfig::confirmed(), *sig, &rpc_client)
+                .await
+                .unwrap()
+                .unwrap();
+            expected_sum += tx.cost_in_lamports / 2; // because we have 2 msgs in the array, the
+                                                     // signature verification cost is split between
+                                                     // them
+        }
+        for sig in approve_sigs.iter() {
+            let tx = fetch_logs(CommitmentConfig::confirmed(), *sig, &rpc_client)
+                .await
+                .unwrap()
+                .unwrap();
+            expected_sum += tx.cost_in_lamports;
+        }
+
+        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
+        let event = MessageApprovedEvent {
+            base: EventBase {
+                event_id: event_id.clone(),
+                meta: Some(EventMetadata {
+                    tx_id: Some(TxId(approve_signature.to_string())),
+                    timestamp: tx.timestamp,
+                    from_address: Some(source_address.clone()),
+                    finalized: Some(true),
+                    extra: MessageApprovedEventMetadata {
+                        command_id: Some(CommandId(bs58::encode(command_id).into_string())),
+                    },
+                }),
+            },
+            message: GatewayV2Message {
+                message_id: TxEvent(cc_id_id.clone()),
+                source_chain: "ethereum".to_string(),
+                source_address: "0xdeadbeef".to_string(),
+                destination_address: axelar_solana_memo_program::ID.to_string(),
+                payload_hash: payload_hash.to_vec(),
+            },
+            cost: Token {
+                token_id: None,
+                amount: BigInt::from_u64(expected_sum),
+            },
+        };
+        assert_eq!(
+            item,
+            AmplifierCommand::PublishEvents(
+                PublishEventsRequest::builder()
+                    .events(vec![Event::MessageApproved(event)])
+                    .build()
+            )
+        );
+    }
+
     async fn approve_message(
         message: axelar_solana_encoding::types::execute_data::MerkleisedMessage,
-        execute_data: axelar_solana_encoding::types::execute_data::ExecuteData,
+        execute_data: &axelar_solana_encoding::types::execute_data::ExecuteData,
         fixture: &mut SolanaAxelarIntegrationMetadata,
         verification_pda: Pubkey,
         signatures_to_sum: &mut Vec<Signature>,
