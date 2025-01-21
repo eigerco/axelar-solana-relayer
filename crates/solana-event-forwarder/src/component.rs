@@ -683,7 +683,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn event_forwrding_message_approved() {
+    async fn event_forwarding_message_approved() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
         let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
@@ -776,7 +776,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn event_forwrding_two_message_approved() {
+    async fn event_forwarding_two_message_approved() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
         let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
