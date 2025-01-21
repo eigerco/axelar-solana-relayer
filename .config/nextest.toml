@@ -1,6 +1,15 @@
 [test-groups]
-rest-service-same-port = { max-threads = 1 }
+serial-8080-port = { max-threads = 1 }
+serial-test-validator = { max-threads = 2 }
+
+[[profile.default.overrides]]
+filter = 'package(solana-listener)'
+test-group = 'serial-test-validator'
+
+[[profile.default.overrides]]
+filter = 'package(solana-event-forwarder)'
+test-group = 'serial-test-validator'
 
 [[profile.default.overrides]]
 filter = 'package(rest-service)'
-test-group = 'rest-service-same-port'
+test-group = 'serial-8080-port'

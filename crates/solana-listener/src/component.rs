@@ -39,14 +39,19 @@ pub struct SolanaTransaction {
 #[derive(Debug, Clone)]
 /// Transaction status
 pub enum TxStatus {
+    /// State when the transaction was successful
     Successful(SolanaTransaction),
+    /// State when the transaction was unsuccessful
     Failed {
+        /// the raw tx object
         tx: SolanaTransaction,
+        /// the actual tx error
         error: TransactionError,
     },
 }
 
 impl TxStatus {
+    /// Assert that the TX was successful and return the inner object
     #[must_use]
     pub fn unwrap(self) -> SolanaTransaction {
         match self {
@@ -54,6 +59,8 @@ impl TxStatus {
             Self::Failed { .. } => panic!(),
         }
     }
+
+    /// Assert that the tx was unsuccessful and return the inner object
     #[must_use]
     pub fn unwrap_err(self) -> (SolanaTransaction, TransactionError) {
         match self {
