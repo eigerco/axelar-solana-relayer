@@ -596,6 +596,7 @@ mod tests {
         PublishEventsRequest, Token, TxEvent, TxId,
     };
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
+    use serial_test::serial;
     use solana_listener::{fetch_logs, SolanaListenerClient};
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
@@ -613,6 +614,7 @@ mod tests {
     use crate::SolanaEventForwarder;
 
     #[test_log::test(tokio::test)]
+    #[serial]
     async fn event_forwrding_only_call_contract() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
@@ -682,6 +684,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[serial]
     async fn event_forwrding_message_approved() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
@@ -776,6 +779,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[serial]
     async fn event_forwrding_two_message_approved() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
@@ -899,6 +903,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[serial]
     async fn event_forwrding_execute_message() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
@@ -1197,6 +1202,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[serial]
     async fn event_forwrding_only_gas_event() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
@@ -1283,6 +1289,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[serial]
     async fn event_forwrding_with_gas_and_contract_call() {
         // setup
         let (mut fixture, rpc_client) = setup().await;

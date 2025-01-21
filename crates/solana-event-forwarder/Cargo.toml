@@ -27,6 +27,7 @@ solana-rpc-client.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+serial_test.workspace = true
 axelar-solana-gateway-test-fixtures.workspace = true
 retrying-solana-http-sender.workspace = true
 axelar-solana-memo-program.workspace = true
