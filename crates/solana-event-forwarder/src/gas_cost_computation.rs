@@ -16,39 +16,38 @@ use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 
-// filter only successful txs
-//  message approved / verifier set rotated
-//  filter gateway txs where we:
-// "Instruction: Initialize Verification Session"
-//    -- we need to divide the cost across all message count in the batch
-// "Instruction: Verify Signature"
-//    -- we need to divide the cost across all message count in the batch
-// "Instruction: Approve Messages" / "Instruction: Rotate Signers"
-//
-//
-// message executed:
-// "Instruction: Initialize Message Payload"
-// "Instruction: Write Message Payload"
-// "Instruction: Commit Message Payload"
-// "Instruction: Close Message Payload"
-/// For “approve message” and “rotate signers” events we cannot just report the gas costs for that 1
-/// tx where this even was emitted. It’s because to get to that state, we (the relayer) needs to
-/// send: 1 init verification session transactoin
-/// N “verify signature” tx
-/// 1 approve message tx
-/// This means that the amount of gas that was consumed is total sum of all of these events.
-/// But we capture an event from the last one (approve message). So what I need to do:
-/// parse the ix accounts that were passed for the “approve message” ix (because this is the event I
-/// get), extract the “verification session” PDA from the accounts array (can be done with ease but
-/// code is just indexing into some global arrays all over the place) then query all signatures
-/// where the “verification session” PDA appeared, aggregate the costs divide the costs by the
-/// amount of messages in a batch. How do I know how many messages are in a batch? I have to parse
-/// raw ix arguments and try to extract set_size from MessageLeaf these steps need to be done for
-/// each message that gets approved, and for “signers rotated”. The whole goal is to scout all txs
-/// that the relayer sent for a specific action that requires many txs, and count it all together.
-/// But what about “message executed” event? We are initialising large payloads and the relayer
-/// sends many small txs again. The same approach as before, we just parse for different accounts.
-pub async fn compute_total_gas(
+/// Computes the total gas cost (in lamports) for a given Solana transaction, factoring in:
+/// - Direct transaction cost.
+/// - Additional costs from multi-step gateway instructions (e.g., verification sessions, message
+///   payload uploads).
+///
+/// Specifically, this function:
+/// 1. Checks each instruction in the transaction.
+/// 2. If it's a gateway instruction (`ApproveMessage` or `RotateSigners`), it fetches and sums:
+///    - The cost of initializing and verifying signatures associated with the verification session.
+///    - Spreads these costs across messages in a batch if `ApproveMessage` is used.
+/// 3. If it's an Axelar executable instruction that uploads a message payload, the function fetches
+///    and sums:
+///    - The costs of all transactions that initialized, wrote, committed, or closed the payload.
+///
+/// # Arguments
+///
+/// * `gateway_program_id` - Public key for the gateway program.
+/// * `tx` - The Solana transaction to inspect.
+/// * `rpc` - RPC client used to query transaction logs and signatures.
+/// * `commitment` - Commitment level for RPC requests.
+///
+/// # Returns
+///
+/// Returns the accumulated cost in lamports, accounting for both the base transaction cost and any
+/// necessary multi-transaction workflows (like verification sessions or payload uploads).
+///
+/// # Errors
+///
+/// May return an error if:
+/// * RPC calls fail (e.g., fetching signatures or logs).
+/// * Parsing of instruction data from transaction logs fails.
+pub(crate) async fn compute_total_gas(
     gateway_program_id: Pubkey,
     tx: &SolanaTransaction,
     rpc: &RpcClient,
