@@ -1,6 +1,6 @@
 [test-groups]
 serial-8080-port = { max-threads = 1 }
-serial-test-validator = { max-threads = 1 }
+serial-test-validator = { max-threads = 4 }
 
 [[profile.default.overrides]]
 filter = 'package(solana-listener)'
