@@ -733,7 +733,6 @@ mod tests {
         let item = rx_amplifier.next().await.unwrap();
 
         let mut expected_sum = 0;
-        sleep(Duration::from_secs(1)).await;
         for sig in signatures_to_sum {
             let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
                 .await
@@ -844,7 +843,6 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
-        sleep(Duration::from_secs(1)).await;
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
 
@@ -953,7 +951,6 @@ mod tests {
             .await
             .unwrap()
             .0[0];
-        sleep(Duration::from_secs(1)).await;
 
         let write_sig_1 = fixture
             .send_tx_with_signatures(
@@ -969,7 +966,6 @@ mod tests {
             .await
             .unwrap()
             .0[0];
-        sleep(Duration::from_secs(1)).await;
         let write_sig_2 = fixture
             .send_tx_with_signatures(
                 &[axelar_solana_gateway::instructions::write_message_payload(
@@ -984,7 +980,6 @@ mod tests {
             .await
             .unwrap()
             .0[0];
-        sleep(Duration::from_secs(1)).await;
 
         let commit_sig = fixture
             .send_tx_with_signatures(&[
@@ -998,7 +993,6 @@ mod tests {
             .await
             .unwrap()
             .0[0];
-        sleep(Duration::from_secs(1)).await;
 
         let (message_payload_pda, _bump) =
             axelar_solana_gateway::find_message_payload_pda(gateway_root_pda, command_id, payer);
@@ -1014,7 +1008,6 @@ mod tests {
             .unwrap()])
             .await
             .unwrap();
-        sleep(Duration::from_secs(1)).await;
         let execute_sig = execute_sigs[0];
 
         // Close message payload and reclaim lamports
@@ -1030,7 +1023,6 @@ mod tests {
             .await
             .unwrap()
             .0[0];
-        sleep(Duration::from_secs(1)).await;
 
         let mut expected_sum = 0;
         for sig in [
@@ -1111,7 +1103,6 @@ mod tests {
         )
         .unwrap();
         let (sigs, ..) = fixture.send_tx_with_signatures(&[ix]).await.unwrap();
-        sleep(Duration::from_secs(1)).await;
         let approve_signature = sigs[0];
         signatures_to_sum.push(approve_signature);
         (command_id, approve_signature)
@@ -1135,7 +1126,6 @@ mod tests {
         )
         .unwrap();
         let sigs = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0;
-        sleep(Duration::from_secs(1)).await;
         signatures_to_sum.push(sigs[0]);
 
         let (verifier_set_tracker_pda, _verifier_set_tracker_bump) =
@@ -1157,7 +1147,6 @@ mod tests {
                 ])
                 .await
                 .unwrap();
-            sleep(Duration::from_secs(1)).await;
             signatures_to_sum.push(sigs[0]);
         }
 
@@ -1513,9 +1502,9 @@ mod tests {
         ]);
 
         let forced_sleep = if std::env::var("CI").is_ok() {
-            Duration::from_millis(1500)
+            Duration::from_millis(2500)
         } else {
-            Duration::from_millis(500)
+            Duration::from_millis(1500)
         };
         let mut fixture = TestFixture::new_test_validator(validator, forced_sleep).await;
         let init_payer = fixture.payer.insecure_clone();

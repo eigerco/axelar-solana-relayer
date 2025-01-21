@@ -726,9 +726,9 @@ pub(crate) mod test {
         ]);
 
         let forced_sleep = if std::env::var("CI").is_ok() {
-            Duration::from_millis(1500)
+            Duration::from_millis(2000)
         } else {
-            Duration::from_millis(500)
+            Duration::from_millis(1000)
         };
         let mut fixture = TestFixture::new_test_validator(validator, forced_sleep).await;
         let init_payer = fixture.payer.insecure_clone();
