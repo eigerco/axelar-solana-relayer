@@ -52,7 +52,11 @@ pub enum TxStatus {
 
 impl TxStatus {
     /// Assert that the TX was successful and return the inner object
+    ///
+    /// # Panics
+    /// if the tx had failed
     #[must_use]
+    #[expect(clippy::panic, reason = "necessary for this implementation")]
     pub fn unwrap(self) -> SolanaTransaction {
         match self {
             Self::Successful(solana_transaction) => solana_transaction,
@@ -61,7 +65,11 @@ impl TxStatus {
     }
 
     /// Assert that the tx was unsuccessful and return the inner object
+    ///
+    /// # Panics
+    /// if the case was successful
     #[must_use]
+    #[expect(clippy::panic, reason = "necessary for this implementation")]
     pub fn unwrap_err(self) -> (SolanaTransaction, TransactionError) {
         match self {
             Self::Successful(..) => panic!(),

@@ -24,6 +24,7 @@ pedantic = { priority = -8, level = "deny" }
 nursery = { priority = -9, level = "deny" }
 
 cargo_common_metadata = "allow"
+pattern_type_mismatch = "allow"
 missing_docs_in_private_items = "allow"
 blanket_clippy_restriction_lints = "allow"
 implicit_return = "allow"

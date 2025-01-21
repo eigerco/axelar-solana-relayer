@@ -1,7 +1,6 @@
 use axelar_solana_gateway::instructions::GatewayInstruction;
 use futures::stream::FuturesUnordered;
-use futures::{StreamExt as _, TryStreamExt as _};
-use itertools::Itertools as _;
+use futures::TryStreamExt as _;
 use solana_listener::{fetch_logs, SolanaTransaction, TxStatus};
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 use solana_rpc_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
@@ -58,8 +57,11 @@ pub(crate) async fn compute_total_gas(
                 match ix {
                     GatewayInstruction::ApproveMessage { message, .. } => {
                         const VERIFICATION_SESSION_PDA_IDX: usize = 2;
-                        let verification_session_pda = accounts[VERIFICATION_SESSION_PDA_IDX];
-
+                        let Some(verification_session_pda) =
+                            accounts.get(VERIFICATION_SESSION_PDA_IDX).copied()
+                        else {
+                            continue;
+                        };
                         let mut verify_signatures_costs = cost_of_signature_verification(
                             rpc,
                             commitment,
@@ -70,13 +72,18 @@ pub(crate) async fn compute_total_gas(
 
                         // the cost per signature is spread out between the amount of messages that
                         // were approved
-                        verify_signatures_costs =
-                            verify_signatures_costs.saturating_div(message.leaf.set_size.into());
+                        verify_signatures_costs = verify_signatures_costs
+                            .checked_div(message.leaf.set_size.into())
+                            .unwrap_or(0);
                         total_gas_cost = total_gas_cost.saturating_add(verify_signatures_costs);
                     }
                     GatewayInstruction::RotateSigners { .. } => {
                         const VERIFICATION_SESSION_PDA_IDX: usize = 1;
-                        let verification_session_pda = accounts[VERIFICATION_SESSION_PDA_IDX];
+                        let Some(verification_session_pda) =
+                            accounts.get(VERIFICATION_SESSION_PDA_IDX).copied()
+                        else {
+                            continue;
+                        };
 
                         let verify_signatures_costs = cost_of_signature_verification(
                             rpc,
@@ -88,7 +95,17 @@ pub(crate) async fn compute_total_gas(
 
                         total_gas_cost = total_gas_cost.saturating_add(verify_signatures_costs);
                     }
-                    _ => {
+                    GatewayInstruction::CallContract { .. } |
+                    GatewayInstruction::CallContractOffchainData { .. } |
+                    GatewayInstruction::InitializeConfig(_) |
+                    GatewayInstruction::InitializePayloadVerificationSession { .. } |
+                    GatewayInstruction::VerifySignature { .. } |
+                    GatewayInstruction::InitializeMessagePayload { .. } |
+                    GatewayInstruction::WriteMessagePayload { .. } |
+                    GatewayInstruction::CommitMessagePayload { .. } |
+                    GatewayInstruction::CloseMessagePayload { .. } |
+                    GatewayInstruction::ValidateMessage { .. } |
+                    GatewayInstruction::TransferOperatorship => {
                         continue;
                     }
                 }
@@ -100,7 +117,10 @@ pub(crate) async fn compute_total_gas(
                     continue;
                 };
 
-                let message_payload_pda = accounts[MESSAGE_PAYLOAD_PDA_IDX];
+                let Some(message_payload_pda) = accounts.get(MESSAGE_PAYLOAD_PDA_IDX).copied()
+                else {
+                    continue;
+                };
                 let upload_payload_costs = cost_of_payload_uploading(
                     rpc,
                     commitment,
@@ -143,15 +163,23 @@ async fn cost_of_signature_verification(
             }
 
             match instruction_data {
-                GatewayInstruction::InitializePayloadVerificationSession { .. } => {
-                    verify_signatures_costs =
-                        verify_signatures_costs.saturating_add(tx.cost_in_lamports);
-                }
+                GatewayInstruction::InitializePayloadVerificationSession { .. } |
                 GatewayInstruction::VerifySignature { .. } => {
                     verify_signatures_costs =
                         verify_signatures_costs.saturating_add(tx.cost_in_lamports);
                 }
-                _ => (),
+                // no action to take
+                GatewayInstruction::ApproveMessage { .. } |
+                GatewayInstruction::RotateSigners { .. } |
+                GatewayInstruction::CallContract { .. } |
+                GatewayInstruction::CallContractOffchainData { .. } |
+                GatewayInstruction::InitializeConfig(_) |
+                GatewayInstruction::InitializeMessagePayload { .. } |
+                GatewayInstruction::WriteMessagePayload { .. } |
+                GatewayInstruction::CommitMessagePayload { .. } |
+                GatewayInstruction::CloseMessagePayload { .. } |
+                GatewayInstruction::ValidateMessage { .. } |
+                GatewayInstruction::TransferOperatorship => (),
             }
         }
     }
@@ -191,7 +219,16 @@ async fn cost_of_payload_uploading(
                 GatewayInstruction::CloseMessagePayload { .. } => {
                     total_gas_costs = total_gas_costs.saturating_add(tx.cost_in_lamports);
                 }
-                _ => {}
+                // no actoin to take
+                GatewayInstruction::ApproveMessage { .. } |
+                GatewayInstruction::RotateSigners { .. } |
+                GatewayInstruction::CallContract { .. } |
+                GatewayInstruction::CallContractOffchainData { .. } |
+                GatewayInstruction::InitializeConfig(_) |
+                GatewayInstruction::InitializePayloadVerificationSession { .. } |
+                GatewayInstruction::VerifySignature { .. } |
+                GatewayInstruction::ValidateMessage { .. } |
+                GatewayInstruction::TransferOperatorship => {}
             }
         }
     }

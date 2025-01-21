@@ -84,15 +84,29 @@ pub async fn fetch_logs(
     .await?;
 
     // parse the provided accounts
-    let message = transaction_with_meta.transaction.decode().unwrap().message;
+    let message = transaction_with_meta
+        .transaction
+        .decode()
+        .ok_or_eyre("transaction decoding failed")?
+        .message;
     let ixs = message.instructions();
     let accounts = message.static_account_keys();
     let mut parsed_ixs = Vec::with_capacity(ixs.len());
     for ix in ixs {
         let mut tmp_accounts = Vec::with_capacity(ix.accounts.len());
-        let program_id = accounts[ix.program_id_index as usize];
+        let program_idx: usize = ix.program_id_index.into();
+        let program_id = accounts
+            .get(program_idx)
+            .copied()
+            .ok_or_eyre("account does not have an account at the idx")?;
         for account_idx in ix.accounts.iter().copied() {
-            tmp_accounts.push(accounts[account_idx as usize]);
+            let account_idx: usize = account_idx.into();
+            tmp_accounts.push(
+                accounts
+                    .get(account_idx)
+                    .copied()
+                    .ok_or_eyre("account does not have an account at the idx")?,
+            );
         }
         // todo: get rid of clone
         parsed_ixs.push((program_id, tmp_accounts, ix.data.clone()));
