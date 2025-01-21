@@ -47,16 +47,18 @@ pub enum TxStatus {
 }
 
 impl TxStatus {
+    #[must_use]
     pub fn unwrap(self) -> SolanaTransaction {
         match self {
-            TxStatus::Successful(solana_transaction) => solana_transaction,
-            TxStatus::Failed { .. } => panic!(),
+            Self::Successful(solana_transaction) => solana_transaction,
+            Self::Failed { .. } => panic!(),
         }
     }
+    #[must_use]
     pub fn unwrap_err(self) -> (SolanaTransaction, TransactionError) {
         match self {
-            TxStatus::Successful(..) => panic!(),
-            TxStatus::Failed { tx, error } => (tx, error),
+            Self::Successful(..) => panic!(),
+            Self::Failed { tx, error } => (tx, error),
         }
     }
 }

@@ -1,6 +1,5 @@
 use core::future::Future;
 use core::pin::Pin;
-use std::sync::Arc;
 
 use axelar_solana_gas_service::processor::{
     GasServiceEvent, NativeGasAddedEvent, NativeGasPaidForContractCallEvent, NativeGasRefundedEvent,
@@ -599,7 +598,6 @@ mod tests {
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
     use solana_listener::{fetch_logs, SolanaListenerClient};
     use solana_rpc::rpc::JsonRpcConfig;
-    use solana_rpc::rpc_completed_slots_service::RpcCompletedSlotsService;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_rpc_client::nonblocking::rpc_client::RpcClient;
     use solana_sdk::account::AccountSharedData;
@@ -695,15 +693,15 @@ mod tests {
         let mut signatures_to_sum = vec![];
         let payload = "msg memo only".to_owned();
         let payload_hash = keccak::hash(payload.as_bytes()).0;
-        let source_address = "0xdeadbeef".to_string();
-        let cc_id_id = "0xhash-123".to_string();
+        let source_address = "0xdeadbeef".to_owned();
+        let cc_id_id = "0xhash-123".to_owned();
         let message = Message {
             cc_id: CrossChainId {
-                chain: "ethereum".to_string(),
+                chain: "ethereum".to_owned(),
                 id: cc_id_id.clone(),
             },
             source_address: source_address.clone(),
-            destination_chain: "solana".to_string(),
+            destination_chain: "solana".to_owned(),
             destination_address: axelar_solana_memo_program::ID.to_string(),
             payload_hash,
         };
@@ -744,7 +742,7 @@ mod tests {
         let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
         let event = MessageApprovedEvent {
             base: EventBase {
-                event_id: event_id.clone(),
+                event_id,
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(approve_signature.to_string())),
                     timestamp: tx.timestamp,
@@ -757,8 +755,8 @@ mod tests {
             },
             message: GatewayV2Message {
                 message_id: TxEvent(cc_id_id.clone()),
-                source_chain: "ethereum".to_string(),
-                source_address: "0xdeadbeef".to_string(),
+                source_chain: "ethereum".to_owned(),
+                source_address: "0xdeadbeef".to_owned(),
                 destination_address: axelar_solana_memo_program::ID.to_string(),
                 payload_hash: payload_hash.to_vec(),
             },
@@ -788,25 +786,25 @@ mod tests {
         // solana memo program to evm raw message
         let payload = "msg memo only".to_owned();
         let payload_hash = keccak::hash(payload.as_bytes()).0;
-        let source_address = "0xdeadbeef".to_string();
-        let cc_id_id = "0xhash-123".to_string();
+        let source_address = "0xdeadbeef".to_owned();
+        let cc_id_id = "0xhash-123".to_owned();
         let message_one = Message {
             cc_id: CrossChainId {
-                chain: "ethereum".to_string(),
+                chain: "ethereum".to_owned(),
                 id: cc_id_id.clone(),
             },
             source_address: source_address.clone(),
-            destination_chain: "solana".to_string(),
+            destination_chain: "solana".to_owned(),
             destination_address: axelar_solana_memo_program::ID.to_string(),
             payload_hash,
         };
         let message_two = Message {
             cc_id: CrossChainId {
-                chain: "ethereum".to_string(),
-                id: "0xhash-333".to_string(),
+                chain: "ethereum".to_owned(),
+                id: "0xhash-333".to_owned(),
             },
             source_address: source_address.clone(),
-            destination_chain: "solana".to_string(),
+            destination_chain: "solana".to_owned(),
             destination_address: axelar_solana_memo_program::ID.to_string(),
             payload_hash,
         };
@@ -847,7 +845,7 @@ mod tests {
         let item = rx_amplifier.next().await.unwrap();
 
         let mut expected_sum = 0;
-        for sig in verify_sigs.iter() {
+        for sig in &verify_sigs {
             let tx = fetch_logs(CommitmentConfig::confirmed(), *sig, &rpc_client)
                 .await
                 .unwrap()
@@ -856,7 +854,7 @@ mod tests {
                                                      // signature verification cost is split between
                                                      // them
         }
-        for sig in approve_sigs.iter() {
+        for sig in &approve_sigs {
             let tx = fetch_logs(CommitmentConfig::confirmed(), *sig, &rpc_client)
                 .await
                 .unwrap()
@@ -867,7 +865,7 @@ mod tests {
         let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
         let event = MessageApprovedEvent {
             base: EventBase {
-                event_id: event_id.clone(),
+                event_id,
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(approve_signature.to_string())),
                     timestamp: tx.timestamp,
@@ -880,8 +878,8 @@ mod tests {
             },
             message: GatewayV2Message {
                 message_id: TxEvent(cc_id_id.clone()),
-                source_chain: "ethereum".to_string(),
-                source_address: "0xdeadbeef".to_string(),
+                source_chain: "ethereum".to_owned(),
+                source_address: "0xdeadbeef".to_owned(),
                 destination_address: axelar_solana_memo_program::ID.to_string(),
                 payload_hash: payload_hash.to_vec(),
             },
@@ -909,19 +907,19 @@ mod tests {
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
         // solana memo program to evm raw message
-        let bytes = "msg memo only".as_bytes();
+        let bytes = b"msg memo only";
         let payload = build_memo(bytes, &counter_pda.0, &[], EncodingScheme::Borsh);
         let encoded_payload = payload.encode().unwrap();
-        let payload_hash = keccak::hash(&encoded_payload.as_slice()).0;
-        let source_address = "0xdeadbeef".to_string();
-        let cc_id_id = "0xhash-123".to_string();
+        let payload_hash = keccak::hash(encoded_payload.as_slice()).0;
+        let source_address = "0xdeadbeef".to_owned();
+        let cc_id_id = "0xhash-123".to_owned();
         let message = Message {
             cc_id: CrossChainId {
-                chain: "ethereum".to_string(),
+                chain: "ethereum".to_owned(),
                 id: cc_id_id.clone(),
             },
             source_address: source_address.clone(),
-            destination_chain: "solana".to_string(),
+            destination_chain: "solana".to_owned(),
             destination_address: axelar_solana_memo_program::ID.to_string(),
             payload_hash,
         };
@@ -1054,9 +1052,9 @@ mod tests {
         let event_id = TxEvent::new(execute_sig.to_string().as_str(), 4);
         let event = MessageExecutedEvent {
             status: MessageExecutionStatus::Successful,
-            source_chain: "ethereum".to_string(),
+            source_chain: "ethereum".to_owned(),
             base: EventBase {
-                event_id: event_id.clone(),
+                event_id,
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(execute_sig.to_string())),
                     timestamp: tx.timestamp,
@@ -1184,8 +1182,8 @@ mod tests {
             rpc: rpc_client.clone(),
             commitment,
         };
-        let (tx_amplifier, mut rx_amplifier) = futures::channel::mpsc::unbounded();
-        let (mut tx_listener, rx_listener) = futures::channel::mpsc::unbounded();
+        let (tx_amplifier, rx_amplifier) = futures::channel::mpsc::unbounded();
+        let (tx_listener, rx_listener) = futures::channel::mpsc::unbounded();
         let amplifier_client = AmplifierCommandClient {
             sender: tx_amplifier,
         };

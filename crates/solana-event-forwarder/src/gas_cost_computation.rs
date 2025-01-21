@@ -1,17 +1,10 @@
-use std::future;
-use std::ops::DivAssign;
-
 use axelar_solana_gateway::instructions::GatewayInstruction;
-use axelar_solana_gateway::processor::GatewayEvent;
-use borsh::BorshDeserialize;
 use futures::stream::FuturesUnordered;
-use futures::{StreamExt, TryStreamExt};
-use gateway_event_stack::{build_program_event_stack, MatchContext, ProgramInvocationState};
-use itertools::Itertools;
+use futures::{StreamExt as _, TryStreamExt as _};
+use itertools::Itertools as _;
 use solana_listener::{fetch_logs, SolanaTransaction, TxStatus};
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 use solana_rpc_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
-use solana_sdk::borsh1;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
@@ -55,21 +48,20 @@ pub(crate) async fn compute_total_gas(
 ) -> eyre::Result<u64> {
     let mut total_gas_cost = tx.cost_in_lamports;
 
-    for (program_id, accounts, payload) in tx.ixs.iter() {
+    for (program_id, accounts, payload) in &tx.ixs {
         match program_id {
             id if *id == gateway_program_id => {
-                let Ok(ix) = borsh::from_slice::<GatewayInstruction>(&payload) else {
+                let Ok(ix) = borsh::from_slice::<GatewayInstruction>(payload) else {
                     continue;
                 };
 
                 match ix {
                     GatewayInstruction::ApproveMessage { message, .. } => {
                         const VERIFICATION_SESSION_PDA_IDX: usize = 2;
-                        let verification_session_pda =
-                            *accounts.get(VERIFICATION_SESSION_PDA_IDX).unwrap();
+                        let verification_session_pda = accounts[VERIFICATION_SESSION_PDA_IDX];
 
                         let mut verify_signatures_costs = cost_of_signature_verification(
-                            &rpc,
+                            rpc,
                             commitment,
                             verification_session_pda,
                             gateway_program_id,
@@ -84,11 +76,10 @@ pub(crate) async fn compute_total_gas(
                     }
                     GatewayInstruction::RotateSigners { .. } => {
                         const VERIFICATION_SESSION_PDA_IDX: usize = 1;
-                        let verification_session_pda =
-                            *accounts.get(VERIFICATION_SESSION_PDA_IDX).unwrap();
+                        let verification_session_pda = accounts[VERIFICATION_SESSION_PDA_IDX];
 
                         let verify_signatures_costs = cost_of_signature_verification(
-                            &rpc,
+                            rpc,
                             commitment,
                             verification_session_pda,
                             gateway_program_id,
@@ -105,13 +96,13 @@ pub(crate) async fn compute_total_gas(
             _other => {
                 const MESSAGE_PAYLOAD_PDA_IDX: usize = 1;
                 // check if this is `axelar_executable` call
-                let Some(Ok(_message)) = axelar_executable::parse_axelar_message(&payload) else {
+                let Some(Ok(_message)) = axelar_executable::parse_axelar_message(payload) else {
                     continue;
                 };
 
-                let message_payload_pda = *accounts.get(MESSAGE_PAYLOAD_PDA_IDX).unwrap();
+                let message_payload_pda = accounts[MESSAGE_PAYLOAD_PDA_IDX];
                 let upload_payload_costs = cost_of_payload_uploading(
-                    &rpc,
+                    rpc,
                     commitment,
                     message_payload_pda,
                     gateway_program_id,
@@ -132,7 +123,7 @@ async fn cost_of_signature_verification(
     gateway_program_id: Pubkey,
 ) -> Result<u64, eyre::Error> {
     let signatures = fetch_signatures(rpc, commitment, &verification_session_pda).await?;
-    let mut tx_logs = signatures
+    let tx_logs = signatures
         .into_iter()
         .map(|x| fetch_logs(commitment, x, rpc))
         .collect::<FuturesUnordered<_>>();
@@ -174,7 +165,7 @@ async fn cost_of_payload_uploading(
     gateway_program_id: Pubkey,
 ) -> Result<u64, eyre::Error> {
     let signatures = fetch_signatures(rpc, commitment, &message_payload_pda).await?;
-    let mut tx_logs = signatures
+    let tx_logs = signatures
         .into_iter()
         .map(|x| fetch_logs(commitment, x, rpc))
         .collect::<FuturesUnordered<_>>();
