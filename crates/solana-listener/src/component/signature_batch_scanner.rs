@@ -358,7 +358,7 @@ pub(crate) mod test {
         };
         let rpc_client =
             retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
-                max_concurrent_rpc_requests: 1,
+                max_concurrent_rpc_requests: 10,
                 solana_http_rpc: rpc_client_url.parse().unwrap(),
                 commitment: CommitmentConfig::confirmed(),
             });
@@ -489,7 +489,7 @@ pub(crate) mod test {
         };
         let rpc_client =
             retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
-                max_concurrent_rpc_requests: 1,
+                max_concurrent_rpc_requests: 10,
                 solana_http_rpc: rpc_client_url.parse().unwrap(),
                 commitment: CommitmentConfig::confirmed(),
             });
