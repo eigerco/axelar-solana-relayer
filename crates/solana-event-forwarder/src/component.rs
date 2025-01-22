@@ -778,7 +778,6 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn event_forwarding_two_message_approved() {
         // setup
-        panic!("");
         let (mut fixture, rpc_client) = setup().await;
         let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
