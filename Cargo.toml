@@ -72,6 +72,7 @@ rest-service = { path = "crates/rest-service" }
 retrying-solana-http-sender = { path = "crates/retrying-solana-http-sender" }
 solana-gateway-task-processor = { path = "crates/solana-gateway-task-processor" }
 effective-tx-sender = { path = "crates/effective-tx-sender" }
+gateway-gas-computation = { path = "crates/gateway-gas-computation" }
 
 # Relayer core
 amplifier-api = { git = "https://github.com/eigerco/axelar-relayer-core.git", rev = "5c909d2" }

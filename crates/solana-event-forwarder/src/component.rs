@@ -13,6 +13,7 @@ use gateway_event_stack::{
     build_program_event_stack, parse_gas_service_log, parse_gateway_logs, MatchContext,
     ProgramInvocationState,
 };
+use gateway_gas_computation::compute_total_gas;
 use itertools::Itertools as _;
 use relayer_amplifier_api_integration::amplifier_api::types::{
     BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventId, EventMetadata,
@@ -24,8 +25,6 @@ use relayer_amplifier_api_integration::amplifier_api::types::{
 use relayer_amplifier_api_integration::AmplifierCommand;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
-
-use crate::gas_cost_computation::compute_total_gas;
 
 /// The core component that is responsible for ingesting raw Solana events.
 ///

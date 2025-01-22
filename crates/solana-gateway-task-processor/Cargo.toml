@@ -17,6 +17,8 @@ axelar-solana-gateway.workspace = true
 axelar-solana-its.workspace = true
 axelar-solana-governance.workspace = true
 axelar-solana-encoding.workspace = true
+gateway-gas-computation.workspace = true
+solana-listener.workspace = true
 tracing.workspace = true
 futures.workspace = true
 common-serde-utils = { workspace = true }

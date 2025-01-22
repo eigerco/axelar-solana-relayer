@@ -12,6 +12,7 @@ futures.workspace = true
 axelar-solana-gas-service.workspace = true
 solana-gateway-task-processor.workspace = true
 relayer-amplifier-api-integration.workspace = true
+gateway-gas-computation.workspace = true
 solana-listener.workspace = true
 relayer-engine.workspace = true
 tracing.workspace = true

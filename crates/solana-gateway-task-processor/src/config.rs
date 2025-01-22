@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use typed_builder::TypedBuilder;
@@ -26,6 +27,11 @@ pub struct Config {
     /// Can be represented as a base58 string or 64 element array `[42, 42, ..]`
     #[serde(deserialize_with = "serde_utils::deserialize_keypair")]
     pub signing_keypair: Keypair,
+
+    /// Commitment config to use for solana RPC interactions
+    #[builder(default = CommitmentConfig::finalized())]
+    #[serde(default = "CommitmentConfig::finalized")]
+    pub commitment: CommitmentConfig,
 }
 
 pub(crate) mod config_defaults {

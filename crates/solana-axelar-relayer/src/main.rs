@@ -208,6 +208,7 @@ mod tests {
                 gas_service_program_address: gas_service_program_id,
                 gas_service_config_pda,
                 signing_keypair,
+                commitment: CommitmentConfig::finalized(),
             },
             solana_rpc: retrying_solana_http_sender::Config {
                 max_concurrent_rpc_requests,

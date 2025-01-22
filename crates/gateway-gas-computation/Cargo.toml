@@ -1,0 +1,21 @@
+[package]
+name = "gateway-gas-computation"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+solana-sdk.workspace = true
+solana-rpc-client.workspace = true
+solana-listener.workspace = true
+futures.workspace = true
+axelar-solana-gateway.workspace = true
+eyre.workspace = true
+borsh.workspace = true
+axelar-executable.workspace = true
+
+[lints]
+workspace = true

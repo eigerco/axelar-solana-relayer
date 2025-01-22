@@ -1,3 +1,5 @@
+//! Utility crate to compute the total gas used for multi-transaction operations on the Gateway
+
 use axelar_solana_gateway::instructions::GatewayInstruction;
 use futures::stream::FuturesUnordered;
 use futures::TryStreamExt as _;
@@ -39,7 +41,7 @@ use solana_sdk::signature::Signature;
 /// May return an error if:
 /// * RPC calls fail (e.g., fetching signatures or logs).
 /// * Parsing of instruction data from transaction logs fails.
-pub(crate) async fn compute_total_gas(
+pub async fn compute_total_gas(
     gateway_program_id: Pubkey,
     tx: &SolanaTransaction,
     rpc: &RpcClient,

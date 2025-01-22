@@ -56,6 +56,18 @@ impl TxStatus {
     /// # Panics
     /// if the tx had failed
     #[must_use]
+    pub fn tx(&self) -> &SolanaTransaction {
+        match self {
+            Self::Successful(solana_transaction) => solana_transaction,
+            Self::Failed { tx, .. } => tx,
+        }
+    }
+
+    /// Assert that the TX was successful and return the inner object
+    ///
+    /// # Panics
+    /// if the tx had failed
+    #[must_use]
     #[expect(clippy::panic, reason = "necessary for this implementation")]
     pub fn unwrap(self) -> SolanaTransaction {
         match self {
