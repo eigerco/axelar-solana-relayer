@@ -1095,6 +1095,7 @@ mod tests {
             gas_service_program_address: axelar_solana_gas_service::id(),
             gas_service_config_pda: gas_config.config_pda,
             signing_keypair: fixture.payer.insecure_clone(),
+            commitment: CommitmentConfig::confirmed(),
         };
         let (tx_amplifier, rx_amplifier) = futures::channel::mpsc::unbounded();
         let (task_sender, task_receiver) = futures::channel::mpsc::unbounded();

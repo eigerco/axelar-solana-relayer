@@ -13,5 +13,10 @@ test-group = 'serial-test-validator'
 threads-required = 4
 
 [[profile.default.overrides]]
+filter = 'package(solana-gateway-task-processor)'
+test-group = 'serial-test-validator'
+threads-required = 4
+
+[[profile.default.overrides]]
 filter = 'package(rest-service)'
 test-group = 'serial-8080-port'
