@@ -701,6 +701,7 @@ mod tests {
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::commitment_config::{CommitmentConfig, CommitmentLevel};
+    use solana_sdk::program_pack::Pack as _;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::{Keypair, Signature};
     use solana_sdk::signer::Signer as _;
@@ -726,7 +727,7 @@ mod tests {
         let mut fixture = setup().await;
         let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
             setup_aux_contracts(&mut fixture).await;
-        let (pusher_task, mut task_sender, mut rx_amplifier, _) =
+        let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
             setup_tx_pusher(&fixture, &gas_config);
         let token_id = axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
         let deploy_interchain_token_message =
@@ -752,6 +753,32 @@ mod tests {
         let _result = pusher_task.await;
 
         assert_eq!(rx_amplifier.next().await, None);
+
+        let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
+        let (mint_address, _) =
+            axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
+
+        let mint_account_raw_data = rpc_client.get_account_data(&mint_address).await.unwrap();
+        assert!(!mint_account_raw_data.is_empty());
+
+        let (token_manager_address, _) =
+            axelar_solana_its::find_token_manager_pda(&its_root_pda, &token_id);
+
+        let token_manager_raw_data = rpc_client
+            .get_account_data(&token_manager_address)
+            .await
+            .unwrap();
+        let token_manager =
+            axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
+                &token_manager_raw_data,
+            )
+            .unwrap();
+
+        assert_eq!(token_manager.token_id, token_id);
+        assert_eq!(
+            token_manager.ty,
+            axelar_solana_its::state::token_manager::Type::NativeInterchainToken
+        );
     }
 
     #[test_log::test(tokio::test)]
@@ -873,6 +900,32 @@ mod tests {
             .expect("could not find expected log emmited by the memo program");
 
         assert_eq!(rx_amplifier.next().await, None);
+
+        let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
+        let (mint_address, _) =
+            axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
+
+        let mint_account_raw_data = rpc_client.get_account_data(&mint_address).await.unwrap();
+        assert!(!mint_account_raw_data.is_empty());
+
+        let (token_manager_address, _) =
+            axelar_solana_its::find_token_manager_pda(&its_root_pda, &token_id);
+
+        let token_manager_raw_data = rpc_client
+            .get_account_data(&token_manager_address)
+            .await
+            .unwrap();
+        let token_manager =
+            axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
+                &token_manager_raw_data,
+            )
+            .unwrap();
+
+        assert_eq!(token_manager.token_id, token_id);
+        assert_eq!(
+            token_manager.ty,
+            axelar_solana_its::state::token_manager::Type::NativeInterchainToken
+        );
     }
 
     #[derive(Clone)]
