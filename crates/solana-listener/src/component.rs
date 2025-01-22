@@ -56,7 +56,7 @@ impl TxStatus {
     /// # Panics
     /// if the tx had failed
     #[must_use]
-    pub fn tx(&self) -> &SolanaTransaction {
+    pub const fn tx(&self) -> &SolanaTransaction {
         match self {
             Self::Successful(solana_transaction) => solana_transaction,
             Self::Failed { tx, .. } => tx,

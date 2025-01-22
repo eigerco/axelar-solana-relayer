@@ -224,13 +224,13 @@ async fn process_task(
                     source: ref _source,
                     signature,
                 }) => {
-                    let tx = fetch_logs(metadata.commitment, signature, &solana_rpc_client).await?;
+                    let tx = fetch_logs(metadata.commitment, signature, solana_rpc_client).await?;
 
                     let tx = tx.tx();
                     let total_fee = gateway_gas_computation::compute_total_gas(
                         axelar_solana_gateway::id(),
                         tx,
-                        &solana_rpc_client,
+                        solana_rpc_client,
                         metadata.commitment,
                     )
                     .await
@@ -407,12 +407,13 @@ async fn execute_task(
     .await;
 
     // propagate the execute err if there was any
-    let _ = execute_call_status?;
+    execute_call_status?;
     // propagate the close payload status if there was any
-    let _ = close_payload_status?;
+    close_payload_status?;
     Ok(())
 }
 
+#[expect(clippy::too_many_arguments, reason = "necessary")]
 async fn send_to_destination_program(
     destination_address: Pubkey,
     signer: Pubkey,
@@ -444,7 +445,7 @@ async fn send_to_destination_program(
                 signer,
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
-                &message,
+                message,
                 &payload,
             )?;
             send_transaction(solana_rpc_client, keypair, ix).await?
@@ -453,7 +454,7 @@ async fn send_to_destination_program(
             validate_relayer_not_in_payload(&payload, signer)?;
             // if security passed, we broadcast the tx
             let ix = axelar_executable::construct_axelar_executable_ix(
-                &message,
+                message,
                 &payload,
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
@@ -746,7 +747,7 @@ mod tests {
     const TEST_TOKEN_SYMBOL: &str = "MTK";
 
     #[test_log::test(tokio::test)]
-    async fn process_successfull_token_deployment() {
+    async fn process_successful_token_deployment() {
         let mut fixture = setup().await;
         let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
             setup_aux_contracts(&mut fixture).await;
@@ -851,7 +852,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     #[expect(clippy::non_ascii_literal, reason = "it's cool")]
-    async fn process_successfull_transfer_with_executable() {
+    async fn process_successful_transfer_with_executable() {
         let mut fixture = setup().await;
         let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig, _init_its_sig) =
             setup_aux_contracts(&mut fixture).await;
@@ -920,7 +921,7 @@ mod tests {
         logs.iter()
             .find(|log| log.contains("🦖"))
             .map(std::string::String::as_str)
-            .expect("could not find expected log emmited by the memo program");
+            .expect("could not find expected log emitted by the memo program");
 
         assert_eq!(rx_amplifier.next().await, None);
 
