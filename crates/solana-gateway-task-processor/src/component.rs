@@ -22,7 +22,7 @@ use axelar_solana_gateway::BytemuckedPda as _;
 use effective_tx_sender::ComputeBudgetError;
 use eyre::{Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
-use futures::{SinkExt as _, StreamExt as _};
+use futures::{SinkExt as _, StreamExt as _, TryFutureExt};
 use num_traits::FromPrimitive as _;
 use relayer_amplifier_api_integration::AmplifierCommand;
 use relayer_amplifier_state::State;
@@ -190,7 +190,7 @@ struct ConfigMetadata {
     gas_service_program_id: Pubkey,
 }
 
-// #[instrument(skip_all)]
+#[instrument(skip_all)]
 async fn process_task(
     keypair: &Keypair,
     solana_rpc_client: &RpcClient,
@@ -227,6 +227,7 @@ async fn process_task(
                     let (meta, maybe_block_time) =
                         get_confirmed_transaction_metadata(solana_rpc_client, &signature).await?;
 
+                    // todo we need to do smart computation of the fees here
                     message_executed_event(
                         signature,
                         source_chain,
@@ -392,10 +393,53 @@ async fn execute_task(
     )
     .await?;
 
+    // communicate with the destination program
+    let execute_call_status = match message.destination_address.parse::<Pubkey>() {
+        Ok(destination_address) => {
+            send_to_destination_program(
+                destination_address,
+                signer,
+                gateway_incoming_message_pda,
+                gateway_message_payload_pda,
+                &message,
+                payload,
+                solana_rpc_client,
+                keypair,
+            )
+            .await
+        }
+        Err(err) => Err(eyre::Error::from(err)),
+    };
+
+    // Close the MessagePaynload PDA account to reclaim funds
+    let close_payload_status = message_payload::close(
+        solana_rpc_client,
+        keypair,
+        metadata.gateway_root_pda,
+        &message,
+    )
+    .await;
+
+    // propagate the execute err if there was any
+    let _ = execute_call_status?;
+    // propagate the close payload status if there was any
+    let _ = close_payload_status?;
+    Ok(())
+}
+
+async fn send_to_destination_program(
+    destination_address: Pubkey,
+    signer: Pubkey,
+    gateway_incoming_message_pda: Pubkey,
+    gateway_message_payload_pda: Pubkey,
+    message: &Message,
+    payload: Vec<u8>,
+    solana_rpc_client: &RpcClient,
+    keypair: &Keypair,
+) -> eyre::Result<Signature> {
     // For compatibility reasons with the rest of the Axelar protocol we need add custom handling
     // for ITS & Governance programs
-    let destination_address = message.destination_address.parse::<Pubkey>()?;
-    match destination_address {
+    let execute_call_status = match destination_address {
         axelar_solana_its::ID => {
             let ix = its_instruction_builder::build_its_gmp_instruction(
                 signer,
@@ -407,7 +451,7 @@ async fn execute_task(
             )
             .await?;
 
-            send_gateway_tx(solana_rpc_client, keypair, ix).await?;
+            send_transaction(solana_rpc_client, keypair, ix).await?
         }
         axelar_solana_governance::ID => {
             let ix = axelar_solana_governance::instructions::builder::calculate_gmp_ix(
@@ -417,11 +461,10 @@ async fn execute_task(
                 &message,
                 &payload,
             )?;
-            send_gateway_tx(solana_rpc_client, keypair, ix).await?;
+            send_transaction(solana_rpc_client, keypair, ix).await?
         }
         _ => {
             validate_relayer_not_in_payload(&payload, signer)?;
-
             // if security passed, we broadcast the tx
             let ix = axelar_executable::construct_axelar_executable_ix(
                 &message,
@@ -429,19 +472,10 @@ async fn execute_task(
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
             )?;
-            send_gateway_tx(solana_rpc_client, keypair, ix).await?;
+            send_transaction(solana_rpc_client, keypair, ix).await?
         }
-    }
-
-    // Close the MessagePaynload PDA account to reclaim funds
-    message_payload::close(
-        solana_rpc_client,
-        keypair,
-        metadata.gateway_root_pda,
-        &message,
-    )
-    .await?;
-    Ok(())
+    };
+    Ok(execute_call_status)
 }
 
 /// Checks if the incoming message has already been executed.
