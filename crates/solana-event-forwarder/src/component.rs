@@ -572,6 +572,7 @@ fn construct_gas_event(
 #[cfg(test)]
 #[expect(clippy::unimplemented, reason = "needed for the test")]
 #[expect(clippy::indexing_slicing, reason = "simpler code")]
+#[expect(clippy::unreachable, reason = "simpler code")]
 mod tests {
     use core::time::Duration;
     use std::path::PathBuf;
@@ -596,7 +597,6 @@ mod tests {
         PublishEventsRequest, Token, TxEvent, TxId,
     };
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
-    use serial_test::serial;
     use solana_listener::{fetch_logs, SolanaListenerClient};
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
@@ -609,7 +609,6 @@ mod tests {
     use solana_sdk::signer::Signer as _;
     use solana_sdk::{bpf_loader_upgradeable, keccak, system_program};
     use solana_test_validator::UpgradeableProgramInfo;
-    use tokio::time::sleep;
 
     use crate::SolanaEventForwarder;
 
@@ -686,7 +685,7 @@ mod tests {
     async fn event_forwarding_message_approved() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
-        let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+        let (_gas_config, _gas_init_sig, _counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
@@ -730,13 +729,13 @@ mod tests {
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
 
-        let mut expected_sum = 0;
+        let mut expected_sum = 0_u64;
         for sig in signatures_to_sum {
             let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
                 .await
                 .unwrap()
                 .unwrap();
-            expected_sum += tx.cost_in_lamports;
+            expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
         }
 
         let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
@@ -779,7 +778,7 @@ mod tests {
     async fn event_forwarding_two_message_approved() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
-        let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+        let (_gas_config, _gas_init_sig, _counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
@@ -843,22 +842,23 @@ mod tests {
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
 
-        let mut expected_sum = 0;
+        let mut expected_sum = 0_u64;
         for sig in &verify_sigs {
             let tx = fetch_logs(CommitmentConfig::confirmed(), *sig, &rpc_client)
                 .await
                 .unwrap()
                 .unwrap();
-            expected_sum += tx.cost_in_lamports / 2; // because we have 2 msgs in the array, the
-                                                     // signature verification cost is split between
-                                                     // them
+            // because we have 2 msgs in the array, the signature verification cost is split between
+            // them
+            expected_sum =
+                expected_sum.saturating_add(tx.cost_in_lamports.checked_div(2).unwrap_or(0));
         }
         for sig in &approve_sigs {
             let tx = fetch_logs(CommitmentConfig::confirmed(), *sig, &rpc_client)
                 .await
                 .unwrap()
                 .unwrap();
-            expected_sum += tx.cost_in_lamports;
+            expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
         }
 
         let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
@@ -994,7 +994,7 @@ mod tests {
             axelar_solana_gateway::find_message_payload_pda(gateway_root_pda, command_id, payer);
 
         let (incoming_message_pda, _bump) = get_incoming_message_pda(&command_id);
-        let (execute_sigs, execute_tx) = fixture
+        let (execute_sigs, _execute_tx) = fixture
             .send_tx_with_signatures(&[axelar_executable::construct_axelar_executable_ix(
                 &message,
                 &encoded_payload,
@@ -1020,7 +1020,7 @@ mod tests {
             .unwrap()
             .0[0];
 
-        let mut expected_sum = 0;
+        let mut expected_sum = 0_u64;
         for sig in [
             close_sig,
             execute_sig,
@@ -1033,7 +1033,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap();
-            expected_sum += tx.cost_in_lamports;
+            expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
         }
 
         let tx = fetch_logs(CommitmentConfig::confirmed(), execute_sig, &rpc_client)
@@ -1169,7 +1169,7 @@ mod tests {
             source_chain_name: "solana".to_owned(),
             gateway_program_id: axelar_solana_gateway::id(),
             gas_service_program_id: axelar_solana_gas_service::id(),
-            rpc: rpc_client.clone(),
+            rpc: Arc::clone(rpc_client),
             commitment,
         };
         let (tx_amplifier, rx_amplifier) = futures::channel::mpsc::unbounded();
@@ -1190,7 +1190,7 @@ mod tests {
     async fn event_forwrding_only_gas_event() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
-        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 

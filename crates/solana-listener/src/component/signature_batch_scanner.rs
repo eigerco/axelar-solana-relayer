@@ -296,7 +296,6 @@ pub(crate) mod test {
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
     use futures::StreamExt as _;
     use pretty_assertions::assert_eq;
-    use serial_test::serial;
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_sdk::account::AccountSharedData;
