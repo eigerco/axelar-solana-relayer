@@ -694,26 +694,12 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use amplifier_api::chrono::DateTime;
-    use amplifier_api::types::uuid::Uuid;
-    use amplifier_api::types::{
-        CannotExecuteMessageEventV2, Event, ExecuteTask, GatewayV2Message, MessageId,
-        PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
-    };
-    use axelar_executable::{AxelarMessagePayload, EncodingScheme, SolanaAccountRepr};
-    use axelar_solana_encoding::borsh;
-    use axelar_solana_encoding::types::messages::{CrossChainId, Message};
+    use amplifier_api::types::{TaskItem, TaskItemId};
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils;
     use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
-    use axelar_solana_memo_program::instruction::AxelarMemoInstruction;
     use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
-    use futures::{SinkExt as _, StreamExt as _};
-    use interchain_token_transfer_gmp::{
-        DeployInterchainToken, GMPPayload, InterchainTransfer, ReceiveFromHub,
-    };
-    use pretty_assertions::assert_eq;
     use relayer_amplifier_api_integration::{
         AmplifierCommand, AmplifierCommandClient, AmplifierTaskReceiver,
     };
@@ -725,7 +711,6 @@ mod tests {
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::commitment_config::{CommitmentConfig, CommitmentLevel};
-    use solana_sdk::program_pack::Pack as _;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::{Keypair, Signature};
     use solana_sdk::signer::Signer as _;
@@ -740,216 +725,310 @@ mod tests {
     use super::SolanaTxPusher;
     use crate::config;
 
-    const ITS_HUB_CHAIN_NAME: &str = "axelar";
-    const ITS_HUB_SOURCE_ADDRESS: &str =
-        "axelar157hl7gpuknjmhtac2qnphuazv2yerfagva7lsu9vuj2pgn32z22qa26dk4";
-    const TEST_TOKEN_NAME: &str = "MyToken";
-    const TEST_TOKEN_SYMBOL: &str = "MTK";
+    mod its_tests {
 
-    #[test_log::test(tokio::test)]
-    async fn process_successful_token_deployment() {
-        let mut fixture = setup().await;
-        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
-            setup_aux_contracts(&mut fixture).await;
-        let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
-            setup_tx_pusher(&fixture, &gas_config);
-        let token_id = axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
-        let deploy_interchain_token_message =
-            GMPPayload::DeployInterchainToken(DeployInterchainToken {
-                selector: 1_u32.try_into().unwrap(),
-                token_id: token_id.into(),
-                name: TEST_TOKEN_NAME.to_owned(),
-                symbol: TEST_TOKEN_SYMBOL.to_owned(),
-                decimals: 9,
-                minter: fixture.payer.pubkey().to_bytes().into(),
-            });
+        use amplifier_api::chrono::DateTime;
+        use amplifier_api::types::uuid::Uuid;
+        use amplifier_api::types::{
+            CannotExecuteMessageEventV2, Event, ExecuteTask, GatewayV2Message, MessageId,
+            PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
+        };
+        use axelar_executable::{AxelarMessagePayload, EncodingScheme, SolanaAccountRepr};
+        use axelar_solana_encoding::borsh;
+        use axelar_solana_encoding::types::messages::{CrossChainId, Message};
+        use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
+        use axelar_solana_memo_program::instruction::AxelarMemoInstruction;
+        use futures::channel::mpsc::UnboundedSender;
+        use futures::{SinkExt as _, StreamExt as _};
+        use interchain_token_transfer_gmp::{
+            DeployInterchainToken, GMPPayload, InterchainTransfer, ReceiveFromHub,
+        };
+        use pretty_assertions::assert_eq;
+        use relayer_amplifier_api_integration::AmplifierCommand;
+        use solana_sdk::keccak;
+        use solana_sdk::program_pack::Pack as _;
+        use solana_sdk::signature::Signature;
 
-        send_its_message(
-            deploy_interchain_token_message,
-            ITS_HUB_CHAIN_NAME.to_owned(),
-            ITS_HUB_SOURCE_ADDRESS.to_owned(),
-            &mut fixture,
-            &mut task_sender,
-        )
-        .await;
-
-        task_sender.close_channel();
-        let _result = pusher_task.await;
-
-        assert_eq!(rx_amplifier.next().await, None);
-
-        let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
-        let (mint_address, _) =
-            axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
-
-        let mint_account_raw_data = rpc_client.get_account_data(&mint_address).await.unwrap();
-        assert!(!mint_account_raw_data.is_empty());
-
-        let (token_manager_address, _) =
-            axelar_solana_its::find_token_manager_pda(&its_root_pda, &token_id);
-
-        let token_manager_raw_data = rpc_client
-            .get_account_data(&token_manager_address)
-            .await
-            .unwrap();
-        let token_manager =
-            axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
-                &token_manager_raw_data,
-            )
-            .unwrap();
-
-        assert_eq!(token_manager.token_id, token_id);
-        assert_eq!(
-            token_manager.ty,
-            axelar_solana_its::state::token_manager::Type::NativeInterchainToken
-        );
-    }
-
-    #[test_log::test(tokio::test)]
-    async fn process_failed_token_deployment_untrusted_source_address() {
-        let mut fixture = setup().await;
-        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
-            setup_aux_contracts(&mut fixture).await;
-        let (pusher_task, mut task_sender, mut rx_amplifier, _) =
-            setup_tx_pusher(&fixture, &gas_config);
-        let token_id = axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
-        let deploy_interchain_token_message =
-            GMPPayload::DeployInterchainToken(DeployInterchainToken {
-                selector: 1_u32.try_into().unwrap(),
-                token_id: token_id.into(),
-                name: TEST_TOKEN_NAME.to_owned(),
-                symbol: TEST_TOKEN_SYMBOL.to_owned(),
-                decimals: 9,
-                minter: fixture.payer.pubkey().to_bytes().into(),
-            });
-
-        send_its_message(
-            deploy_interchain_token_message,
-            ITS_HUB_CHAIN_NAME.to_owned(),
-            "invalid address".to_owned(),
-            &mut fixture,
-            &mut task_sender,
-        )
-        .await;
-
-        task_sender.close_channel();
-        let _result = pusher_task.await;
-
-        let amplifier_command = rx_amplifier
-            .next()
-            .await
-            .expect("should have received amplifier command");
-        let AmplifierCommand::PublishEvents(PublishEventsRequest { mut events }) =
-            amplifier_command;
-        let Some(Event::CannotExecuteMessageV2(CannotExecuteMessageEventV2 { details, .. })) =
-            events.pop()
-        else {
-            panic!("could not find expected event");
+        use super::*;
+        use crate::component::tests::{
+            fetch_latest_tx_logs, setup, setup_aux_contracts, setup_tx_pusher,
         };
 
-        assert!(details.contains("Untrusted source address"));
-    }
+        const ITS_HUB_CHAIN_NAME: &str = "axelar";
+        const ITS_HUB_SOURCE_ADDRESS: &str =
+            "axelar157hl7gpuknjmhtac2qnphuazv2yerfagva7lsu9vuj2pgn32z22qa26dk4";
+        const TEST_TOKEN_NAME: &str = "MyToken";
+        const TEST_TOKEN_SYMBOL: &str = "MTK";
 
-    #[test_log::test(tokio::test)]
-    #[expect(clippy::non_ascii_literal, reason = "it's cool")]
-    async fn process_successful_transfer_with_executable() {
-        let mut fixture = setup().await;
-        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig, _init_its_sig) =
-            setup_aux_contracts(&mut fixture).await;
-        let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
-            setup_tx_pusher(&fixture, &gas_config);
-        let token_id = axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
-        let deploy_interchain_token_message =
-            GMPPayload::DeployInterchainToken(DeployInterchainToken {
-                selector: 1_u32.try_into().unwrap(),
+        #[test_log::test(tokio::test)]
+        async fn process_successful_token_deployment() {
+            let mut fixture = setup().await;
+            let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
+                setup_aux_contracts(&mut fixture).await;
+            let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
+                setup_tx_pusher(&fixture, &gas_config);
+            let token_id =
+                axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+            let deploy_interchain_token_message =
+                GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                    selector: 1_u32.try_into().unwrap(),
+                    token_id: token_id.into(),
+                    name: TEST_TOKEN_NAME.to_owned(),
+                    symbol: TEST_TOKEN_SYMBOL.to_owned(),
+                    decimals: 9,
+                    minter: fixture.payer.pubkey().to_bytes().into(),
+                });
+
+            send_its_message(
+                deploy_interchain_token_message,
+                ITS_HUB_CHAIN_NAME.to_owned(),
+                ITS_HUB_SOURCE_ADDRESS.to_owned(),
+                &mut fixture,
+                &mut task_sender,
+            )
+            .await;
+
+            task_sender.close_channel();
+            let _result = pusher_task.await;
+
+            assert_eq!(rx_amplifier.next().await, None);
+
+            let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
+            let (mint_address, _) =
+                axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
+
+            let mint_account_raw_data = rpc_client.get_account_data(&mint_address).await.unwrap();
+            assert!(!mint_account_raw_data.is_empty());
+
+            let (token_manager_address, _) =
+                axelar_solana_its::find_token_manager_pda(&its_root_pda, &token_id);
+
+            let token_manager_raw_data = rpc_client
+                .get_account_data(&token_manager_address)
+                .await
+                .unwrap();
+            let token_manager =
+                axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
+                    &token_manager_raw_data,
+                )
+                .unwrap();
+
+            assert_eq!(token_manager.token_id, token_id);
+            assert_eq!(
+                token_manager.ty,
+                axelar_solana_its::state::token_manager::Type::NativeInterchainToken
+            );
+        }
+
+        #[test_log::test(tokio::test)]
+        async fn process_failed_token_deployment_untrusted_source_address() {
+            let mut fixture = setup().await;
+            let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig) =
+                setup_aux_contracts(&mut fixture).await;
+            let (pusher_task, mut task_sender, mut rx_amplifier, _) =
+                setup_tx_pusher(&fixture, &gas_config);
+            let token_id =
+                axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+            let deploy_interchain_token_message =
+                GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                    selector: 1_u32.try_into().unwrap(),
+                    token_id: token_id.into(),
+                    name: TEST_TOKEN_NAME.to_owned(),
+                    symbol: TEST_TOKEN_SYMBOL.to_owned(),
+                    decimals: 9,
+                    minter: fixture.payer.pubkey().to_bytes().into(),
+                });
+
+            send_its_message(
+                deploy_interchain_token_message,
+                ITS_HUB_CHAIN_NAME.to_owned(),
+                "invalid address".to_owned(),
+                &mut fixture,
+                &mut task_sender,
+            )
+            .await;
+
+            task_sender.close_channel();
+            let _result = pusher_task.await;
+
+            let amplifier_command = rx_amplifier
+                .next()
+                .await
+                .expect("should have received amplifier command");
+            let AmplifierCommand::PublishEvents(PublishEventsRequest { mut events }) =
+                amplifier_command;
+            let Some(Event::CannotExecuteMessageV2(CannotExecuteMessageEventV2 {
+                details, ..
+            })) = events.pop()
+            else {
+                panic!("could not find expected event");
+            };
+
+            assert!(details.contains("Untrusted source address"));
+        }
+
+        #[test_log::test(tokio::test)]
+        #[expect(clippy::non_ascii_literal, reason = "it's cool")]
+        async fn process_successful_transfer_with_executable() {
+            let mut fixture = setup().await;
+            let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig, _init_its_sig) =
+                setup_aux_contracts(&mut fixture).await;
+            let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
+                setup_tx_pusher(&fixture, &gas_config);
+            let token_id =
+                axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+            let deploy_interchain_token_message =
+                GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                    selector: 1_u32.try_into().unwrap(),
+                    token_id: token_id.into(),
+                    name: TEST_TOKEN_NAME.to_owned(),
+                    symbol: TEST_TOKEN_SYMBOL.to_owned(),
+                    decimals: 9,
+                    minter: fixture.payer.pubkey().to_bytes().into(),
+                });
+
+            send_its_message(
+                deploy_interchain_token_message,
+                ITS_HUB_CHAIN_NAME.to_owned(),
+                ITS_HUB_SOURCE_ADDRESS.to_owned(),
+                &mut fixture,
+                &mut task_sender,
+            )
+            .await;
+
+            let memo_instruction = AxelarMemoInstruction::ProcessMemo {
+                memo: "🦖".to_owned(),
+            };
+
+            let data = AxelarMessagePayload::new(
+                &borsh::to_vec(&memo_instruction).unwrap(),
+                &[SolanaAccountRepr {
+                    pubkey: counter_pda.0.to_bytes().into(),
+                    is_signer: false,
+                    is_writable: true,
+                }],
+                EncodingScheme::AbiEncoding,
+            )
+            .encode()
+            .unwrap()
+            .into();
+
+            let interchain_transfer_message = GMPPayload::InterchainTransfer(InterchainTransfer {
+                selector: 0_u32.try_into().unwrap(),
                 token_id: token_id.into(),
-                name: TEST_TOKEN_NAME.to_owned(),
-                symbol: TEST_TOKEN_SYMBOL.to_owned(),
-                decimals: 9,
-                minter: fixture.payer.pubkey().to_bytes().into(),
+                source_address: b"source wallet address".into(),
+                destination_address: axelar_solana_memo_program::id().to_bytes().into(),
+                amount: 5120.0_f64.try_into().unwrap(),
+                data,
             });
 
-        send_its_message(
-            deploy_interchain_token_message,
-            ITS_HUB_CHAIN_NAME.to_owned(),
-            ITS_HUB_SOURCE_ADDRESS.to_owned(),
-            &mut fixture,
-            &mut task_sender,
-        )
-        .await;
-
-        let memo_instruction = AxelarMemoInstruction::ProcessMemo {
-            memo: "🦖".to_owned(),
-        };
-
-        let data = AxelarMessagePayload::new(
-            &borsh::to_vec(&memo_instruction).unwrap(),
-            &[SolanaAccountRepr {
-                pubkey: counter_pda.0.to_bytes().into(),
-                is_signer: false,
-                is_writable: true,
-            }],
-            EncodingScheme::AbiEncoding,
-        )
-        .encode()
-        .unwrap()
-        .into();
-
-        let interchain_transfer_message = GMPPayload::InterchainTransfer(InterchainTransfer {
-            selector: 0_u32.try_into().unwrap(),
-            token_id: token_id.into(),
-            source_address: b"source wallet address".into(),
-            destination_address: axelar_solana_memo_program::id().to_bytes().into(),
-            amount: 5120.0_f64.try_into().unwrap(),
-            data,
-        });
-
-        send_its_message(
-            interchain_transfer_message,
-            ITS_HUB_CHAIN_NAME.to_owned(),
-            ITS_HUB_SOURCE_ADDRESS.to_owned(),
-            &mut fixture,
-            &mut task_sender,
-        )
-        .await;
-
-        task_sender.close_channel();
-        let _result = pusher_task.await;
-
-        let logs = fetch_latest_tx_logs(&axelar_solana_memo_program::id(), &rpc_client).await;
-
-        logs.iter()
-            .find(|log| log.contains("🦖"))
-            .map(std::string::String::as_str)
-            .expect("could not find expected log emitted by the memo program");
-
-        assert_eq!(rx_amplifier.next().await, None);
-
-        let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
-        let (mint_address, _) =
-            axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
-
-        let mint_account_raw_data = rpc_client.get_account_data(&mint_address).await.unwrap();
-        assert!(!mint_account_raw_data.is_empty());
-
-        let (token_manager_address, _) =
-            axelar_solana_its::find_token_manager_pda(&its_root_pda, &token_id);
-
-        let token_manager_raw_data = rpc_client
-            .get_account_data(&token_manager_address)
-            .await
-            .unwrap();
-        let token_manager =
-            axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
-                &token_manager_raw_data,
+            send_its_message(
+                interchain_transfer_message,
+                ITS_HUB_CHAIN_NAME.to_owned(),
+                ITS_HUB_SOURCE_ADDRESS.to_owned(),
+                &mut fixture,
+                &mut task_sender,
             )
-            .unwrap();
+            .await;
 
-        assert_eq!(token_manager.token_id, token_id);
-        assert_eq!(
-            token_manager.ty,
-            axelar_solana_its::state::token_manager::Type::NativeInterchainToken
-        );
+            task_sender.close_channel();
+            let _result = pusher_task.await;
+
+            let logs = fetch_latest_tx_logs(&axelar_solana_memo_program::id(), &rpc_client).await;
+
+            logs.iter()
+                .find(|log| log.contains("🦖"))
+                .map(std::string::String::as_str)
+                .expect("could not find expected log emitted by the memo program");
+
+            assert_eq!(rx_amplifier.next().await, None);
+
+            let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
+            let (mint_address, _) =
+                axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
+
+            let mint_account_raw_data = rpc_client.get_account_data(&mint_address).await.unwrap();
+            assert!(!mint_account_raw_data.is_empty());
+
+            let (token_manager_address, _) =
+                axelar_solana_its::find_token_manager_pda(&its_root_pda, &token_id);
+
+            let token_manager_raw_data = rpc_client
+                .get_account_data(&token_manager_address)
+                .await
+                .unwrap();
+            let token_manager =
+                axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
+                    &token_manager_raw_data,
+                )
+                .unwrap();
+
+            assert_eq!(token_manager.token_id, token_id);
+            assert_eq!(
+                token_manager.ty,
+                axelar_solana_its::state::token_manager::Type::NativeInterchainToken
+            );
+        }
+
+        async fn send_its_message(
+            its_message: GMPPayload,
+            source_chain: String,
+            source_address: String,
+            fixture: &mut SolanaAxelarIntegrationMetadata,
+            task_sender: &mut UnboundedSender<TaskItem>,
+        ) {
+            let hub_payload = GMPPayload::ReceiveFromHub(ReceiveFromHub {
+                selector: 4_i32.try_into().unwrap(),
+                source_chain: "axelar".to_owned(),
+                payload: its_message.encode().into(),
+            })
+            .encode();
+
+            let fake_hash = Signature::new_unique();
+            let message_id = MessageId::new(&fake_hash.to_string(), 1);
+            let payload_hash = keccak::hash(&hub_payload).to_bytes();
+            let message = Message {
+                cc_id: CrossChainId {
+                    chain: source_chain.clone(),
+                    id: message_id.0.clone(),
+                },
+                source_address: source_address.clone(),
+                destination_chain: "solana".to_owned(),
+                destination_address: axelar_solana_its::id().to_string(),
+                payload_hash,
+            };
+
+            fixture
+                .sign_session_and_approve_messages(&fixture.signers.clone(), &[message])
+                .await
+                .unwrap();
+
+            let message = GatewayV2Message::builder()
+                .message_id(message_id)
+                .destination_address(axelar_solana_its::id().to_string())
+                .source_chain(source_chain.clone())
+                .source_address(source_address.clone())
+                .payload_hash(payload_hash.to_vec())
+                .build();
+
+            let task_item = TaskItem::builder()
+                .id(TaskItemId(Uuid::new_v4()))
+                .task(Task::Execute(
+                    ExecuteTask::builder()
+                        .message(message)
+                        .payload(hub_payload)
+                        .available_gas_balance(
+                            Token::builder()
+                                .amount(amplifier_api::types::BigInt(100_i32.into()))
+                                .build(),
+                        )
+                        .build(),
+                ))
+                .timestamp(DateTime::default())
+                .build();
+
+            task_sender.send(task_item).await.unwrap();
+        }
     }
 
     #[derive(Clone)]
@@ -1020,66 +1099,6 @@ mod tests {
         };
 
         logs
-    }
-
-    async fn send_its_message(
-        its_message: GMPPayload,
-        source_chain: String,
-        source_address: String,
-        fixture: &mut SolanaAxelarIntegrationMetadata,
-        task_sender: &mut UnboundedSender<TaskItem>,
-    ) {
-        let hub_payload = GMPPayload::ReceiveFromHub(ReceiveFromHub {
-            selector: 4_i32.try_into().unwrap(),
-            source_chain: "axelar".to_owned(),
-            payload: its_message.encode().into(),
-        })
-        .encode();
-
-        let fake_hash = Signature::new_unique();
-        let message_id = MessageId::new(&fake_hash.to_string(), 1);
-        let payload_hash = keccak::hash(&hub_payload).to_bytes();
-        let message = Message {
-            cc_id: CrossChainId {
-                chain: source_chain.clone(),
-                id: message_id.0.clone(),
-            },
-            source_address: source_address.clone(),
-            destination_chain: "solana".to_owned(),
-            destination_address: axelar_solana_its::id().to_string(),
-            payload_hash,
-        };
-
-        fixture
-            .sign_session_and_approve_messages(&fixture.signers.clone(), &[message])
-            .await
-            .unwrap();
-
-        let message = GatewayV2Message::builder()
-            .message_id(message_id)
-            .destination_address(axelar_solana_its::id().to_string())
-            .source_chain(source_chain.clone())
-            .source_address(source_address.clone())
-            .payload_hash(payload_hash.to_vec())
-            .build();
-
-        let task_item = TaskItem::builder()
-            .id(TaskItemId(Uuid::new_v4()))
-            .task(Task::Execute(
-                ExecuteTask::builder()
-                    .message(message)
-                    .payload(hub_payload)
-                    .available_gas_balance(
-                        Token::builder()
-                            .amount(amplifier_api::types::BigInt(100_i32.into()))
-                            .build(),
-                    )
-                    .build(),
-            ))
-            .timestamp(DateTime::default())
-            .build();
-
-        task_sender.send(task_item).await.unwrap();
     }
 
     fn setup_tx_pusher(
