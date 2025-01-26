@@ -52,9 +52,8 @@ solana-test-validator.workspace = true
 solana-transaction-status.workspace = true
 test-log.workspace = true
 tokio.workspace = true
+uuid.workspace = true
 interchain-token-transfer-gmp.workspace = true
-
-
 
 [lints]
 workspace = true
