@@ -54,7 +54,5 @@ test-log.workspace = true
 tokio.workspace = true
 interchain-token-transfer-gmp.workspace = true
 
-
-
 [lints]
 workspace = true
