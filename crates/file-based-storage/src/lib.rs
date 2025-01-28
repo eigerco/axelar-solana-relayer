@@ -63,7 +63,7 @@ impl MemmapState {
         // SAFETY:
         // we ensured that the size is large enough
         let mmap = unsafe { MmapMut::map_mut(&file)? };
-        mmap.flush_async()?;
+        mmap.flush()?;
 
         Ok(Self {
             mmap: Arc::new(Mutex::new(mmap)),
@@ -100,7 +100,7 @@ impl MemmapState {
         let raw_u128 = task_item_id.0.as_u128();
         let data = bytemuck::from_bytes_mut::<InternalState>(&mut mmap[..]);
         field_mutator(data, raw_u128);
-        mmap.flush_async()?;
+        mmap.flush()?;
         drop(mmap);
         Ok(())
     }
