@@ -2433,6 +2433,7 @@ dependencies = [
  "bytemuck",
  "memmap2 0.9.5",
  "relayer-amplifier-state",
+ "solana-sdk",
  "tracing",
 ]
 
@@ -7594,6 +7595,7 @@ dependencies = [
  "common-serde-utils 0.1.0",
  "common-serde-utils 0.1.1",
  "eyre",
+ "file-based-storage",
  "futures 0.3.31",
  "pretty_assertions",
  "relayer-engine",
@@ -7611,6 +7613,7 @@ dependencies = [
  "tracing",
  "typed-builder 0.2.0",
  "url 2.5.4",
+ "uuid",
 ]
 
 [[package]]

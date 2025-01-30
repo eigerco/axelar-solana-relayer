@@ -9,75 +9,8 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use tracing::Instrument as _;
 
-use super::{MessageSender, SolanaTransaction};
+use super::MessageSender;
 use crate::component::log_processor;
-use crate::config::MissedSignatureCatchupStrategy;
-
-/// Scan old signatures based on the configured catch-up strategy
-///
-/// # Returns
-/// The latest processed signature, if any was found.
-/// Latest -- chronologically oldest
-#[tracing::instrument(skip_all)]
-pub(crate) async fn scan_old_signatures(
-    config: &crate::Config,
-    signature_sender: &futures::channel::mpsc::UnboundedSender<SolanaTransaction>,
-    rpc_client: &Arc<RpcClient>,
-) -> Result<Option<Signature>, eyre::Error> {
-    let latest_processed_signature = match (
-        &config.missed_signature_catchup_strategy,
-        config.latest_processed_signature,
-    ) {
-        (&MissedSignatureCatchupStrategy::None, None) => {
-            tracing::info!(
-                "Starting from the latest available signature as no catch-up is configured and no latest signature is known."
-            );
-            None
-        }
-        (&MissedSignatureCatchupStrategy::None, Some(latest_signature)) => {
-            tracing::info!(
-                ?latest_signature,
-                "Starting from the latest processed signature",
-            );
-            Some(latest_signature)
-        }
-        (
-            &MissedSignatureCatchupStrategy::UntilSignatureReached(target_signature),
-            latest_signature,
-        ) => {
-            tracing::info!(
-                ?target_signature,
-                ?latest_signature,
-                "Catching up missed signatures until target signature",
-            );
-            fetch_batches_in_range(
-                config,
-                Arc::clone(rpc_client),
-                signature_sender,
-                Some(target_signature),
-                latest_signature,
-            )
-            .await?
-        }
-        (&MissedSignatureCatchupStrategy::UntilBeginning, latest_signature) => {
-            tracing::info!(
-                ?latest_signature,
-                "Catching up all missed signatures starting from",
-            );
-
-            fetch_batches_in_range(
-                config,
-                Arc::clone(rpc_client),
-                signature_sender,
-                None,
-                latest_signature,
-            )
-            .await?
-        }
-    };
-
-    Ok(latest_processed_signature)
-}
 
 /// Fetches events in range. Processes them "backwards" in time.
 /// Fetching the events in range: batch(t1..t2), batch(t2..t3), ..
@@ -494,14 +427,12 @@ pub(crate) mod test {
             gateway_program_address: axelar_solana_gateway::id(),
             gas_service_config_pda: gas_config.config_pda,
             solana_ws: rpc_client_url.parse().unwrap(),
-            missed_signature_catchup_strategy: MissedSignatureCatchupStrategy::UntilBeginning,
-            latest_processed_signature: None,
             tx_scan_poll_period: Duration::from_millis(1),
             commitment: CommitmentConfig::confirmed(),
         };
         let (tx, rx) = futures::channel::mpsc::unbounded();
 
-        let latest_sig = scan_old_signatures(&config, &tx, &rpc_client)
+        let latest_sig = fetch_batches_in_range(&config, rpc_client, &tx, None, None)
             .await
             .unwrap();
         let all_items_seq = [

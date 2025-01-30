@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use amplifier_api::types::{uuid, TaskItemId};
 use bytemuck::{Pod, Zeroable};
 use memmap2::MmapMut;
+use solana_sdk::signature::Signature;
 
 /// Memory map wrapper that implements the state to successfully store and retrieve latest task item
 /// id
@@ -18,10 +19,22 @@ pub struct MemmapState {
 }
 
 #[repr(C)]
-#[derive(Default, Debug, Copy, Clone, Pod, Zeroable)]
+#[derive(Debug, Copy, Clone, Pod, Zeroable)]
+#[expect(clippy::struct_field_names)]
 struct InternalState {
     latest_queried_task_item_id: u128,
     latest_processed_task_item_id: u128,
+    latest_processed_signature: [u8; 64],
+}
+
+impl Default for InternalState {
+    fn default() -> Self {
+        Self {
+            latest_queried_task_item_id: 0,
+            latest_processed_task_item_id: 0,
+            latest_processed_signature: [0_u8; 64],
+        }
+    }
 }
 
 #[expect(
@@ -87,6 +100,37 @@ impl MemmapState {
         }
     }
 
+    // Generic helper function for setting a Signature
+    fn set_signature<F>(&self, signature: Signature, field_mutator: F) -> Result<(), io::Error>
+    where
+        F: Fn(&mut InternalState, [u8; 64]),
+    {
+        let mut mmap = self.mmap.lock().expect("lock should not be poisoned");
+        let signature_bytes = signature.into();
+        let data = bytemuck::from_bytes_mut::<InternalState>(&mut mmap[..]);
+        field_mutator(data, signature_bytes);
+        mmap.flush()?;
+        drop(mmap);
+        Ok(())
+    }
+
+    // Generic helper function for getting a Signature
+    fn get_signature<F>(&self, field_accessor: F) -> Option<Signature>
+    where
+        F: Fn(&InternalState) -> [u8; 64],
+    {
+        let mmap = self.mmap.lock().expect("lock should not be poisoned");
+        let data = bytemuck::from_bytes::<InternalState>(&mmap[..]);
+        let signature = field_accessor(data);
+        drop(mmap);
+
+        if signature == [0_u8; 64] {
+            None
+        } else {
+            Some(Signature::from(signature))
+        }
+    }
+
     // Generic helper function for setting a TaskItemId
     fn set_task_item_id<F>(
         &self,
@@ -136,4 +180,38 @@ impl relayer_amplifier_state::State for MemmapState {
             data.latest_processed_task_item_id = value;
         })
     }
+}
+
+impl SolanaListenerState for MemmapState {
+    type Err = io::Error;
+
+    fn set_latest_processed_signature(&self, signature: Signature) -> Result<(), Self::Err> {
+        tracing::trace!("updating latest processed signature");
+        self.set_signature(signature, |data, value| {
+            data.latest_processed_signature = value;
+        })
+    }
+
+    fn latest_processed_signature(&self) -> Option<Signature> {
+        tracing::trace!("getting latest processed signature");
+        self.get_signature(|data| data.latest_processed_signature)
+    }
+}
+
+/// Trait for the state of the Solana listener
+pub trait SolanaListenerState: Clone + Send + Sync + 'static {
+    /// The error type for the state
+    type Err: core::error::Error + Send + Sync + 'static;
+
+    /// Get the latest processed signature
+    /// # Errors
+    ///
+    /// The underlying storage error
+    fn latest_processed_signature(&self) -> Option<Signature>;
+
+    /// Set the latest processed signature
+    /// # Errors
+    ///
+    /// The underlying storage error
+    fn set_latest_processed_signature(&self, signature: Signature) -> Result<(), Self::Err>;
 }
