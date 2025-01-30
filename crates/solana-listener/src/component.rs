@@ -166,6 +166,7 @@ mod tests {
     use core::future;
     use core::time::Duration;
     use std::collections::BTreeSet;
+    use std::env;
     use std::path::Path;
 
     use file_based_storage::MemmapState;
@@ -218,7 +219,7 @@ mod tests {
         };
         let (tx, mut rx) = futures::channel::mpsc::unbounded();
 
-        let state = setup_new_state();
+        let state = setup_new_test_state();
 
         let listener = SolanaListener {
             config,
@@ -306,7 +307,107 @@ mod tests {
         }
     }
 
-    fn setup_new_state() -> MemmapState {
+    #[test_log::test(tokio::test(flavor = "current_thread"))]
+    async fn can_force_last_processed_signature_via_env_var() {
+        // 1. setup
+        let mut fixture = setup().await;
+        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+            setup_aux_contracts(&mut fixture).await;
+
+        // 3. setup client
+        let (rpc_client_url, pubsub_url) = match fixture.fixture.test_node {
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                ref validator,
+                ..
+            } => (validator.rpc_url(), validator.rpc_pubsub_url()),
+            axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                unimplemented!()
+            }
+        };
+        let rpc_client =
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 10,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            });
+        let config = Config {
+            gateway_program_address: axelar_solana_gateway::id(),
+            gas_service_config_pda: gas_config.config_pda,
+            solana_ws: pubsub_url.parse().unwrap(),
+            tx_scan_poll_period: if std::env::var("CI").is_ok() {
+                Duration::from_millis(1500)
+            } else {
+                Duration::from_millis(500)
+            },
+            commitment: CommitmentConfig::confirmed(),
+        };
+        let (tx, mut rx) = futures::channel::mpsc::unbounded();
+
+        let listener = SolanaListener {
+            config,
+            rpc_client,
+            sender: tx,
+            state: setup_new_test_state(),
+        };
+
+        let generated_signs_set_1 =
+            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+
+        env::set_var(
+            "FORCE_LAST_PROCESSED_SIGNATURE",
+            generated_signs_set_1
+                .flatten_sequentially()
+                .get(1)
+                .expect("to get the second signature as last known one")
+                .to_string(),
+        ); // Artificially force the last processed signature to exclude the latest one.
+
+        // 4. start realtime processing
+        let processor = tokio::spawn(listener.process_internal());
+
+        {
+            // assert that we scan old signatures up to the very beginning of time
+            let init_items = generated_signs_set_1
+                .flatten_sequentially()
+                .into_iter()
+                .skip(1) // we skip the first one because it's the last processed signature
+                .collect::<Vec<_>>();
+            let fetched = rx
+                .by_ref()
+                .map(|x| {
+                    assert!(!x.logs.is_empty(), "we expect txs to contain logs");
+                    assert_ne!(!x.cost_in_lamports, 0, "tx cost should not be 0");
+
+                    x.signature
+                })
+                // all init items + the 2 deployment txs + memo_and_gas signatures another time
+                // because it's picked up by both WS streams
+                .take(
+                    init_items
+                        .len()
+                        .saturating_add(2)
+                        .saturating_add(generated_signs_set_1.memo_and_gas.len()),
+                )
+                .collect::<BTreeSet<_>>()
+                .await;
+            let init_items_btree = init_items.clone().into_iter().collect::<BTreeSet<_>>();
+            let is_finished = processor.is_finished();
+            if is_finished {
+                processor.await.unwrap().unwrap();
+                panic!();
+            }
+            assert_eq!(
+                fetched
+                    .intersection(&init_items_btree)
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                init_items_btree,
+                "expect to have fetched every single item"
+            );
+        };
+    }
+
+    fn setup_new_test_state() -> MemmapState {
         let state_path = Path::new("/tmp").join(format!("state-{}", uuid::Uuid::new_v4()));
         MemmapState::new(state_path).unwrap()
     }

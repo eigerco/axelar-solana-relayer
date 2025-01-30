@@ -21,6 +21,10 @@ use crate::component::log_processor::fetch_logs;
 use crate::component::signature_batch_scanner;
 use crate::{SolanaTransaction, TxStatus};
 
+/// Environment variable that expects a base58 encoded signature
+/// of the last processed signature we want to force.
+const FORCE_LAST_PROCESSED_SIGNATURE: &str = "FORCE_LAST_PROCESSED_SIGNATURE";
+
 #[tracing::instrument(skip_all, err, name = "realtime log ingestion")]
 pub(crate) async fn process_realtime_logs(
     config: crate::Config,
@@ -31,7 +35,17 @@ pub(crate) async fn process_realtime_logs(
     let gateway_program_address = config.gateway_program_address;
     let gas_service_config_pda = config.gas_service_config_pda;
 
-    let latest_processed_signature = state.latest_processed_signature();
+    let force_last_processed_signature = std::env::var(FORCE_LAST_PROCESSED_SIGNATURE)?;
+    let latest_processed_signature = if force_last_processed_signature.is_empty() {
+        state.latest_processed_signature()
+    } else {
+        tracing::warn!(
+            "forcing last processed signature to {}",
+            force_last_processed_signature
+        );
+        Some(Signature::from_str(&force_last_processed_signature)?)
+    };
+
     // Fetch missed batches
     let latest_signature = signature_batch_scanner::fetch_batches_in_range(
         &config,
