@@ -154,16 +154,17 @@ impl<ST: SolanaListenerState> SolanaListener<ST> {
 
     #[tracing::instrument(skip_all, name = "Solana Listener")]
     pub(crate) async fn process_internal(self) -> eyre::Result<()> {
-        let force_last_processed_signature = std::env::var(FORCE_LAST_PROCESSED_SIGNATURE)?;
-        if !force_last_processed_signature.is_empty() {
-            tracing::warn!(
-                "forcing last processed signature to {}",
-                force_last_processed_signature
-            );
-            self.state
-                .set_latest_processed_signature(Signature::from_str(
-                    &force_last_processed_signature,
-                )?)?;
+        if let Ok(force_last_processed_signature) = std::env::var(FORCE_LAST_PROCESSED_SIGNATURE) {
+            if !force_last_processed_signature.is_empty() {
+                tracing::warn!(
+                    "forcing last processed signature to {}",
+                    force_last_processed_signature
+                );
+                self.state
+                    .set_latest_processed_signature(Signature::from_str(
+                        &force_last_processed_signature,
+                    )?)?;
+            }
         }
 
         let latest_processed_signature = self.state.latest_processed_signature();
