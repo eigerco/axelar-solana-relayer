@@ -9,6 +9,7 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::transaction::TransactionError;
+use tracing::{info_span, Instrument as _};
 
 use crate::config;
 
@@ -163,6 +164,26 @@ impl<ST: SolanaListenerState> SolanaListener<ST> {
                 .set_latest_processed_signature(Signature::from_str(
                     &force_last_processed_signature,
                 )?)?;
+        }
+
+        let latest_processed_signature = self.state.latest_processed_signature();
+
+        // Fetch missed batches
+        let latest_signature = signature_batch_scanner::fetch_batches_in_range(
+            &self.config,
+            Arc::clone(&self.rpc_client),
+            &self.sender,
+            latest_processed_signature,
+            None,
+        )
+        .instrument(info_span!("fetching missed signatures"))
+        .in_current_span()
+        .await?;
+
+        if let Some(latest_signature) = latest_signature {
+            // Send the latest signature
+            self.state
+                .set_latest_processed_signature(latest_signature)?;
         }
 
         // we start processing realtime logs

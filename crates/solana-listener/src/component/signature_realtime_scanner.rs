@@ -31,25 +31,6 @@ pub(crate) async fn process_realtime_logs(
     let gateway_program_address = config.gateway_program_address;
     let gas_service_config_pda = config.gas_service_config_pda;
 
-    let latest_processed_signature = state.latest_processed_signature();
-
-    // Fetch missed batches
-    let latest_signature = signature_batch_scanner::fetch_batches_in_range(
-        &config,
-        Arc::clone(&rpc_client),
-        &signature_sender,
-        latest_processed_signature,
-        None,
-    )
-    .instrument(info_span!("fetching missed signatures"))
-    .in_current_span()
-    .await?;
-
-    if let Some(latest_signature) = latest_signature {
-        // Send the latest signature
-        state.set_latest_processed_signature(latest_signature)?;
-    }
-
     'outer: loop {
         tracing::info!(
             endpoint = ?config.solana_ws.as_str(),
