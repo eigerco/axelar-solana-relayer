@@ -1,5 +1,6 @@
 use core::future::Future;
 use core::pin::Pin;
+use core::str::FromStr as _;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -16,6 +17,10 @@ mod signature_batch_scanner;
 mod signature_realtime_scanner;
 
 pub use log_processor::fetch_logs;
+
+/// Environment variable that expects a base58 encoded signature
+/// of the last processed signature we want to force.
+const FORCE_LAST_PROCESSED_SIGNATURE: &str = "FORCE_LAST_PROCESSED_SIGNATURE";
 
 /// Typical message with the produced work.
 #[derive(Debug, Clone)]
@@ -148,6 +153,18 @@ impl<ST: SolanaListenerState> SolanaListener<ST> {
 
     #[tracing::instrument(skip_all, name = "Solana Listener")]
     pub(crate) async fn process_internal(self) -> eyre::Result<()> {
+        let force_last_processed_signature = std::env::var(FORCE_LAST_PROCESSED_SIGNATURE)?;
+        if !force_last_processed_signature.is_empty() {
+            tracing::warn!(
+                "forcing last processed signature to {}",
+                force_last_processed_signature
+            );
+            self.state
+                .set_latest_processed_signature(Signature::from_str(
+                    &force_last_processed_signature,
+                )?)?;
+        }
+
         // we start processing realtime logs
         signature_realtime_scanner::process_realtime_logs(
             self.config,
