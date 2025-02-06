@@ -182,7 +182,7 @@ impl<ST: SolanaListenerState> SolanaListener<ST> {
         .await?;
 
         if let Some(latest_signature) = latest_signature {
-            // Send the latest signature
+            // Set the latest signature
             self.state
                 .set_latest_processed_signature(latest_signature)?;
         }
