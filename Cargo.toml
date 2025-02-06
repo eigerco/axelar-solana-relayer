@@ -155,6 +155,7 @@ solana-rpc-client-api = "=2.0.16"
 solana-program = "=2.0.16"
 solana-sdk = "=2.0.16"
 solana-transaction-status = "=2.0.16"
+solana-compute-budget = "=2.0.16"
 
 # Async
 tokio = { version = "1", features = ["rt", "signal", "rt-multi-thread", "macros"] }

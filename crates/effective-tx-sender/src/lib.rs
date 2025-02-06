@@ -12,6 +12,7 @@ use futures::TryFutureExt as _;
 use itertools::Itertools as _;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
+use solana_compute_budget::compute_budget_processor::MAX_COMPUTE_UNIT_LIMIT;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::signature::{Keypair, Signature};
@@ -198,6 +199,7 @@ pub(crate) async fn compute_budget(
         .checked_div(PERCENT_POINTS_TO_TOP_UP)
         .unwrap_or(0);
     let compute_budget = computed_units.saturating_add(top_up);
+    let compute_budget = compute_budget.min(u64::from(MAX_COMPUTE_UNIT_LIMIT)); // Safe conversion since we move from an u32 to u64
     let ix = ComputeBudgetInstruction::set_compute_unit_limit(
         compute_budget
             .try_into()
