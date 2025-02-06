@@ -1,12 +1,15 @@
 use core::future::Future;
 use core::pin::Pin;
+use core::str::FromStr as _;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use file_based_storage::SolanaListenerState;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::transaction::TransactionError;
+use tracing::{info_span, Instrument as _};
 
 use crate::config;
 
@@ -15,6 +18,10 @@ mod signature_batch_scanner;
 mod signature_realtime_scanner;
 
 pub use log_processor::fetch_logs;
+
+/// Environment variable that expects a base58 encoded signature
+/// of the last processed signature we want to force.
+const FORCE_LAST_PROCESSED_SIGNATURE: &str = "FORCE_LAST_PROCESSED_SIGNATURE";
 
 /// Typical message with the produced work.
 #[derive(Debug, Clone)]
@@ -96,10 +103,14 @@ pub(crate) type MessageSender = futures::channel::mpsc::UnboundedSender<SolanaTr
 /// - monitor (poll) the solana blockchain for new signatures coming from the gateway program
 /// - fetch the actual event data from the provided signature
 /// - forward the tx event data to the `SolanaListenerClient`
-pub struct SolanaListener {
+pub struct SolanaListener<ST>
+where
+    ST: SolanaListenerState,
+{
     config: config::Config,
     rpc_client: Arc<RpcClient>,
     sender: MessageSender,
+    state: ST,
 }
 
 /// Utility client used for communicating with the `SolanaListener` instance
@@ -109,7 +120,7 @@ pub struct SolanaListenerClient {
     pub log_receiver: futures::channel::mpsc::UnboundedReceiver<SolanaTransaction>,
 }
 
-impl relayer_engine::RelayerComponent for SolanaListener {
+impl<ST: SolanaListenerState> relayer_engine::RelayerComponent for SolanaListener<ST> {
     fn process(self: Box<Self>) -> Pin<Box<dyn Future<Output = eyre::Result<()>> + Send>> {
         use futures::FutureExt as _;
 
@@ -117,18 +128,23 @@ impl relayer_engine::RelayerComponent for SolanaListener {
     }
 }
 
-impl SolanaListener {
+impl<ST: SolanaListenerState> SolanaListener<ST> {
     /// Instantiate a new `SolanaListener` using the pre-configured configuration.
     ///
     /// The returned variable also returns a helper client that encompasses ways to communicate with
     /// the underlying `SolanaListener` instance.
     #[must_use]
-    pub fn new(config: config::Config, rpc_client: Arc<RpcClient>) -> (Self, SolanaListenerClient) {
+    pub fn new(
+        config: config::Config,
+        rpc_client: Arc<RpcClient>,
+        state: ST,
+    ) -> (Self, SolanaListenerClient) {
         let (tx_outgoing, rx_outgoing) = futures::channel::mpsc::unbounded();
         let this = Self {
             config,
             rpc_client,
             sender: tx_outgoing,
+            state,
         };
         let client = SolanaListenerClient {
             log_receiver: rx_outgoing,
@@ -138,20 +154,45 @@ impl SolanaListener {
 
     #[tracing::instrument(skip_all, name = "Solana Listener")]
     pub(crate) async fn process_internal(self) -> eyre::Result<()> {
-        // we fetch potentially missed signatures based on the provided the config
-        let latest = signature_batch_scanner::scan_old_signatures(
+        if let Ok(force_last_processed_signature) = std::env::var(FORCE_LAST_PROCESSED_SIGNATURE) {
+            if !force_last_processed_signature.is_empty() {
+                tracing::warn!(
+                    "forcing last processed signature to {}",
+                    force_last_processed_signature
+                );
+                self.state
+                    .set_latest_processed_signature(Signature::from_str(
+                        &force_last_processed_signature,
+                    )?)?;
+            }
+        }
+
+        let latest_processed_signature = self.state.latest_processed_signature();
+
+        // Fetch missed batches
+        let latest_signature = signature_batch_scanner::fetch_batches_in_range(
             &self.config,
+            Arc::clone(&self.rpc_client),
             &self.sender,
-            &self.rpc_client,
+            latest_processed_signature,
+            None,
         )
+        .instrument(info_span!("fetching missed signatures"))
+        .in_current_span()
         .await?;
+
+        if let Some(latest_signature) = latest_signature {
+            // Set the latest signature
+            self.state
+                .set_latest_processed_signature(latest_signature)?;
+        }
 
         // we start processing realtime logs
         signature_realtime_scanner::process_realtime_logs(
             self.config,
-            latest,
             self.rpc_client,
             self.sender,
+            self.state,
         )
         .await?;
 
@@ -164,15 +205,23 @@ mod tests {
     use core::future;
     use core::time::Duration;
     use std::collections::BTreeSet;
+    use std::env;
+    use std::path::Path;
+    use std::sync::Arc;
 
+    use file_based_storage::{MemmapState, SolanaListenerState};
     use futures::StreamExt as _;
     use pretty_assertions::{assert_eq, assert_ne};
+    use solana_client::nonblocking::rpc_client::RpcClient;
     use solana_sdk::commitment_config::CommitmentConfig;
+    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::signature::Signature;
 
     use crate::component::signature_batch_scanner::test::{
         generate_test_solana_data, setup, setup_aux_contracts,
     };
-    use crate::{Config, MissedSignatureCatchupStrategy, SolanaListener};
+    use crate::component::FORCE_LAST_PROCESSED_SIGNATURE;
+    use crate::{Config, SolanaListener};
 
     #[test_log::test(tokio::test(flavor = "current_thread"))]
     #[expect(clippy::unimplemented, reason = "needed for the test")]
@@ -205,8 +254,6 @@ mod tests {
             gateway_program_address: axelar_solana_gateway::id(),
             gas_service_config_pda: gas_config.config_pda,
             solana_ws: pubsub_url.parse().unwrap(),
-            missed_signature_catchup_strategy: MissedSignatureCatchupStrategy::UntilBeginning,
-            latest_processed_signature: None,
             tx_scan_poll_period: if std::env::var("CI").is_ok() {
                 Duration::from_millis(1500)
             } else {
@@ -216,14 +263,16 @@ mod tests {
         };
         let (tx, mut rx) = futures::channel::mpsc::unbounded();
 
+        let state = setup_new_test_state();
+
         let listener = SolanaListener {
             config,
             rpc_client,
             sender: tx,
+            state,
         };
         // 4. start realtime processing
         let processor = tokio::spawn(listener.process_internal());
-
         {
             // assert that we scan old signatures up to the very beginning of time
             let init_items = generated_signs_set_1.flatten_sequentially();
@@ -300,5 +349,49 @@ mod tests {
                 "expect to have fetched every single item"
             );
         }
+    }
+
+    #[test_log::test(tokio::test(flavor = "current_thread"))]
+    async fn can_force_last_processed_signature_via_env_var() {
+        let config = Config {
+            gateway_program_address: axelar_solana_gateway::id(),
+            gas_service_config_pda: Pubkey::new_unique(),
+            solana_ws: "http://localhost".parse().unwrap(),
+            tx_scan_poll_period: Duration::from_secs(1),
+            commitment: CommitmentConfig::confirmed(),
+        };
+        let (tx, _rx) = futures::channel::mpsc::unbounded();
+
+        let state = setup_new_test_state();
+
+        let listener = SolanaListener {
+            config,
+            rpc_client: Arc::new(RpcClient::new("http://localhost".parse().unwrap())),
+            sender: tx,
+            state: state.clone(),
+        };
+
+        // After all initial setup, we force the last processed signature and assert the state was
+        // changed correctly
+        let forced_last_transaction = Signature::new_unique();
+        env::set_var(
+            FORCE_LAST_PROCESSED_SIGNATURE,
+            forced_last_transaction.to_string(),
+        );
+
+        tokio::spawn(listener.process_internal());
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        // State should have stored the forced signature
+        assert_eq!(
+            forced_last_transaction,
+            state.latest_processed_signature().unwrap()
+        );
+    }
+
+    fn setup_new_test_state() -> MemmapState {
+        let state_path = Path::new("/tmp").join(format!("state-{}", uuid::Uuid::new_v4()));
+        MemmapState::new(state_path).unwrap()
     }
 }

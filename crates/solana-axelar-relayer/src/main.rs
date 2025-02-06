@@ -44,11 +44,12 @@ async fn main() {
         Arc::clone(&rpc_client),
         amplifier_task_receiver,
         amplifier_client.clone(),
-        file_based_storage,
+        file_based_storage.clone(),
     );
     let (solana_listener_component, solana_listener_client) = solana_listener::SolanaListener::new(
         config.solana_listener_component,
         Arc::clone(&rpc_client),
+        file_based_storage,
     );
     let solana_event_forwarder_component = solana_event_forwarder::SolanaEventForwarder::new(
         event_forwarder_config,
@@ -117,7 +118,6 @@ mod tests {
     use solana_listener::solana_sdk::commitment_config::CommitmentConfig;
     use solana_listener::solana_sdk::pubkey::Pubkey;
     use solana_listener::solana_sdk::signature::{Keypair, Signature};
-    use solana_listener::MissedSignatureCatchupStrategy;
 
     use crate::Config;
 
@@ -199,8 +199,6 @@ mod tests {
                 gas_service_config_pda,
                 tx_scan_poll_period: solana_tx_scan_poll_period,
                 solana_ws,
-                missed_signature_catchup_strategy: MissedSignatureCatchupStrategy::UntilBeginning,
-                latest_processed_signature: Some(Signature::from_str(&latest_processed_signature)?),
                 commitment: CommitmentConfig::finalized(),
             },
             solana_gateway_task_processor: solana_gateway_task_processor::Config {

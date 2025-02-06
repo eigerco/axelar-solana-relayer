@@ -3,6 +3,7 @@ use core::str::FromStr as _;
 use core::task::Context;
 use std::sync::Arc;
 
+use file_based_storage::SolanaListenerState;
 use futures::future::BoxFuture;
 use futures::stream::{poll_fn, BoxStream, FuturesUnordered, StreamExt as _};
 use futures::task::Poll;
@@ -23,9 +24,9 @@ use crate::{SolanaTransaction, TxStatus};
 #[tracing::instrument(skip_all, err, name = "realtime log ingestion")]
 pub(crate) async fn process_realtime_logs(
     config: crate::Config,
-    latest_processed_signature: Option<Signature>,
     rpc_client: Arc<RpcClient>,
     mut signature_sender: MessageSender,
+    state: impl SolanaListenerState,
 ) -> Result<(), eyre::Error> {
     let gateway_program_address = config.gateway_program_address;
     let gas_service_config_pda = config.gas_service_config_pda;
@@ -71,6 +72,7 @@ pub(crate) async fn process_realtime_logs(
                 // Reconnect if connection dropped
                 continue 'outer;
             };
+
             // Process the first successful item
             let sig = Signature::from_str(&first_item.value.signature)
                 .expect("signature from RPC must be valid");
@@ -79,6 +81,8 @@ pub(crate) async fn process_realtime_logs(
                 break tx;
             };
         };
+
+        let latest_processed_signature = state.latest_processed_signature();
 
         tracing::debug!(
             ?t2_signature.signature,
@@ -156,7 +160,9 @@ pub(crate) async fn process_realtime_logs(
             match result {
                 Ok(Some(log_item)) => {
                     // Send the fetched log item
-                    signature_sender.send(log_item).await?;
+                    signature_sender.send(log_item.clone()).await?;
+                    // Store latest processed signature
+                    state.set_latest_processed_signature(log_item.signature)?;
                 }
                 Ok(None) => {
                     // no op

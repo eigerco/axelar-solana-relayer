@@ -12,6 +12,7 @@ eyre.workspace = true
 thiserror.workspace = true
 solana-sdk.workspace = true
 solana-client.workspace = true
+solana-compute-budget.workspace = true
 itertools.workspace = true
 futures.workspace = true
 tracing.workspace = true

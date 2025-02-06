@@ -22,6 +22,7 @@ common-serde-utils.workspace = true
 core-common-serde-utils.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
+file-based-storage.workspace = true
 solana-transaction-status.workspace = true
 axelar-solana-gas-service.workspace = true
 solana-rpc-client-api.workspace = true
@@ -37,6 +38,7 @@ solana-rpc.workspace = true
 test-log.workspace = true
 serial_test.workspace = true
 pretty_assertions.workspace = true
+uuid.workspace = true
 
 [lints]
 workspace = true
