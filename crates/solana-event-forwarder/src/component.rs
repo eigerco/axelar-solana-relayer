@@ -652,7 +652,7 @@ mod tests {
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(only_call_contract_sig.to_string())),
                     timestamp: tx.timestamp,
-                    from_address: Some(counter_pda.0.to_string()),
+                    from_address: Some(axelar_solana_memo_program::ID.to_string()),
                     finalized: Some(true),
                     extra: CallEventMetadata {
                         parent_message_id: None,
@@ -662,7 +662,7 @@ mod tests {
             message: GatewayV2Message {
                 message_id: event_id,
                 source_chain: "solana".to_owned(),
-                source_address: counter_pda.0.to_string(),
+                source_address: axelar_solana_memo_program::ID.to_string(),
                 destination_address: destination_contract.clone(),
                 payload_hash: payload_hash.to_vec(),
             },
@@ -1345,7 +1345,7 @@ mod tests {
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(gas_and_call_contract_sig.to_string())),
                     timestamp: tx.timestamp,
-                    from_address: Some(counter_pda.0.to_string()),
+                    from_address: Some(axelar_solana_memo_program::ID.to_string()),
                     finalized: Some(true),
                     extra: CallEventMetadata {
                         parent_message_id: None,
@@ -1355,7 +1355,7 @@ mod tests {
             message: GatewayV2Message {
                 message_id: event_id.clone(),
                 source_chain: "solana".to_owned(),
-                source_address: counter_pda.0.to_string(),
+                source_address: axelar_solana_memo_program::ID.to_string(),
                 destination_address: destination_address.clone(),
                 payload_hash: payload_hash.to_vec(),
             },
