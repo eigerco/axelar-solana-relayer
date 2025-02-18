@@ -18,7 +18,7 @@ use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
 use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage};
-use axelar_solana_gateway::BytemuckedPda as _;
+use axelar_solana_gateway::{get_verifier_set_tracker_pda, BytemuckedPda as _};
 use effective_tx_sender::ComputeBudgetError;
 use eyre::{Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
@@ -491,13 +491,16 @@ async fn incoming_message_already_executed(
 /// Decoding errors are ignored, as they are considered non-critical.
 fn validate_relayer_not_in_payload(payload: &[u8], signer: Pubkey) -> eyre::Result<()> {
     if let Ok(decoded_payload) = AxelarMessagePayload::decode(payload) {
-        eyre::ensure!(
-            decoded_payload
-                .account_meta()
-                .iter()
-                .any(|acc| acc.pubkey == signer),
-            "relayer will not execute a transaction where its own key is included",
-        );
+        let relayer_acc_is_included = decoded_payload
+            .account_meta()
+            .iter()
+            .any(|acc| acc.pubkey == signer);
+
+        if relayer_acc_is_included {
+            return Err(eyre::eyre!(
+                "relayer will not execute a transaction where its own key is included"
+            ));
+        }
     }
     Ok(())
 }
@@ -527,6 +530,9 @@ async fn gateway_tx_task(
     )?;
     send_gateway_tx(solana_rpc_client, keypair, ix).await?;
 
+    let verifier_set_tracker_pda =
+        get_verifier_set_tracker_pda(execute_data.signing_verifier_set_merkle_root).0;
+
     // verify each signature in the signing session
     let mut verifier_ver_future_set = execute_data
         .signing_verifier_set_leaves
@@ -534,7 +540,7 @@ async fn gateway_tx_task(
         .filter_map(|verifier_info| {
             let ix = axelar_solana_gateway::instructions::verify_signature(
                 gateway_root_pda,
-                verification_session_tracker_pda,
+                verifier_set_tracker_pda,
                 execute_data.payload_merkle_root,
                 verifier_info,
             )
@@ -556,7 +562,7 @@ async fn gateway_tx_task(
             let ix = axelar_solana_gateway::instructions::rotate_signers(
                 gateway_root_pda,
                 verification_session_tracker_pda,
-                verification_session_tracker_pda,
+                verifier_set_tracker_pda,
                 new_verifier_set_tracker_pda,
                 signer,
                 None,
