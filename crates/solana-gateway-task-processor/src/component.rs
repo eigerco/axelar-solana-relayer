@@ -219,49 +219,80 @@ async fn process_task(
                 return Ok(());
             };
 
-            let event = match error.downcast_ref::<ComputeBudgetError>() {
-                Some(&ComputeBudgetError::TransactionError {
-                    source: ref _source,
-                    signature,
-                }) => {
-                    let tx = fetch_logs(metadata.commitment, signature, solana_rpc_client).await?;
+            let event = if let Some(&ComputeBudgetError::TransactionError {
+                source: ref _source,
+                signature,
+            }) = error.downcast_ref::<ComputeBudgetError>()
+            {
+                let tx = fetch_logs(metadata.commitment, signature, solana_rpc_client).await?;
 
-                    let tx = tx.tx();
-                    let total_fee = gateway_gas_computation::compute_total_gas(
-                        axelar_solana_gateway::id(),
-                        tx,
-                        solana_rpc_client,
-                        metadata.commitment,
-                    )
-                    .await
-                    .unwrap_or(tx.cost_in_lamports);
+                let tx = tx.tx();
+                let total_fee = gateway_gas_computation::compute_total_gas(
+                    axelar_solana_gateway::id(),
+                    tx,
+                    solana_rpc_client,
+                    metadata.commitment,
+                )
+                .await
+                .unwrap_or(tx.cost_in_lamports);
 
-                    message_executed_event(
-                        signature,
+                message_executed_event(
+                    &signature.to_string(),
+                    source_chain,
+                    message_id,
+                    MessageExecutionStatus::Reverted,
+                    tx.timestamp,
+                    Token {
+                        token_id: None,
+                        amount: BigInt::from_u64(total_fee),
+                    },
+                )
+            } else {
+                // Any other error, probably happening before execution: Simulation error,
+                // error building an instruction, parsing pubkey, rpc transport error,
+                // etc.
+                //
+                // In this case, check if the payload was uploaded. If so, we need to get
+                // refunded for that. The amplifier API is being updated to accept a list of
+                // the transactions hashes with their aggregated costs, but for now we just use
+                // meta.txID = null and pass the costs.
+                //
+                // In case no lamports were spent, no transaction could actually be executed in
+                // the execute_task flow.
+
+                let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
+                    gateway_root_pda,
+                    command_id(&source_chain, &message_id.0),
+                    keypair.pubkey(),
+                );
+
+                let maybe_some_fee = gateway_gas_computation::cost_of_payload_uploading(
+                    solana_rpc_client,
+                    metadata.commitment,
+                    message_payload_pda,
+                    axelar_solana_gateway::id(),
+                )
+                .await;
+
+                match maybe_some_fee {
+                    Ok(fee) if fee > 0 => message_executed_event(
+                        &task_item.id.0.to_string(),
                         source_chain,
                         message_id,
                         MessageExecutionStatus::Reverted,
-                        tx.timestamp,
+                        None,
                         Token {
                             token_id: None,
-                            amount: BigInt::from_u64(total_fee),
+                            amount: BigInt::from_u64(fee),
                         },
-                    )
-                }
-                _ => {
-                    // Any other error, probably happening before execution: Simulation error,
-                    // error building an instruction, parsing pubkey, rpc transport error,
-                    // etc.
-                    //
-                    // todo: if we fail here, then we don't get re-imbursed for gas we spend
-                    // uploading the payload data. Wait for changes on Amplifeir API.
-                    cannot_execute_message_event(
+                    ),
+                    _ => cannot_execute_message_event(
                         task_item.id,
                         source_chain,
                         message_id,
                         CannotExecuteMessageReason::Error,
                         error.to_string(),
-                    )
+                    ),
                 }
             };
 
@@ -285,14 +316,14 @@ async fn process_task(
 }
 
 fn message_executed_event(
-    tx_signature: Signature,
+    id: &str,
     source_chain: String,
     message_id: TxEvent,
     status: MessageExecutionStatus,
     block_time: Option<DateTime<Utc>>,
     cost: Token,
 ) -> Event {
-    let event_id = EventId::tx_reverted_event_id(&tx_signature.to_string());
+    let event_id = EventId::tx_reverted_event_id(id);
     let metadata = MessageExecutedEventMetadata::builder().build();
     let event_metadata = EventMetadata::builder()
         .timestamp(block_time)
@@ -410,6 +441,7 @@ async fn execute_task(
     execute_call_status?;
     // propagate the close payload status if there was any
     close_payload_status?;
+
     Ok(())
 }
 
@@ -738,8 +770,8 @@ mod tests {
         use amplifier_api::chrono::DateTime;
         use amplifier_api::types::uuid::Uuid;
         use amplifier_api::types::{
-            CannotExecuteMessageEventV2, Event, ExecuteTask, GatewayV2Message, MessageId,
-            PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
+            Event, ExecuteTask, GatewayV2Message, MessageExecutedEvent, MessageExecutionStatus,
+            MessageId, PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
         };
         use axelar_executable::{AxelarMessagePayload, EncodingScheme, SolanaAccountRepr};
         use axelar_solana_encoding::borsh;
@@ -865,14 +897,12 @@ mod tests {
                 .expect("should have received amplifier command");
             let AmplifierCommand::PublishEvents(PublishEventsRequest { mut events }) =
                 amplifier_command;
-            let Some(Event::CannotExecuteMessageV2(CannotExecuteMessageEventV2 {
-                details, ..
-            })) = events.pop()
+            let Some(Event::MessageExecuted(MessageExecutedEvent { status, .. })) = events.pop()
             else {
                 panic!("could not find expected event");
             };
 
-            assert!(details.contains("Untrusted source address"));
+            assert_eq!(status, MessageExecutionStatus::Reverted);
         }
 
         #[test_log::test(tokio::test)]

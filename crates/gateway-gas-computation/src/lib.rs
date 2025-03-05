@@ -188,7 +188,13 @@ async fn cost_of_signature_verification(
     Ok(verify_signatures_costs)
 }
 
-async fn cost_of_payload_uploading(
+/// Computes the cost of uploading the message payload.
+///
+/// # Errors
+///
+/// - if no transactions are found.
+/// - if no logs are found for a transaction.
+pub async fn cost_of_payload_uploading(
     rpc: &RpcClient,
     commitment: CommitmentConfig,
     message_payload_pda: Pubkey,
