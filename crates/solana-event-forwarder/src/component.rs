@@ -1404,7 +1404,7 @@ mod tests {
     ) {
         // init gas config
         let gas_service_upgr_auth = fixture.payer.insecure_clone();
-        let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth);
+        let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth.insecure_clone());
         let ix = axelar_solana_gas_service::instructions::init_config(
             &axelar_solana_gas_service::ID,
             &fixture.payer.pubkey(),
@@ -1413,8 +1413,12 @@ mod tests {
             gas_config.salt,
         )
         .unwrap();
+        let payer = fixture.payer.insecure_clone();
         let gas_init_sig = *fixture
-            .send_tx_with_signatures(&[ix])
+            .send_tx_with_custom_signers_and_signature(
+                &[ix],
+                &[payer, gas_config.config_authority.insecure_clone()],
+            )
             .await
             .unwrap()
             .0

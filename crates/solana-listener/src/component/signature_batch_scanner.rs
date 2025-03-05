@@ -584,8 +584,12 @@ pub(crate) mod test {
             gas_config.salt,
         )
         .unwrap();
+        let payer = fixture.payer.insecure_clone();
         let gas_init_sig = *fixture
-            .send_tx_with_signatures(&[ix])
+            .send_tx_with_custom_signers_and_signature(
+                &[ix],
+                &[payer, gas_config.config_authority.insecure_clone()],
+            )
             .await
             .unwrap()
             .0
