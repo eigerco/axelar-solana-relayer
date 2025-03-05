@@ -24,7 +24,7 @@ use tracing::error;
 use typed_builder::TypedBuilder;
 
 /// The maximum elapsed time for retrying failed requests.
-const TWO_MINUTES: Duration = Duration::from_millis(60 * 1_000);
+const MAX_BACKOFF_ELAPSED_TIME: Duration = Duration::from_millis(60 * 1_000);
 
 /// Create a new Solana RPC client based on the provided config
 #[must_use]
@@ -94,7 +94,7 @@ impl RpcSender for RetryingHttpSender {
     #[tracing::instrument(skip(self), name = "retrying_http_sender")]
     async fn send(&self, request: RpcRequest, params: Value) -> ClientResult<Value> {
         let strategy = ExponentialBackoffBuilder::new()
-            .with_max_elapsed_time(Some(TWO_MINUTES))
+            .with_max_elapsed_time(Some(MAX_BACKOFF_ELAPSED_TIME))
             .build();
         let operation = || self.send_internal(request, &params);
         retry(strategy, operation).await
