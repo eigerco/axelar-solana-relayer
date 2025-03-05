@@ -34,7 +34,7 @@ fn main() -> eyre::Result<()> {
     match args.command {
         Commands::Deny { args } => {
             println!("cargo deny");
-            cmd!(sh, "cargo install cargo-deny").run()?;
+            cmd!(sh, "cargo +nightly install cargo-deny").run()?;
             cmd!(sh, "cargo deny check {args...}").run()?;
         }
         Commands::Test { args, coverage } => {
@@ -105,7 +105,7 @@ fn main() -> eyre::Result<()> {
         }
         Commands::UnusedDeps => {
             println!("unused deps");
-            cmd!(sh, "cargo install cargo-machete").run()?;
+            cmd!(sh, "cargo +nightly install cargo-machete").run()?;
             cmd!(sh, "cargo-machete").run()?;
         }
     }
