@@ -9,4 +9,6 @@ pub struct Config {
     pub bind_addr: SocketAddr,
     /// The maximum size of the data in a contract call with offchain data handling.
     pub call_contract_offchain_data_size_limit: usize,
+    /// The maximum number of concurrent HTTP requests.
+    pub max_concurrent_http_requests: usize,
 }

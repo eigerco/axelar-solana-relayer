@@ -69,6 +69,7 @@ async fn test_successful_call_contract_offchain_data() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
         call_contract_offchain_data_size_limit: 1024 * 1024 * 1024,
+        max_concurrent_http_requests: 10,
     };
 
     let parsed_response: Value = serde_json::from_str(RESPONSE_JSON).unwrap();
@@ -148,6 +149,7 @@ async fn test_fail_call_contract_offchain_data_too_big() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
         call_contract_offchain_data_size_limit: 10,
+        max_concurrent_http_requests: 10,
     };
 
     let parsed_response: Value = serde_json::from_str(RESPONSE_JSON).unwrap();
@@ -212,6 +214,7 @@ async fn test_fail_call_contract_offchain_data_invalid_signature() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
         call_contract_offchain_data_size_limit: 10 * 1024 * 1024,
+        max_concurrent_http_requests: 10,
     };
 
     let parsed_response: Value = serde_json::from_str(RESPONSE_JSON).unwrap();
@@ -277,6 +280,7 @@ async fn test_fail_call_contract_offchain_data_invalid_data() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
         call_contract_offchain_data_size_limit: 10 * 1024 * 1024,
+        max_concurrent_http_requests: 10,
     };
 
     let parsed_response: Value = serde_json::from_str(RESPONSE_JSON).unwrap();
@@ -336,6 +340,7 @@ async fn test_fail_call_contract_offchain_data_on_tx_fetch_error() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
         call_contract_offchain_data_size_limit: 10 * 1024 * 1024,
+        max_concurrent_http_requests: 10,
     };
 
     let encoded_signature =
@@ -400,6 +405,7 @@ async fn test_fail_call_contract_offchain_data_on_event_not_found() {
     let config = rest_service::Config {
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
         call_contract_offchain_data_size_limit: 10 * 1024 * 1024,
+        max_concurrent_http_requests: 10,
     };
 
     let mut parsed_response: Value = serde_json::from_str(RESPONSE_JSON).unwrap();

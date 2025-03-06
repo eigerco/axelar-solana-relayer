@@ -11,6 +11,7 @@ use axum::http::{Request, Response};
 use axum::Router;
 use relayer_amplifier_api_integration::AmplifierCommandClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 
@@ -87,6 +88,7 @@ impl RestService {
                 endpoints::call_contract_offchain_data::handlers(),
             )
             .with_state(Arc::new(state))
+            .layer(ConcurrencyLimitLayer::new(config.max_concurrent_http_requests))
             .layer(DefaultBodyLimit::max(
                 config.call_contract_offchain_data_size_limit,
             ))

@@ -144,6 +144,7 @@ mod tests {
         let missed_signature_catchup_strategy = "until_beginning";
         let rest_service_bind_addr = "127.0.0.1:80";
         let call_contract_offchain_data_size_limit = 10 * 1024 * 1024;
+        let max_concurrent_http_requests = 10;
 
         let input = indoc::formatdoc! {r#"
             storage_path = "./store"
@@ -180,6 +181,7 @@ mod tests {
             [rest_service]
             bind_addr = "{rest_service_bind_addr}"
             call_contract_offchain_data_size_limit = {call_contract_offchain_data_size_limit}
+            max_concurrent_http_requests = {max_concurrent_http_requests}
         "#};
 
         let parsed: Config = toml::from_str(&input)?;
@@ -217,6 +219,7 @@ mod tests {
             rest_service: rest_service::Config {
                 bind_addr: SocketAddr::from_str(rest_service_bind_addr)?,
                 call_contract_offchain_data_size_limit,
+                max_concurrent_http_requests: 10,
             },
         };
         assert_eq!(parsed, expected);
