@@ -219,6 +219,8 @@ async fn process_task(
                 return Ok(());
             };
 
+            tracing::error!(failed_to_execute = ?error, "failed to execute task");
+
             let event = if let Some(&ComputeBudgetError::TransactionError {
                 source: ref _source,
                 signature,
