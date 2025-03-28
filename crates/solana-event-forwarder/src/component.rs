@@ -1,7 +1,7 @@
 use core::future::Future;
 use core::pin::Pin;
 
-use axelar_solana_gas_service::processor::{
+use axelar_solana_gas_service_events::events::{
     GasServiceEvent, NativeGasAddedEvent, NativeGasPaidForContractCallEvent, NativeGasRefundedEvent,
 };
 use axelar_solana_gateway::processor::{
@@ -1088,7 +1088,7 @@ mod tests {
         let (incoming_message_pda, _incoming_message_pda_bump) =
             get_incoming_message_pda(&command_id);
 
-        let ix = axelar_solana_gateway::instructions::approve_messages(
+        let ix = axelar_solana_gateway::instructions::approve_message(
             message,
             execute_data.payload_merkle_root,
             fixture.gateway_root_pda,

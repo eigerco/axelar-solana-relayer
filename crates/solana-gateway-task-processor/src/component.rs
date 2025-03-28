@@ -613,7 +613,7 @@ async fn gateway_tx_task(
                         merkelised_message.leaf.message.cc_id.id.as_str(),
                     );
                     let (pda, _bump) = axelar_solana_gateway::get_incoming_message_pda(&command_id);
-                    let ix = axelar_solana_gateway::instructions::approve_messages(
+                    let ix = axelar_solana_gateway::instructions::approve_message(
                         merkelised_message,
                         execute_data.payload_merkle_root,
                         gateway_root_pda,
@@ -809,8 +809,10 @@ mod tests {
                 setup_aux_contracts(&mut fixture).await;
             let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
                 setup_tx_pusher(&fixture, &gas_config);
-            let token_id =
-                axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+            let token_id = axelar_solana_its::interchain_token_id(
+                &fixture.payer.pubkey(),
+                &Pubkey::new_unique().to_bytes(),
+            );
             let deploy_interchain_token_message =
                 GMPPayload::DeployInterchainToken(DeployInterchainToken {
                     selector: 1_u32.try_into().unwrap(),
@@ -869,8 +871,10 @@ mod tests {
                 setup_aux_contracts(&mut fixture).await;
             let (pusher_task, mut task_sender, mut rx_amplifier, _) =
                 setup_tx_pusher(&fixture, &gas_config);
-            let token_id =
-                axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+            let token_id = axelar_solana_its::interchain_token_id(
+                &fixture.payer.pubkey(),
+                &Pubkey::new_unique().to_bytes(),
+            );
             let deploy_interchain_token_message =
                 GMPPayload::DeployInterchainToken(DeployInterchainToken {
                     selector: 1_u32.try_into().unwrap(),
@@ -915,8 +919,10 @@ mod tests {
                 setup_aux_contracts(&mut fixture).await;
             let (pusher_task, mut task_sender, mut rx_amplifier, rpc_client) =
                 setup_tx_pusher(&fixture, &gas_config);
-            let token_id =
-                axelar_solana_its::interchain_token_id(&fixture.payer.pubkey(), b"whatever");
+            let token_id = axelar_solana_its::interchain_token_id(
+                &fixture.payer.pubkey(),
+                &Pubkey::new_unique().to_bytes(),
+            );
             let deploy_interchain_token_message =
                 GMPPayload::DeployInterchainToken(DeployInterchainToken {
                     selector: 1_u32.try_into().unwrap(),
@@ -1087,7 +1093,7 @@ mod tests {
             "3Hv3NpPp221k5vqEWEJ3n1NHQemHPiLuUWf7mQdBWWwQ";
         pub(super) const AXELAR_GOV_ADDRESS_KECCAK_BASE58_HASH: &str =
             "2BxSFpGc1shPid1odjZL4UPPssRNx1htoF8fCBXqrgDm";
-        pub(super) const MINIMUM_PROPOSAL_ETA_DELAY: u32 = 0;
+        pub(super) const MINIMUM_PROPOSAL_ETA_DELAY: u32 = 3600;
         pub(super) const OPERATOR_PUBKEY: &str = "BunZKHSeKhdbCCAzA2yQiA92Z4VJ6DukoKRYd8y97cKq";
 
         #[test_log::test(tokio::test)]
@@ -1366,17 +1372,25 @@ mod tests {
         .unwrap();
         let init_memo_sig = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0[0];
 
-        let ix = axelar_solana_its::instructions::initialize(
+        let ix = axelar_solana_its::instruction::initialize(
             fixture.upgrade_authority.pubkey(),
             fixture.gateway_root_pda,
             fixture.payer.pubkey(),
+            "solana".to_owned(),
+            "axelar157hl7gpuknjmhtac2qnphuazv2yerfagva7lsu9vuj2pgn32z22qa26dk4".to_owned(),
+        )
+        .unwrap();
+
+        let set_trusted_chain_ix = axelar_solana_its::instruction::set_trusted_chain(
+            fixture.upgrade_authority.pubkey(),
+            "axelar".to_owned(),
         )
         .unwrap();
         let upgrade_authority = fixture.upgrade_authority.insecure_clone();
         let payer = fixture.payer.insecure_clone();
         let init_its_sig = fixture
             .send_tx_with_custom_signers_and_signature(
-                &[ix],
+                &[ix, set_trusted_chain_ix],
                 &[upgrade_authority.insecure_clone(), payer.insecure_clone()],
             )
             .await

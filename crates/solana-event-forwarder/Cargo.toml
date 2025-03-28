@@ -10,6 +10,7 @@ edition.workspace = true
 [dependencies]
 futures.workspace = true
 axelar-solana-gas-service.workspace = true
+axelar-solana-gas-service-events.workspace = true
 solana-gateway-task-processor.workspace = true
 relayer-amplifier-api-integration.workspace = true
 gateway-gas-computation.workspace = true

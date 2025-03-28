@@ -169,7 +169,9 @@ async fn write(
             keypair.pubkey(),
             command_id,
             bytes,
-            offset,
+            offset
+                .try_into()
+                .context("Unexpected u64 overflow in offset")?,
         )
         .context("failed to construct an instruction to write to the message payload pda")?;
         futures.push(async move {
