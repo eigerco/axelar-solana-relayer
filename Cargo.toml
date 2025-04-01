@@ -23,6 +23,8 @@ suspicious = { priority = -7, level = "deny" }
 pedantic = { priority = -8, level = "deny" }
 nursery = { priority = -9, level = "deny" }
 
+
+allow_attributes = "allow"
 cargo_common_metadata = "allow"
 pattern_type_mismatch = "allow"
 missing_docs_in_private_items = "allow"
