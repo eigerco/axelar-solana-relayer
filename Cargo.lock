@@ -709,7 +709,7 @@ dependencies = [
 [[package]]
 name = "axelar-executable"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "alloy-sol-types",
  "axelar-solana-encoding",
@@ -724,7 +724,7 @@ dependencies = [
 [[package]]
 name = "axelar-message-primitives"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -740,7 +740,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-encoding"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "arrayref",
  "borsh 1.5.7",
@@ -757,7 +757,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gas-service"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "axelar-solana-gas-service-events",
  "borsh 1.5.7",
@@ -772,7 +772,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gas-service-events"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "solana-program",
  "thiserror 1.0.69",
@@ -781,7 +781,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "axelar-message-primitives",
  "axelar-solana-encoding",
@@ -805,7 +805,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway-test-fixtures"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "axelar-executable",
  "axelar-solana-encoding",
@@ -832,7 +832,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-governance"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "alloy-sol-types",
  "axelar-executable",
@@ -849,7 +849,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-its"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -874,7 +874,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-memo-program"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "axelar-executable",
  "axelar-solana-encoding",
@@ -2711,7 +2711,7 @@ dependencies = [
 [[package]]
 name = "gateway-event-stack"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "axelar-solana-gas-service-events",
  "axelar-solana-gateway",
@@ -2867,7 +2867,7 @@ dependencies = [
 [[package]]
 name = "governance-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3298,9 +3298,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df2dcfbe0677734ab2f3ffa7fa7bfd4706bfdc1ef393f2ee30184aed67e631b4"
+checksum = "497bbc33a26fdd4af9ed9c70d63f61cf56a938375fbb32df34db9b1cd6d643f2"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -3308,6 +3308,7 @@ dependencies = [
  "http 1.3.1",
  "http-body 1.0.1",
  "hyper 1.6.0",
+ "libc",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -3317,9 +3318,9 @@ dependencies = [
 
 [[package]]
 name = "iana-time-zone"
-version = "0.1.62"
+version = "0.1.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2fd658b06e56721792c5df4475705b6cda790e9298d19d2f8af083457bcd127"
+checksum = "b0c919e5debc312ad217002b8048a17b7d83f80703865bbfcfebb0458b0b27d8"
 dependencies = [
  "android_system_properties",
  "core-foundation-sys",
@@ -3631,7 +3632,7 @@ dependencies = [
 [[package]]
 name = "interchain-token-transfer-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3695,7 +3696,7 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 [[package]]
 name = "its-instruction-builder"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "async-recursion",
  "axelar-executable",
@@ -5236,7 +5237,7 @@ dependencies = [
 [[package]]
 name = "program-utils"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -6104,7 +6105,7 @@ dependencies = [
 [[package]]
 name = "role-management"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/solana-axelar.git?rev=91f8d2e#91f8d2eb77e16af8623e2e142bcc5ccd120f4c8b"
+source = "git+https://github.com/eigerco/solana-axelar.git?rev=61ec220#61ec2205bd7c6f8406458bfddbb33e722c996baf"
 dependencies = [
  "bincode",
  "bitflags 2.9.0",
@@ -10769,11 +10770,37 @@ dependencies = [
 
 [[package]]
 name = "windows-core"
-version = "0.52.0"
+version = "0.61.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ab640c8d7e35bf8ba19b884ba838ceb4fba93a4e8c65a9059d08afcfc683d9"
+checksum = "4763c1de310c86d75a878046489e2e5ba02c649d185f21c67d4cf8a56d098980"
 dependencies = [
- "windows-targets 0.52.6",
+ "windows-implement",
+ "windows-interface",
+ "windows-link",
+ "windows-result",
+ "windows-strings 0.4.0",
+]
+
+[[package]]
+name = "windows-implement"
+version = "0.60.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a47fddd13af08290e67f4acabf4b459f647552718f683a7b415d290ac744a836"
+dependencies = [
+ "proc-macro2 1.0.94",
+ "quote 1.0.40",
+ "syn 2.0.100",
+]
+
+[[package]]
+name = "windows-interface"
+version = "0.59.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd9211b69f8dcdfa817bfd14bf1c97c9188afa36f4750130fcdf3f400eca9fa8"
+dependencies = [
+ "proc-macro2 1.0.94",
+ "quote 1.0.40",
+ "syn 2.0.100",
 ]
 
 [[package]]
@@ -10789,7 +10816,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4286ad90ddb45071efd1a66dfa43eb02dd0dfbae1545ad6cc3c51cf34d7e8ba3"
 dependencies = [
  "windows-result",
- "windows-strings",
+ "windows-strings 0.3.1",
  "windows-targets 0.53.0",
 ]
 
@@ -10807,6 +10834,15 @@ name = "windows-strings"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87fa48cc5d406560701792be122a10132491cff9d0aeb23583cc2dcafc847319"
+dependencies = [
+ "windows-link",
+]
+
+[[package]]
+name = "windows-strings"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a2ba9642430ee452d5a7aa78d72907ebe8cfda358e8cb7918a2050581322f97"
 dependencies = [
  "windows-link",
 ]
