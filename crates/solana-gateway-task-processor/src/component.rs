@@ -451,7 +451,7 @@ async fn execute_task(
 fn verify_destination(destination_address: Pubkey, solana_rpc_client: &str) -> eyre::Result<()> {
     let url = Url::from_str(solana_rpc_client)?;
     let solana_rpc_client: String = url.into();
-    let valid_destination_addresses = vec![
+    let valid_destination_addresses = [
         axelar_solana_its::ID,
         axelar_solana_governance::ID,
         axelar_solana_gateway::ID,
