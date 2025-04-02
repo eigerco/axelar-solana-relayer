@@ -414,7 +414,7 @@ async fn execute_task(
     // communicate with the destination program
     let execute_call_status = match message.destination_address.parse::<Pubkey>() {
         Ok(destination_address) => {
-            verify_destination(destination_address, solana_rpc_client)?;
+            verify_destination(destination_address, solana_rpc_client.url())?;
             send_to_destination_program(
                 destination_address,
                 signer,
@@ -447,10 +447,7 @@ async fn execute_task(
     Ok(())
 }
 
-fn verify_destination(
-    destination_address: Pubkey,
-    solana_rpc_client: &RpcClient,
-) -> eyre::Result<()> {
+fn verify_destination(destination_address: Pubkey, solana_rpc_client: String) -> eyre::Result<()> {
     let valid_destination_addresses = vec![
         axelar_solana_its::ID,
         axelar_solana_governance::ID,
@@ -470,13 +467,13 @@ fn verify_destination(
         "devnet.helius-rpc.com",
     ];
     for rpc_client in valid_rpc_client {
-        if solana_rpc_client.url().contains(rpc_client) {
+        if solana_rpc_client.contains(rpc_client) {
             return Ok(());
         }
     }
     Err(eyre!(
         "Destination rpc client {:#?} is not valid",
-        solana_rpc_client.url()
+        solana_rpc_client
     ))
 }
 
@@ -799,6 +796,39 @@ mod tests {
 
     use super::SolanaTxPusher;
     use crate::config;
+
+    mod unit_tests {
+        use crate::component::verify_destination;
+
+        #[test]
+        fn test_verify_destination() {
+            assert!(verify_destination(
+                axelar_solana_memo_program::ID,
+                "http://127.0.0.1:123".to_string()
+            )
+            .is_ok());
+            assert!(verify_destination(
+                axelar_solana_gateway::ID,
+                "http://127.0.0.1:456".to_string()
+            )
+            .is_ok());
+            assert!(verify_destination(
+                axelar_solana_governance::ID,
+                "http://127.0.0.1:8888".to_string()
+            )
+            .is_ok());
+            assert!(verify_destination(
+                axelar_solana_gas_service::ID,
+                "https://api.devnet.solana.com/".to_string()
+            )
+            .is_ok());
+            assert!(verify_destination(
+                axelar_solana_its::ID,
+                "https://devnet.helius-rpc.com".to_string()
+            )
+            .is_ok());
+        }
+    }
 
     mod its_tests {
 
