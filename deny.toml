@@ -81,6 +81,10 @@ ignore = [
   { id = "RUSTSEC-2021-0139", reason = "dependency of solana lib" },
   { id = "RUSTSEC-2024-0384", reason = "updating `instant` is not feasible" },
   { id = "RUSTSEC-2024-0388", reason = "updating `derivative` is not feasible" },
+  { id = "RUSTSEC-2024-0436", reason = "dependency of solana lib" },
+  { id = "RUSTSEC-2025-0009", reason = "dependency of solana lib" },
+  { id = "RUSTSEC-2025-0010", reason = "dependency of solana lib" },
+  { id = "RUSTSEC-2025-0012", reason = "dependency of solana lib" },
   # { id = "RUSTSEC-2024-0344", reason = "ed25519-dalek: need to wait for solana to upgrade internally" },
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
@@ -171,6 +175,10 @@ expression = "MIT"
 license-files = []
 [[licenses.clarify]]
 crate = "axelar-solana-its"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-solana-memo-program"
 expression = "MIT"
 license-files = []
 [[licenses.clarify]]
