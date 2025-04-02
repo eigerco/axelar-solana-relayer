@@ -469,7 +469,6 @@ fn verify_destination(destination_address: Pubkey, solana_rpc_client: &str) -> e
         "api.devnet.solana.com",
         "devnet.helius-rpc.com",
         "api.testnet.solana.com",
-        "api.mainnet-beta.solana.com",
     ];
     for rpc_client in valid_rpc_client {
         if solana_rpc_client.contains(rpc_client) {
@@ -830,7 +829,7 @@ mod tests {
                 axelar_solana_its::ID,
                 "https://api.mainnet-beta.solana.com"
             )
-            .is_ok());
+            .is_err());
             assert!(verify_destination(
                 axelar_solana_governance::ID,
                 "https://api.testnet.solana.com"
