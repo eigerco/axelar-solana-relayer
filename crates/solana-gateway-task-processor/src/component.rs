@@ -36,6 +36,7 @@ use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::TransactionError;
 use tracing::{info_span, instrument, Instrument as _};
+use url::Url;
 
 use crate::config;
 
@@ -414,7 +415,7 @@ async fn execute_task(
     // communicate with the destination program
     let execute_call_status = match message.destination_address.parse::<Pubkey>() {
         Ok(destination_address) => {
-            verify_destination(destination_address, solana_rpc_client.url())?;
+            verify_destination(destination_address, &solana_rpc_client.url())?;
             send_to_destination_program(
                 destination_address,
                 signer,
@@ -447,7 +448,9 @@ async fn execute_task(
     Ok(())
 }
 
-fn verify_destination(destination_address: Pubkey, solana_rpc_client: String) -> eyre::Result<()> {
+fn verify_destination(destination_address: Pubkey, solana_rpc_client: &str) -> eyre::Result<()> {
+    let url = Url::from_str(solana_rpc_client)?;
+    let solana_rpc_client: String = url.into();
     let valid_destination_addresses = vec![
         axelar_solana_its::ID,
         axelar_solana_governance::ID,
@@ -798,35 +801,43 @@ mod tests {
     use crate::config;
 
     mod unit_tests {
+        use std::str::FromStr;
+
+        use solana_sdk::pubkey::Pubkey;
+
         use crate::component::verify_destination;
 
         #[test]
         fn test_verify_destination() {
-            assert!(verify_destination(
-                axelar_solana_memo_program::ID,
-                "http://127.0.0.1:123".to_string()
-            )
-            .is_ok());
-            assert!(verify_destination(
-                axelar_solana_gateway::ID,
-                "http://127.0.0.1:456".to_string()
-            )
-            .is_ok());
-            assert!(verify_destination(
-                axelar_solana_governance::ID,
-                "http://127.0.0.1:8888".to_string()
-            )
-            .is_ok());
+            assert!(
+                verify_destination(axelar_solana_memo_program::ID, "http://127.0.0.1:123").is_ok()
+            );
+            assert!(verify_destination(axelar_solana_gateway::ID, "http://127.0.0.1:456").is_ok());
+            assert!(
+                verify_destination(axelar_solana_governance::ID, "http://127.0.0.1:8888").is_ok()
+            );
             assert!(verify_destination(
                 axelar_solana_gas_service::ID,
-                "https://api.devnet.solana.com/".to_string()
+                "https://api.devnet.solana.com/"
             )
             .is_ok());
+            assert!(
+                verify_destination(axelar_solana_its::ID, "https://devnet.helius-rpc.com").is_ok()
+            );
+            assert!(verify_destination(axelar_solana_its::ID, "https://127.0.0.1:foobar").is_err());
+            assert!(
+                verify_destination(axelar_solana_its::ID, "https://malicious-address.com").is_err()
+            );
             assert!(verify_destination(
-                axelar_solana_its::ID,
-                "https://devnet.helius-rpc.com".to_string()
+                Pubkey::from_str("its2RSrgfKfQDkuxFhov4nPRw4Wy9i6e757befoobar").unwrap(),
+                "https://api.devnet.solana.com/"
             )
-            .is_ok());
+            .is_err());
+            assert!(verify_destination(
+                Pubkey::from_str("its2RSrgfKfQDkuxFhov4nPRw4Wy9i6e757befoobar").unwrap(),
+                "https://foobar.com/"
+            )
+            .is_err());
         }
     }
 
