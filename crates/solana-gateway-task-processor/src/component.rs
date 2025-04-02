@@ -20,7 +20,7 @@ use axelar_solana_gateway::error::GatewayError;
 use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage};
 use axelar_solana_gateway::{get_verifier_set_tracker_pda, BytemuckedPda as _};
 use effective_tx_sender::ComputeBudgetError;
-use eyre::{Context as _, OptionExt as _};
+use eyre::{eyre, Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
 use futures::{SinkExt as _, StreamExt as _};
 use num_traits::FromPrimitive as _;
@@ -261,7 +261,6 @@ async fn process_task(
                 //
                 // In case no lamports were spent, no transaction could actually be executed in
                 // the execute_task flow.
-
                 let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
                     gateway_root_pda,
                     command_id(&source_chain, &message_id.0),
@@ -415,6 +414,7 @@ async fn execute_task(
     // communicate with the destination program
     let execute_call_status = match message.destination_address.parse::<Pubkey>() {
         Ok(destination_address) => {
+            verify_destination(destination_address, solana_rpc_client)?;
             send_to_destination_program(
                 destination_address,
                 signer,
@@ -445,6 +445,39 @@ async fn execute_task(
     close_payload_status?;
 
     Ok(())
+}
+
+fn verify_destination(
+    destination_address: Pubkey,
+    solana_rpc_client: &RpcClient,
+) -> eyre::Result<()> {
+    let valid_destination_addresses = vec![
+        axelar_solana_its::ID,
+        axelar_solana_governance::ID,
+        axelar_solana_gateway::ID,
+        axelar_solana_gas_service::ID,
+        axelar_solana_memo_program::ID,
+    ];
+    if !valid_destination_addresses.contains(&destination_address) {
+        return Err(eyre!(
+            "Destination address {:#?} is not valid",
+            destination_address
+        ));
+    }
+    let valid_rpc_client = vec![
+        "127.0.0.1",
+        "api.devnet.solana.com",
+        "devnet.helius-rpc.com",
+    ];
+    for rpc_client in valid_rpc_client {
+        if solana_rpc_client.url().contains(rpc_client) {
+            return Ok(());
+        }
+    }
+    Err(eyre!(
+        "Destination rpc client {:#?} is not valid",
+        solana_rpc_client.url()
+    ))
 }
 
 #[expect(clippy::too_many_arguments, reason = "necessary")]
