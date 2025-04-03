@@ -35,7 +35,6 @@ its-instruction-builder.workspace = true
 solana-transaction-status.workspace = true
 axelar-solana-gas-service.workspace = true
 bincode.workspace = true
-url.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

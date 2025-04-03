@@ -36,7 +36,6 @@ use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::TransactionError;
 use tracing::{info_span, instrument, Instrument as _};
-use url::Url;
 
 use crate::config;
 
@@ -449,36 +448,22 @@ async fn execute_task(
 }
 
 fn verify_destination(destination_address: Pubkey, solana_rpc_client: &str) -> eyre::Result<()> {
-    let url = Url::from_str(solana_rpc_client)?;
-    let solana_rpc_client: String = url.into();
-    let valid_destination_addresses = [
-        axelar_solana_its::ID,
-        axelar_solana_governance::ID,
-        axelar_solana_gateway::ID,
-        axelar_solana_gas_service::ID,
-        axelar_solana_memo_program::ID,
-    ];
-    if !valid_destination_addresses.contains(&destination_address) {
-        return Err(eyre!(
-            "Destination address {:#?} is not valid",
-            destination_address
-        ));
-    }
-    let valid_rpc_client = vec![
-        "127.0.0.1",
-        "api.devnet.solana.com",
-        "devnet.helius-rpc.com",
-        "api.testnet.solana.com",
-    ];
-    for rpc_client in valid_rpc_client {
-        if solana_rpc_client.contains(rpc_client) {
-            return Ok(());
+    if solana_rpc_client == "https://api.mainnet-beta.solana.com" {
+        let valid_destination_addresses = [
+            axelar_solana_its::ID,
+            axelar_solana_governance::ID,
+            axelar_solana_gateway::ID,
+            axelar_solana_gas_service::ID,
+            axelar_solana_memo_program::ID,
+        ];
+        if !valid_destination_addresses.contains(&destination_address) {
+            return Err(eyre!(
+                "Destination address {:#?} is not valid",
+                destination_address
+            ));
         }
     }
-    Err(eyre!(
-        "Destination rpc client {:#?} is not valid",
-        solana_rpc_client
-    ))
+    Ok(())
 }
 
 #[expect(clippy::too_many_arguments, reason = "necessary")]
@@ -813,10 +798,6 @@ mod tests {
             assert!(
                 verify_destination(axelar_solana_memo_program::ID, "http://127.0.0.1:123").is_ok()
             );
-            assert!(verify_destination(axelar_solana_gateway::ID, "http://127.0.0.1:456").is_ok());
-            assert!(
-                verify_destination(axelar_solana_governance::ID, "http://127.0.0.1:8888").is_ok()
-            );
             assert!(verify_destination(
                 axelar_solana_gas_service::ID,
                 "https://api.devnet.solana.com/"
@@ -829,24 +810,30 @@ mod tests {
                 axelar_solana_its::ID,
                 "https://api.mainnet-beta.solana.com"
             )
-            .is_err());
+            .is_ok());
             assert!(verify_destination(
                 axelar_solana_governance::ID,
-                "https://api.testnet.solana.com"
+                "https://api.mainnet-beta.solana.com"
             )
             .is_ok());
-            assert!(verify_destination(axelar_solana_its::ID, "https://127.0.0.1:foobar").is_err());
-            assert!(
-                verify_destination(axelar_solana_its::ID, "https://malicious-address.com").is_err()
-            );
             assert!(verify_destination(
-                Pubkey::from_str("its2RSrgfKfQDkuxFhov4nPRw4Wy9i6e757befoobar").unwrap(),
-                "https://api.devnet.solana.com/"
+                axelar_solana_gas_service::ID,
+                "https://api.mainnet-beta.solana.com"
             )
-            .is_err());
+            .is_ok());
+            assert!(verify_destination(
+                axelar_solana_memo_program::ID,
+                "https://api.mainnet-beta.solana.com"
+            )
+            .is_ok());
+            assert!(verify_destination(
+                axelar_solana_gateway::ID,
+                "https://api.mainnet-beta.solana.com"
+            )
+            .is_ok());
             assert!(verify_destination(
                 Pubkey::from_str("its2RSrgfKfQDkuxFhov4nPRw4Wy9i6e757befoobar").unwrap(),
-                "https://foobar.com/"
+                "https://api.mainnet-beta.solana.com"
             )
             .is_err());
         }
