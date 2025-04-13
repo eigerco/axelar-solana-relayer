@@ -151,15 +151,15 @@ tower-http = { version = "0.6.2", features = ["trace"] }
 tower = { version = "0.5.2", features = ["limit"] }
 
 # Solana
-solana-client = "=2.0.16"
-solana-test-validator = "=2.0.16"
-solana-rpc-client = "=2.0.16"
-solana-rpc = "=2.0.16"
-solana-rpc-client-api = "=2.0.16"
-solana-program = "=2.0.16"
-solana-sdk = "=2.0.16"
-solana-transaction-status = "=2.0.16"
-solana-compute-budget = "=2.0.16"
+solana-client = "2.2.7"
+solana-test-validator = "2.2.7"
+solana-rpc-client = "2.2.7"
+solana-rpc = "2.2.7"
+solana-rpc-client-api = "2.2.7"
+solana-program = "2.2.1"
+solana-sdk = "2.2.2"
+solana-transaction-status = "2.2.7"
+solana-compute-budget = "2.2.7"
 
 # Async
 tokio = { version = "1", features = ["rt", "signal", "rt-multi-thread", "macros"] }
