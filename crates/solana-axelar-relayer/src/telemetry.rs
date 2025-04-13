@@ -1,12 +1,10 @@
-use opentelemetry::logs::LogError;
-use opentelemetry::metrics::MetricsError;
-use opentelemetry::trace::TraceError;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-use opentelemetry_otlp::{ExportConfig, WithExportConfig as _};
-use opentelemetry_sdk::logs::{Logger, LoggerProvider};
-use opentelemetry_sdk::trace::Config;
-use opentelemetry_sdk::{runtime, trace as sdktrace, Resource};
+use opentelemetry_otlp::{ExportConfig, ExporterBuildError, LogExporter, MetricExporter, SpanExporter, WithExportConfig as _};
+use opentelemetry_sdk::logs::{SdkLogger, SdkLoggerProvider};
+use opentelemetry_sdk::{trace as sdktrace, Resource};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, Registry};
@@ -14,9 +12,9 @@ use tracing_subscriber::{EnvFilter, Registry};
 use crate::{get_service_name, get_service_version};
 
 // Aliases for readability
-type TracerProviderResult = Result<sdktrace::TracerProvider, TraceError>;
-type MeterProviderResult = Result<opentelemetry_sdk::metrics::SdkMeterProvider, MetricsError>;
-type LoggerProviderResult = Result<opentelemetry_sdk::logs::LoggerProvider, LogError>;
+type TracerProviderResult = Result<sdktrace::SdkTracerProvider, ExporterBuildError>;
+type MeterProviderResult = Result<opentelemetry_sdk::metrics::SdkMeterProvider, ExporterBuildError>;
+type LoggerProviderResult = Result<SdkLoggerProvider, ExporterBuildError>;
 
 pub(crate) fn init_telemetry(exporter_endpoint: Option<String>) -> eyre::Result<()> {
     if let Some(endpoint) = exporter_endpoint {
@@ -40,48 +38,47 @@ pub(crate) fn init_telemetry(exporter_endpoint: Option<String>) -> eyre::Result<
 }
 
 fn init_tracer_provider(exporter_endpoint: &str) -> TracerProviderResult {
-    opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(exporter_endpoint),
-        )
-        .with_trace_config(Config::default().with_resource(resources()))
-        .install_batch(runtime::Tokio)
+    let exporter = SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(exporter_endpoint)
+        .build()?;
+    Ok(SdkTracerProvider::builder()
+        .with_resource(resources())
+        .with_batch_exporter(exporter)
+        .build())
 }
 
 fn init_metrics(exporter_endpoint: &str) -> MeterProviderResult {
     let export_config = ExportConfig {
-        endpoint: exporter_endpoint.to_owned(),
+        endpoint: Some(exporter_endpoint.to_owned()),
         ..ExportConfig::default()
     };
 
-    opentelemetry_otlp::new_pipeline()
-        .metrics(runtime::Tokio)
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_export_config(export_config),
-        )
+    let exporter = MetricExporter::builder()
+        .with_tonic()
+        .with_export_config(export_config)
+        .build()?;
+
+    Ok(SdkMeterProvider::builder()
         .with_resource(resources())
-        .build()
+        .with_periodic_exporter(exporter)
+        .build())
 }
 
 fn init_logs(exporter_endpoint: &str) -> LoggerProviderResult {
-    opentelemetry_otlp::new_pipeline()
-        .logging()
+    let exporter = LogExporter::builder()
+        .with_tonic()
+        .with_endpoint(exporter_endpoint)
+        .build()?;
+    Ok(SdkLoggerProvider::builder()
         .with_resource(resources())
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(exporter_endpoint),
-        )
-        .install_batch(runtime::Tokio)
+        .with_batch_exporter(exporter)
+        .build())
 }
 
 fn resources() -> Resource {
-    Resource::new(vec![
+    Resource::builder()
+        .with_attributes(vec![
         KeyValue::new(
             opentelemetry_semantic_conventions::resource::SERVICE_NAME,
             get_service_name(),
@@ -90,11 +87,11 @@ fn resources() -> Resource {
             opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
             get_service_version(),
         ),
-    ])
+    ]).build()
 }
 
 fn setup_subscriber(
-    logs_layer: Option<OpenTelemetryTracingBridge<LoggerProvider, Logger>>,
+    logs_layer: Option<OpenTelemetryTracingBridge<SdkLoggerProvider, SdkLogger>>,
 ) -> eyre::Result<()> {
     let subscriber = Registry::default();
     let filter = EnvFilter::new("relayer_engine=info")

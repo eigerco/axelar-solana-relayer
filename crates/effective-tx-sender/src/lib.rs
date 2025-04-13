@@ -12,7 +12,7 @@ use futures::TryFutureExt as _;
 use itertools::Itertools as _;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
-use solana_compute_budget::compute_budget_processor::MAX_COMPUTE_UNIT_LIMIT;
+use solana_compute_budget::compute_budget_limits::MAX_COMPUTE_UNIT_LIMIT;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::signature::{Keypair, Signature};
