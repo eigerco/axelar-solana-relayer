@@ -1,9 +1,12 @@
-use opentelemetry_sdk::metrics::SdkMeterProvider;
-use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-use opentelemetry_otlp::{ExportConfig, ExporterBuildError, LogExporter, MetricExporter, SpanExporter, WithExportConfig as _};
+use opentelemetry_otlp::{
+    ExportConfig, ExporterBuildError, LogExporter, MetricExporter, SpanExporter,
+    WithExportConfig as _,
+};
 use opentelemetry_sdk::logs::{SdkLogger, SdkLoggerProvider};
+use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::{trace as sdktrace, Resource};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::prelude::*;
@@ -79,15 +82,16 @@ fn init_logs(exporter_endpoint: &str) -> LoggerProviderResult {
 fn resources() -> Resource {
     Resource::builder()
         .with_attributes(vec![
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-            get_service_name(),
-        ),
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
-            get_service_version(),
-        ),
-    ]).build()
+            KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                get_service_name(),
+            ),
+            KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
+                get_service_version(),
+            ),
+        ])
+        .build()
 }
 
 fn setup_subscriber(
