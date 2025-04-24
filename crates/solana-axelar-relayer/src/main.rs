@@ -3,7 +3,7 @@
 use std::{env, path::PathBuf};
 use std::sync::Arc;
 
-use base64::{Engine, prelude::BASE64_STANDARD};
+use clap::Parser as _;
 use relayer_amplifier_api_integration::Amplifier;
 use relayer_engine::{RelayerComponent, RelayerEngine};
 use serde::Deserialize;
@@ -99,8 +99,6 @@ pub struct ConfigToDelete {
     pub relayer_engine: relayer_engine::Config,
     /// Shared configuration for the Solana RPC client
     pub solana_rpc: retrying_solana_http_sender::Config,
-    /// Configuration for the REST service
-    pub rest_service: rest_service::Config,
 }
 
 /// Top-level configuration for the relayer.
@@ -124,9 +122,7 @@ pub struct Config {
 
 fn read_config_from_env(config: ConfigToDelete) -> Config {
     let storage_path = env::var("STORAGE_PATH").expect("failed to get STORAGE_PATH");
-    let storage_path = BASE64_STANDARD.decode(storage_path).expect("failed to decode STORAGE_PATH");
-    let storage_path = String::from_utf8(storage_path).expect("failed to convert to string");
-    println!("{storage_path}");
+    let rest_service = rest_service::Config::parse();
     Config {
         amplifier_component: config.amplifier_component,
         solana_listener_component: config.solana_listener_component,
@@ -134,7 +130,7 @@ fn read_config_from_env(config: ConfigToDelete) -> Config {
         relayer_engine: config.relayer_engine,
         solana_rpc: config.solana_rpc,
         storage_path: storage_path.into(),
-        rest_service: config.rest_service
+        rest_service
     }
 }
 

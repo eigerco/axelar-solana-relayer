@@ -6194,6 +6194,7 @@ dependencies = [
  "amplifier-api",
  "axelar-solana-gateway",
  "axum 0.7.9",
+ "clap 4.5.36",
  "eyre",
  "futures 0.3.31",
  "gateway-event-stack",
@@ -7313,6 +7314,7 @@ version = "0.1.0"
 dependencies = [
  "amplifier-api",
  "base64 0.22.1",
+ "clap 4.5.36",
  "color-eyre",
  "eyre",
  "file-based-storage",

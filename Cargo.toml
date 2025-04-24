@@ -99,7 +99,7 @@ its-instruction-builder = { git = "https://github.com/eigerco/solana-axelar.git"
 interchain-token-transfer-gmp = { git = "https://github.com/eigerco/solana-axelar.git", rev = "59a0f1f" }
 
 # CLI
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 xshell = "0.2"
 
 # Utils

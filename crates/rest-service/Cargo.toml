@@ -11,6 +11,7 @@ edition.workspace = true
 amplifier-api.workspace = true
 axelar-solana-gateway.workspace = true
 axum.workspace = true
+clap.workspace = true
 eyre.workspace = true
 futures.workspace = true
 gateway-event-stack.workspace = true
