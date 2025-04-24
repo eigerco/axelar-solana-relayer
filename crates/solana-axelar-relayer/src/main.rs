@@ -1,8 +1,9 @@
 //! Transaction relayer for Solana-Axelar integration
 
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 use std::sync::Arc;
 
+use base64::{Engine, prelude::BASE64_STANDARD};
 use relayer_amplifier_api_integration::Amplifier;
 use relayer_engine::{RelayerComponent, RelayerEngine};
 use serde::Deserialize;
@@ -21,9 +22,10 @@ async fn main() {
     // Initialize tracing
     telemetry::init_telemetry(tracing_endpoint).expect("could not init telemetry");
     color_eyre::install().expect("color eyre could not be installed");
-
+    
     let config_file = std::fs::read_to_string(config_file).expect("cannot read config file");
-    let config = toml::from_str::<Config>(&config_file).expect("invalid config file");
+    let config_to_delete = toml::from_str::<ConfigToDelete>(&config_file).expect("invalid config file");
+    let config = read_config_from_env(config_to_delete);
 
     let file_based_storage = file_based_storage::MemmapState::new(config.storage_path)
         .expect("could not init file based storage");
@@ -86,6 +88,23 @@ pub(crate) const fn get_service_name() -> &'static str {
 
 /// Top-level configuration for the relayer.
 #[derive(Debug, Deserialize, PartialEq)]
+pub struct ConfigToDelete {
+    /// Configuration for the Amplifier API processor
+    pub amplifier_component: relayer_amplifier_api_integration::Config,
+    /// Configuration for the Solana transaction listener processor
+    pub solana_listener_component: solana_listener::Config,
+    /// Configuration for the Solana transaction listener processor
+    pub solana_gateway_task_processor: solana_gateway_task_processor::Config,
+    /// Meta-configuration on the engine
+    pub relayer_engine: relayer_engine::Config,
+    /// Shared configuration for the Solana RPC client
+    pub solana_rpc: retrying_solana_http_sender::Config,
+    /// Configuration for the REST service
+    pub rest_service: rest_service::Config,
+}
+
+/// Top-level configuration for the relayer.
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Config {
     /// Configuration for the Amplifier API processor
     pub amplifier_component: relayer_amplifier_api_integration::Config,
@@ -101,6 +120,22 @@ pub struct Config {
     pub storage_path: std::path::PathBuf,
     /// Configuration for the REST service
     pub rest_service: rest_service::Config,
+}
+
+fn read_config_from_env(config: ConfigToDelete) -> Config {
+    let storage_path = env::var("STORAGE_PATH").expect("failed to get STORAGE_PATH");
+    let storage_path = BASE64_STANDARD.decode(storage_path).expect("failed to decode STORAGE_PATH");
+    let storage_path = String::from_utf8(storage_path).expect("failed to convert to string");
+    println!("{storage_path}");
+    Config {
+        amplifier_component: config.amplifier_component,
+        solana_listener_component: config.solana_listener_component,
+        solana_gateway_task_processor: config.solana_gateway_task_processor,
+        relayer_engine: config.relayer_engine,
+        solana_rpc: config.solana_rpc,
+        storage_path: storage_path.into(),
+        rest_service: config.rest_service
+    }
 }
 
 #[expect(
