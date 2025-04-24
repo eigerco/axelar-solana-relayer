@@ -4,6 +4,7 @@ use std::{env, path::PathBuf};
 use std::sync::Arc;
 
 use clap::Parser as _;
+use dotenv::dotenv;
 use relayer_amplifier_api_integration::Amplifier;
 use relayer_engine::{RelayerComponent, RelayerEngine};
 use serde::Deserialize;
@@ -12,6 +13,7 @@ mod telemetry;
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
     // Load configuration
     let tracing_endpoint = std::env::var("TRACING_ENDPOINT").ok();
     let config_file = std::env::var("CONFIG")
