@@ -12,3 +12,4 @@ target/
 config.toml
 store
 storage
+.env
