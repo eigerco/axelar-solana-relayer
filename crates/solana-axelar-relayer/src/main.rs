@@ -94,8 +94,6 @@ pub struct ConfigToDelete {
     /// Configuration for the Amplifier API processor
     pub amplifier_component: relayer_amplifier_api_integration::Config,
     /// Configuration for the Solana transaction listener processor
-    pub solana_listener_component: solana_listener::Config,
-    /// Configuration for the Solana transaction listener processor
     pub solana_gateway_task_processor: solana_gateway_task_processor::Config,
     /// Meta-configuration on the engine
     pub relayer_engine: relayer_engine::Config,
@@ -125,9 +123,10 @@ pub struct Config {
 fn read_config_from_env(config: ConfigToDelete) -> Config {
     let storage_path = env::var("STORAGE_PATH").expect("failed to get STORAGE_PATH");
     let rest_service = rest_service::Config::parse();
+    let solana_listener_component = solana_listener::Config::parse();
     Config {
         amplifier_component: config.amplifier_component,
-        solana_listener_component: config.solana_listener_component,
+        solana_listener_component,
         solana_gateway_task_processor: config.solana_gateway_task_processor,
         relayer_engine: config.relayer_engine,
         solana_rpc: config.solana_rpc,

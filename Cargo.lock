@@ -8701,6 +8701,7 @@ dependencies = [
  "axelar-solana-memo-program",
  "backoff",
  "chrono",
+ "clap 4.5.36",
  "common-serde-utils 0.1.0",
  "common-serde-utils 0.1.1",
  "eyre",

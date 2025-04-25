@@ -2,25 +2,29 @@
 
 use core::time::Duration;
 
+use clap::Parser;
 use serde::Deserialize;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use typed_builder::TypedBuilder;
 
 /// Top-level configuration for the solana component.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq, TypedBuilder)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, TypedBuilder, Parser)]
 pub struct Config {
     /// Gateway program id
     #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
     #[builder(default = config_defaults::gateway_program_address())]
     #[serde(default = "config_defaults::gateway_program_address")]
+    #[arg(env = "GATEWAY_PROGRAM_ADDRESS")]
     pub gateway_program_address: Pubkey,
 
     /// Gas service config PDA
     #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
+    #[arg(env = "GAS_SERVICE_CONFIG_PDA")]
     pub gas_service_config_pda: Pubkey,
 
     /// The websocket endpoint of the solana node
+    #[arg(env = "SOLANA_LISTENER_SOLANA_WS")]
     pub solana_ws: url::Url,
 
     /// How often we want to poll the network for new signatures
@@ -30,11 +34,21 @@ pub struct Config {
         default = "config_defaults::tx_scan_poll_period",
         deserialize_with = "core_common_serde_utils::duration_ms_decode"
     )]
+    #[arg(env = "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD", value_parser = parse_tx_scan_poll_period)]
     pub tx_scan_poll_period: Duration,
 
     /// The commitment level for the solana node tx state
     #[serde(default = "CommitmentConfig::finalized")]
+    #[arg(env = "SOLANA_LISTENER_COMMITMENT")]
     pub commitment: CommitmentConfig,
+}
+
+fn parse_tx_scan_poll_period(input: &str) -> Result<Duration, String> {
+    Ok(Duration::from_secs(
+        input
+            .parse::<u64>()
+            .expect("failed to parse tx scan poll period"),
+    ))
 }
 
 pub(crate) mod config_defaults {
