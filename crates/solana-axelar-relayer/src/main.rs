@@ -95,8 +95,6 @@ pub struct ConfigToDelete {
     pub amplifier_component: relayer_amplifier_api_integration::Config,
     /// Configuration for the Solana transaction listener processor
     pub solana_gateway_task_processor: solana_gateway_task_processor::Config,
-    /// Shared configuration for the Solana RPC client
-    pub solana_rpc: retrying_solana_http_sender::Config,
 }
 
 /// Top-level configuration for the relayer.
@@ -123,12 +121,13 @@ fn read_config_from_env(config: ConfigToDelete) -> Config {
     let rest_service = rest_service::Config::parse();
     let solana_listener_component = solana_listener::Config::parse();
     let relayer_engine = relayer_engine::Config::parse();
+    let solana_rpc = retrying_solana_http_sender::Config::parse();
     Config {
         amplifier_component: config.amplifier_component,
         solana_listener_component,
         solana_gateway_task_processor: config.solana_gateway_task_processor,
         relayer_engine,
-        solana_rpc: config.solana_rpc,
+        solana_rpc,
         storage_path: storage_path.into(),
         rest_service
     }

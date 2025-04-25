@@ -8,6 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::ExponentialBackoffBuilder;
+use clap::Parser;
 use serde::Deserialize;
 use serde_json::Value;
 use solana_client::client_error::{ClientError, ClientErrorKind};
@@ -110,7 +111,7 @@ impl RpcSender for RetryingHttpSender {
 }
 
 /// Configuration for initialising the [`RetryingHttpSender`]
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq, TypedBuilder)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, TypedBuilder, Parser)]
 pub struct Config {
     /// How many rpc requests we process at the same time
     #[builder(default = config_defaults::max_concurrent_rpc_requests())]
@@ -118,13 +119,16 @@ pub struct Config {
         rename = "max_concurrent_rpc_requests",
         default = "config_defaults::max_concurrent_rpc_requests"
     )]
+    #[arg(env = "SOLANA_RPC_MAX_CONCURRENT_RPC_REQUESTS")]
     pub max_concurrent_rpc_requests: usize,
 
     /// The rpc of the solana node
+    #[arg(env = "SOLANA_RPC_SOLANA_HTTP_RPC")]
     pub solana_http_rpc: url::Url,
 
     /// The Solna RPC tx commitment config
     #[serde(default = "CommitmentConfig::finalized")]
+    #[arg(env = "SOLANA_RPC_COMMITMENT")]
     pub commitment: CommitmentConfig,
 }
 
