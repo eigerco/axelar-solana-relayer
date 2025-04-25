@@ -84,7 +84,7 @@ impl<S: State> SolanaTxPusher<S> {
     async fn process_internal(self) -> eyre::Result<()> {
         let config_metadata = Arc::new(self.get_config_metadata());
         let state = self.state.clone();
-        let keypair = Arc::new(self.config.signing_keypair.insecure_clone());
+        let keypair = Arc::new(self.config.signing_keypair());
 
         ensure_gas_service_authority(&keypair.pubkey(), &self.rpc_client, &config_metadata).await?;
 
