@@ -1,6 +1,6 @@
 //! Transaction relayer for Solana-Axelar integration
 
-use std::{env, path::PathBuf};
+use std::env;
 use std::sync::Arc;
 
 use clap::Parser as _;
@@ -16,18 +16,12 @@ async fn main() {
     dotenv().ok();
     // Load configuration
     let tracing_endpoint = std::env::var("TRACING_ENDPOINT").ok();
-    let config_file = std::env::var("CONFIG")
-        .unwrap_or_else(|_| "config.toml".to_owned())
-        .parse::<PathBuf>()
-        .expect("invalid file path");
 
     // Initialize tracing
     telemetry::init_telemetry(tracing_endpoint).expect("could not init telemetry");
     color_eyre::install().expect("color eyre could not be installed");
     
-    let config_file = std::fs::read_to_string(config_file).expect("cannot read config file");
-    let config_to_delete = toml::from_str::<ConfigToDelete>(&config_file).expect("invalid config file");
-    let config = read_config_from_env(config_to_delete);
+    let config = read_config_from_env();
 
     let file_based_storage = file_based_storage::MemmapState::new(config.storage_path)
         .expect("could not init file based storage");
@@ -90,13 +84,6 @@ pub(crate) const fn get_service_name() -> &'static str {
 
 /// Top-level configuration for the relayer.
 #[derive(Debug, Deserialize, PartialEq)]
-pub struct ConfigToDelete {
-    /// Configuration for the Amplifier API processor
-    pub amplifier_component: relayer_amplifier_api_integration::Config,
-}
-
-/// Top-level configuration for the relayer.
-#[derive(Debug, Deserialize, PartialEq)]
 pub struct Config {
     /// Configuration for the Amplifier API processor
     pub amplifier_component: relayer_amplifier_api_integration::Config,
@@ -114,15 +101,16 @@ pub struct Config {
     pub rest_service: rest_service::Config,
 }
 
-fn read_config_from_env(config: ConfigToDelete) -> Config {
+fn read_config_from_env() -> Config {
     let storage_path = env::var("STORAGE_PATH").expect("failed to get STORAGE_PATH");
     let rest_service = rest_service::Config::parse();
     let solana_listener_component = solana_listener::Config::parse();
     let relayer_engine = relayer_engine::Config::parse();
     let solana_rpc = retrying_solana_http_sender::Config::parse();
     let solana_gateway_task_processor = solana_gateway_task_processor::Config::parse();
+    let amplifier_component = relayer_amplifier_api_integration::Config::parse();
     Config {
-        amplifier_component: config.amplifier_component,
+        amplifier_component,
         solana_listener_component,
         solana_gateway_task_processor,
         relayer_engine,
