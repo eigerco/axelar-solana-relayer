@@ -8,20 +8,6 @@ use typed_builder::TypedBuilder;
 /// Configuration for the [`SolanaTxPusher`] component
 #[derive(Debug, Deserialize, PartialEq, TypedBuilder, Parser)]
 pub struct Config {
-    /// Gateway program id
-    #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
-    #[builder(default = config_defaults::gateway_program_address())]
-    #[serde(default = "config_defaults::gateway_program_address")]
-    #[arg(env = "GATEWAY_PROGRAM_ADDRESS")]
-    pub gateway_program_address: Pubkey,
-
-    /// Gas service program id
-    #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
-    #[builder(default = config_defaults::gas_service_program_address())]
-    #[serde(default = "config_defaults::gas_service_program_address")]
-    #[arg(env = "GAS_SERVICE_PROGRAM_ADDRESS")]
-    pub gas_service_program_address: Pubkey,
-
     /// The PDA used to store the gas service configuration associated with this relayer instance.
     #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
     #[arg(env = "GAS_SERVICE_CONFIG_PDA")]
@@ -29,13 +15,41 @@ pub struct Config {
 
     /// The signing keypair for transactions.
     /// Can be represented as a base58 string or 64 element array `[42, 42, ..]`
-    #[arg(env = "SOLANA_GATEWAY_SIGNING_KEYPAIR")]
+    #[arg(
+        value_name = "SOLANA_GATEWAY_SIGNING_KEYPAIR",
+        env = "SOLANA_GATEWAY_SIGNING_KEYPAIR"
+    )]
     pub signing_keypair: String,
+
+    /// Gateway program id
+    #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
+    #[builder(default = config_defaults::gateway_program_address())]
+    #[serde(default = "config_defaults::gateway_program_address")]
+    #[arg(
+        env = "GATEWAY_PROGRAM_ADDRESS",
+        default_value = config_defaults::gateway_program_address().to_string()
+    )]
+    pub gateway_program_address: Pubkey,
+
+    /// Gas service program id
+    #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
+    #[builder(default = config_defaults::gas_service_program_address())]
+    #[serde(default = "config_defaults::gas_service_program_address")]
+    #[arg(
+        value_name = "GAS_SERVICE_PROGRAM_ADDRESS",
+        env = "GAS_SERVICE_PROGRAM_ADDRESS",
+        default_value = config_defaults::gas_service_program_address().to_string()
+    )]
+    pub gas_service_program_address: Pubkey,
 
     /// Commitment config to use for solana RPC interactions
     #[builder(default = CommitmentConfig::finalized())]
     #[serde(default = "CommitmentConfig::finalized")]
-    #[arg(env = "SOLANA_GATEWAY_COMMITMENT")]
+    #[arg(
+        value_name = "SOLANA_GATEWAY_COMMITMENT",
+        env = "SOLANA_GATEWAY_COMMITMENT",
+        default_value = "finalized"
+    )]
     pub commitment: CommitmentConfig,
 }
 

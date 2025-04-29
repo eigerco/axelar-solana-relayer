@@ -24,7 +24,10 @@ pub struct Config {
     pub gas_service_config_pda: Pubkey,
 
     /// The websocket endpoint of the solana node
-    #[arg(env = "SOLANA_LISTENER_SOLANA_WS")]
+    #[arg(
+        value_name = "SOLANA_LISTENER_SOLANA_WS",
+        env = "SOLANA_LISTENER_SOLANA_WS"
+    )]
     pub solana_ws: url::Url,
 
     /// How often we want to poll the network for new signatures
@@ -34,12 +37,20 @@ pub struct Config {
         default = "config_defaults::tx_scan_poll_period",
         deserialize_with = "core_common_serde_utils::duration_ms_decode"
     )]
-    #[arg(env = "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD", value_parser = parse_tx_scan_poll_period)]
+    #[arg(
+        value_name= "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD",
+        env = "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD",
+        value_parser = parse_tx_scan_poll_period
+    )]
     pub tx_scan_poll_period: Duration,
 
     /// The commitment level for the solana node tx state
     #[serde(default = "CommitmentConfig::finalized")]
-    #[arg(env = "SOLANA_LISTENER_COMMITMENT")]
+    #[arg(
+        value_name = "SOLANA_LISTENER_COMMITMENT",
+        env = "SOLANA_LISTENER_COMMITMENT",
+        default_value = "finalized"
+    )]
     pub commitment: CommitmentConfig,
 }
 

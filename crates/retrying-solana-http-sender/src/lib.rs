@@ -113,22 +113,30 @@ impl RpcSender for RetryingHttpSender {
 /// Configuration for initialising the [`RetryingHttpSender`]
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, TypedBuilder, Parser)]
 pub struct Config {
+    /// The rpc of the solana node
+    #[arg(value_name = "SOLANA_RPC_SOLANA_HTTP_RPC", env = "SOLANA_RPC_SOLANA_HTTP_RPC")]
+    pub solana_http_rpc: url::Url,
+    
     /// How many rpc requests we process at the same time
     #[builder(default = config_defaults::max_concurrent_rpc_requests())]
     #[serde(
         rename = "max_concurrent_rpc_requests",
         default = "config_defaults::max_concurrent_rpc_requests"
     )]
-    #[arg(env = "SOLANA_RPC_MAX_CONCURRENT_RPC_REQUESTS")]
+    #[arg(
+        value_name = "SOLANA_RPC_MAX_CONCURRENT_RPC_REQUESTS",
+        env = "SOLANA_RPC_MAX_CONCURRENT_RPC_REQUESTS",
+        default_value = config_defaults::max_concurrent_rpc_requests().to_string()
+    )]
     pub max_concurrent_rpc_requests: usize,
-
-    /// The rpc of the solana node
-    #[arg(env = "SOLANA_RPC_SOLANA_HTTP_RPC")]
-    pub solana_http_rpc: url::Url,
 
     /// The Solna RPC tx commitment config
     #[serde(default = "CommitmentConfig::finalized")]
-    #[arg(env = "SOLANA_RPC_COMMITMENT")]
+    #[arg(
+        value_name = "SOLANA_RPC_COMMITMENT",
+        env = "SOLANA_RPC_COMMITMENT",
+        default_value = "finalized"
+    )]
     pub commitment: CommitmentConfig,
 }
 

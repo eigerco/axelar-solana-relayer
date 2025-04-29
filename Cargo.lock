@@ -311,7 +311,6 @@ dependencies = [
  "base64 0.22.1",
  "bnum 0.12.1",
  "chrono",
- "clap 4.5.36",
  "redact",
  "reqwest 0.12.15",
  "serde",
@@ -6038,6 +6037,7 @@ name = "relayer-amplifier-api-integration"
 version = "0.1.1"
 dependencies = [
  "amplifier-api",
+ "base64 0.22.1",
  "clap 4.5.36",
  "common-serde-utils 0.1.1",
  "eyre",
