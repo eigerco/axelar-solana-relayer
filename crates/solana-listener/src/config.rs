@@ -41,7 +41,8 @@ pub struct Config {
     #[arg(
         value_name= "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD",
         env = "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD",
-        value_parser = parse_tx_scan_poll_period
+        value_parser = parse_tx_scan_poll_period,
+        default_value = config_defaults::tx_scan_poll_period_value().to_string()
     )]
     pub tx_scan_poll_period: Duration,
 
@@ -65,7 +66,11 @@ pub(crate) mod config_defaults {
     use solana_sdk::pubkey::Pubkey;
 
     pub(crate) const fn tx_scan_poll_period() -> Duration {
-        Duration::from_millis(1000)
+        Duration::from_millis(tx_scan_poll_period_value())
+    }
+
+    pub(crate) const fn tx_scan_poll_period_value() -> u64 {
+        1000
     }
 
     pub(crate) const fn gateway_program_address() -> Pubkey {
