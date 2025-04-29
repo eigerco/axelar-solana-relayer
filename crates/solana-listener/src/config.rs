@@ -3,6 +3,7 @@
 use core::time::Duration;
 
 use clap::Parser;
+use eyre::Result;
 use serde::Deserialize;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
@@ -54,12 +55,8 @@ pub struct Config {
     pub commitment: CommitmentConfig,
 }
 
-fn parse_tx_scan_poll_period(input: &str) -> Result<Duration, String> {
-    Ok(Duration::from_secs(
-        input
-            .parse::<u64>()
-            .expect("failed to parse tx scan poll period"),
-    ))
+fn parse_tx_scan_poll_period(input: &str) -> Result<Duration> {
+    Ok(Duration::from_secs(input.parse::<u64>()?))
 }
 
 pub(crate) mod config_defaults {
