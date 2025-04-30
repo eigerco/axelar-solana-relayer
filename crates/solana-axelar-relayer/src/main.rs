@@ -1,6 +1,7 @@
 //! Transaction relayer for Solana-Axelar integration
 
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser as _;
@@ -13,14 +14,14 @@ mod telemetry;
 
 #[tokio::main]
 async fn main() {
-    dotenv().ok();
+    let _: Option<PathBuf> = dotenv().ok();
     // Load configuration
     let tracing_endpoint = std::env::var("TRACING_ENDPOINT").ok();
 
     // Initialize tracing
     telemetry::init_telemetry(tracing_endpoint).expect("could not init telemetry");
     color_eyre::install().expect("color eyre could not be installed");
-    
+
     let config = read_config_from_env();
 
     let file_based_storage = file_based_storage::MemmapState::new(config.storage_path)
@@ -116,7 +117,7 @@ fn read_config_from_env() -> Config {
         relayer_engine,
         solana_rpc,
         storage_path: storage_path.into(),
-        rest_service
+        rest_service,
     }
 }
 

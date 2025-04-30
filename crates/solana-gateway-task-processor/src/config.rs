@@ -6,7 +6,7 @@ use solana_sdk::signature::Keypair;
 use typed_builder::TypedBuilder;
 
 /// Configuration for the [`SolanaTxPusher`] component
-#[derive(Debug, Deserialize, PartialEq, TypedBuilder, Parser)]
+#[derive(Debug, Deserialize, PartialEq, TypedBuilder, Parser, Eq)]
 pub struct Config {
     /// The PDA used to store the gas service configuration associated with this relayer instance.
     #[serde(deserialize_with = "common_serde_utils::pubkey_decode")]
@@ -55,6 +55,7 @@ pub struct Config {
 
 impl Config {
     /// Signing keypair as Keypair struct
+    #[must_use]
     pub fn signing_keypair(&self) -> Keypair {
         Keypair::from_base58_string(&self.signing_keypair)
     }

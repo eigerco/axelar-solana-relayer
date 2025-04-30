@@ -114,9 +114,12 @@ impl RpcSender for RetryingHttpSender {
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, TypedBuilder, Parser)]
 pub struct Config {
     /// The rpc of the solana node
-    #[arg(value_name = "SOLANA_RPC_SOLANA_HTTP_RPC", env = "SOLANA_RPC_SOLANA_HTTP_RPC")]
+    #[arg(
+        value_name = "SOLANA_RPC_SOLANA_HTTP_RPC",
+        env = "SOLANA_RPC_SOLANA_HTTP_RPC"
+    )]
     pub solana_http_rpc: url::Url,
-    
+
     /// How many rpc requests we process at the same time
     #[builder(default = config_defaults::max_concurrent_rpc_requests())]
     #[serde(
