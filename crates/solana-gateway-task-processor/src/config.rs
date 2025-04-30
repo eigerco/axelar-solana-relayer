@@ -5,7 +5,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use typed_builder::TypedBuilder;
 
-/// Configuration for the [`SolanaTxPusher`] component
+/// Configuration for the [`crate::SolanaTxPusher`] component
 #[derive(Debug, Deserialize, PartialEq, TypedBuilder, Parser, Eq)]
 pub struct Config {
     /// The PDA used to store the gas service configuration associated with this relayer instance.

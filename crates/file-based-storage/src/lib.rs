@@ -49,7 +49,7 @@ impl MemmapState {
     /// If the file cannot be created / opened
     ///
     /// # Panics
-    /// If the expected state of the [`InternalState`] will be larger than `u64`
+    /// If the expected state will be larger than `u64`
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         // Open or create the file with read and write permissions
         let mut file = OpenOptions::new()
