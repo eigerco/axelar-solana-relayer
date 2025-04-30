@@ -7323,7 +7323,6 @@ name = "solana-axelar-relayer"
 version = "0.1.0"
 dependencies = [
  "amplifier-api",
- "base64 0.22.1",
  "clap 4.5.36",
  "color-eyre",
  "dotenvy",

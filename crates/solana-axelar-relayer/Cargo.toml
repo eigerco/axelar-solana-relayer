@@ -28,7 +28,6 @@ opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-appender-tracing.workspace = true
 file-based-storage.workspace = true
-base64.workspace = true
 clap.workspace = true
 dotenvy.workspace = true
 
