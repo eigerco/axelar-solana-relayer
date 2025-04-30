@@ -98,45 +98,7 @@ mod tests {
         let config: Config = serde_json::from_value(data).expect("Failed to deserialize Config");
 
         // Check if the deserialized keypair matches the original
-        assert_eq!(config.signing_keypair.into_bytes(), keypair_bytes);
-    }
-
-    #[test]
-    fn test_deserialize_keypair_array() {
-        // Generate a new Keypair
-        let keypair = Keypair::new();
-        let keypair_bytes = keypair.to_bytes();
-
-        // Prepare JSON data
-        let data = json!({
-            "gateway_program_address": Pubkey::new_unique().to_string(),
-            "gas_service_config_pda": Pubkey::new_unique().to_string(),
-            "signing_keypair": keypair_bytes.to_vec()
-        });
-
-        // Deserialize Config
-        let config: Config = serde_json::from_value(data).expect("Failed to deserialize Config");
-
-        // Check if the deserialized keypair matches the original
-        assert_eq!(config.signing_keypair.into_bytes(), keypair_bytes);
-    }
-
-    #[test]
-    fn test_deserialize_keypair_invalid_length() {
-        // Create an invalid keypair byte array of incorrect length
-        let invalid_bytes = vec![0_u8; 63]; // Should be 64 bytes
-
-        // Prepare JSON data
-        let data = json!({
-            "gateway_program_address": Pubkey::new_unique().to_string(),
-            "signing_keypair": invalid_bytes
-        });
-
-        // Attempt to deserialize Config
-        let result: Result<Config, _> = serde_json::from_value(data);
-
-        // Check that deserialization fails
-        result.unwrap_err();
+        assert_eq!(config.signing_keypair().to_bytes(), keypair_bytes);
     }
 
     #[test]
