@@ -124,7 +124,7 @@ itertools = "0.13"
 num-traits = "0.2"
 memmap2 = "0.9"
 bytemuck = "1.19"
-dotenv = "0.15.0"
+dotenvy = "0.15.7"
 
 # Serde
 bincode = "1"

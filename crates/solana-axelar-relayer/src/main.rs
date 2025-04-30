@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser as _;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use relayer_amplifier_api_integration::Amplifier;
 use relayer_engine::{RelayerComponent, RelayerEngine};
 use serde::Deserialize;
