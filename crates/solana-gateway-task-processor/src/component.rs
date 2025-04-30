@@ -1353,7 +1353,7 @@ mod tests {
             gateway_program_address: axelar_solana_gateway::id(),
             gas_service_program_address: axelar_solana_gas_service::id(),
             gas_service_config_pda: gas_config.config_pda,
-            signing_keypair: fixture.payer.insecure_clone(),
+            signing_keypair: fixture.payer.insecure_clone().to_base58_string(),
             commitment: CommitmentConfig::confirmed(),
         };
         let (tx_amplifier, rx_amplifier) = futures::channel::mpsc::unbounded();

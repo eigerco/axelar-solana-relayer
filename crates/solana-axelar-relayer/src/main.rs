@@ -224,7 +224,7 @@ mod tests {
                 gateway_program_address,
                 gas_service_program_address: gas_service_program_id,
                 gas_service_config_pda,
-                signing_keypair,
+                signing_keypair: signing_keypair_as_str,
                 commitment: CommitmentConfig::finalized(),
             },
             solana_rpc: retrying_solana_http_sender::Config {

@@ -97,7 +97,7 @@ mod tests {
         let config: Config = serde_json::from_value(data).expect("Failed to deserialize Config");
 
         // Check if the deserialized keypair matches the original
-        assert_eq!(config.signing_keypair.to_bytes(), keypair_bytes);
+        assert_eq!(config.signing_keypair.into_bytes(), keypair_bytes);
     }
 
     #[test]
@@ -117,7 +117,7 @@ mod tests {
         let config: Config = serde_json::from_value(data).expect("Failed to deserialize Config");
 
         // Check if the deserialized keypair matches the original
-        assert_eq!(config.signing_keypair.to_bytes(), keypair_bytes);
+        assert_eq!(config.signing_keypair.into_bytes(), keypair_bytes);
     }
 
     #[test]
