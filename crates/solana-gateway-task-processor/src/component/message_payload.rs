@@ -206,28 +206,8 @@ async fn commit(
     Ok(())
 }
 
-/// Closes the message payload account and reclaims its rent.
-pub(crate) async fn close(
-    solana_rpc_client: &RpcClient,
-    keypair: &Keypair,
-    gateway_root_pda: Pubkey,
-    message: &Message,
-) -> eyre::Result<()> {
-    let msg_command_id = message_to_command_id(message);
-    let ix = axelar_solana_gateway::instructions::close_message_payload(
-        gateway_root_pda,
-        keypair.pubkey(),
-        msg_command_id,
-    )
-    .context("failed to construct an instruction to close the message payload pda")?;
-    send_gateway_tx(solana_rpc_client, keypair, ix)
-        .await
-        .context("failed to close the message payload pda")?;
-    Ok(())
-}
-
 /// Helper function to generate a command ID from a message.
-fn message_to_command_id(message: &Message) -> [u8; 32] {
+pub(crate) fn message_to_command_id(message: &Message) -> [u8; 32] {
     command_id(&message.cc_id.chain, &message.cc_id.id)
 }
 
