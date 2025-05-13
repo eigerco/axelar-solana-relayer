@@ -38,7 +38,7 @@ async fn main() {
     let (amplifier_component, amplifier_client, amplifier_task_receiver) =
         Amplifier::new(config.amplifier_component, file_based_storage.clone());
     let gateway_task_processor = solana_gateway_task_processor::SolanaTxPusher::new(
-        config.solana_gateway_task_processor,
+        Arc::new(config.solana_gateway_task_processor),
         name_on_amplifier.clone(),
         Arc::clone(&rpc_client),
         amplifier_task_receiver,
@@ -227,6 +227,7 @@ mod tests {
                 gas_service_config_pda,
                 signing_keypair: signing_keypair_as_str,
                 commitment: CommitmentConfig::finalized(),
+                allow_third_party_contract_calls: false,
             },
             solana_rpc: retrying_solana_http_sender::Config {
                 max_concurrent_rpc_requests,
