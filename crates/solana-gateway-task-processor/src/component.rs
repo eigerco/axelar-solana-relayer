@@ -23,6 +23,7 @@ use effective_tx_sender::ComputeBudgetError;
 use eyre::{eyre, Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
 use futures::{SinkExt as _, StreamExt as _};
+use message_payload::message_to_command_id;
 use num_traits::FromPrimitive as _;
 use relayer_amplifier_api_integration::AmplifierCommand;
 use relayer_amplifier_state::State;
@@ -420,6 +421,7 @@ async fn execute_task(
                 signer,
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
+                metadata.gateway_root_pda,
                 &message,
                 payload,
                 solana_rpc_client,
@@ -430,19 +432,8 @@ async fn execute_task(
         Err(err) => Err(eyre::Error::from(err)),
     };
 
-    // Close the MessagePaynload PDA account to reclaim funds
-    let close_payload_status = message_payload::close(
-        solana_rpc_client,
-        keypair,
-        metadata.gateway_root_pda,
-        &message,
-    )
-    .await;
-
     // propagate the execute err if there was any
     execute_call_status?;
-    // propagate the close payload status if there was any
-    close_payload_status?;
 
     Ok(())
 }
@@ -472,6 +463,7 @@ async fn send_to_destination_program(
     signer: Pubkey,
     gateway_incoming_message_pda: Pubkey,
     gateway_message_payload_pda: Pubkey,
+    gateway_root_pda: Pubkey,
     message: &Message,
     payload: Vec<u8>,
     solana_rpc_client: &RpcClient,
@@ -479,9 +471,9 @@ async fn send_to_destination_program(
 ) -> eyre::Result<Signature> {
     // For compatibility reasons with the rest of the Axelar protocol we need add custom handling
     // for ITS & Governance programs
-    let execute_call_status = match destination_address {
+    let ix = match destination_address {
         axelar_solana_its::ID => {
-            let ix = its_instruction_builder::build_its_gmp_instruction(
+            its_instruction_builder::build_its_gmp_instruction(
                 signer,
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
@@ -489,32 +481,37 @@ async fn send_to_destination_program(
                 payload,
                 solana_rpc_client,
             )
-            .await?;
-
-            send_transaction(solana_rpc_client, keypair, ix).await?
+            .await?
         }
         axelar_solana_governance::ID => {
-            let ix = axelar_solana_governance::instructions::builder::calculate_gmp_ix(
+            axelar_solana_governance::instructions::builder::calculate_gmp_ix(
                 signer,
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
                 message,
                 &payload,
-            )?;
-            send_transaction(solana_rpc_client, keypair, ix).await?
+            )?
         }
         _ => {
             validate_relayer_not_in_payload(&payload, signer)?;
             // if security passed, we broadcast the tx
-            let ix = axelar_executable::construct_axelar_executable_ix(
+            axelar_executable::construct_axelar_executable_ix(
                 message,
                 &payload,
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
-            )?;
-            send_transaction(solana_rpc_client, keypair, ix).await?
+            )?
         }
     };
+    let msg_command_id = message_to_command_id(message);
+    let ix_close = axelar_solana_gateway::instructions::close_message_payload(
+        gateway_root_pda,
+        keypair.pubkey(),
+        msg_command_id,
+    )
+    .context("failed to construct an instruction to close the message payload pda")?;
+    let execute_call_status =
+        send_transaction(solana_rpc_client, keypair, VecDeque::from([ix, ix_close])).await?;
     Ok(execute_call_status)
 }
 
@@ -685,7 +682,7 @@ async fn refund_task(
                 .map_err(|_err| eyre::eyre!("refund amount is too large"))?,
         )?;
 
-        send_transaction(solana_rpc_client, keypair, instruction).await?;
+        send_transaction(solana_rpc_client, keypair, VecDeque::from([instruction])).await?;
     }
 
     Ok(())
@@ -702,7 +699,7 @@ async fn send_gateway_tx(
     keypair: &Keypair,
     ix: Instruction,
 ) -> eyre::Result<()> {
-    let res = send_transaction(solana_rpc_client, keypair, ix).await;
+    let res = send_transaction(solana_rpc_client, keypair, VecDeque::from([ix])).await;
 
     match res {
         Ok(_) => Ok(()),
@@ -735,9 +732,9 @@ async fn send_gateway_tx(
 async fn send_transaction(
     solana_rpc_client: &RpcClient,
     keypair: &Keypair,
-    ix: Instruction,
+    ix: VecDeque<Instruction>,
 ) -> Result<Signature, ComputeBudgetError> {
-    effective_tx_sender::EffectiveTxSender::new(solana_rpc_client, keypair, VecDeque::from([ix]))
+    effective_tx_sender::EffectiveTxSender::new(solana_rpc_client, keypair, ix)
         .evaluate_compute_ixs()
         .await?
         .send_tx()
