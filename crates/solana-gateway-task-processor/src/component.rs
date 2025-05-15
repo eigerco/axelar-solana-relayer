@@ -44,7 +44,7 @@ mod message_payload;
 /// A component that pushes transactions over to the Solana blockchain.
 /// The transactions to push are dependant on the events that the Amplifier API will provide
 pub struct SolanaTxPusher<S: State> {
-    config: config::Config,
+    config: Arc<config::Config>,
     name_on_amplifier: String,
     rpc_client: Arc<RpcClient>,
     task_receiver: relayer_amplifier_api_integration::AmplifierTaskReceiver,
@@ -64,7 +64,7 @@ impl<S: State> SolanaTxPusher<S> {
     /// Create a new [`SolanaTxPusher`] component
     #[must_use]
     pub const fn new(
-        config: config::Config,
+        config: Arc<config::Config>,
         name_on_amplifier: String,
         rpc_client: Arc<RpcClient>,
         task_receiver: relayer_amplifier_api_integration::AmplifierTaskReceiver,
@@ -102,6 +102,7 @@ impl<S: State> SolanaTxPusher<S> {
                         let keypair = Arc::clone(&keypair);
                         let config_metadata = Arc::clone(&config_metadata);
                         let amplifier_client = self.amplifier_client.clone();
+                        let config = Arc::clone(&self.config);
                         async move {
                             let command_id = task.id.clone();
                             let res = process_task(
@@ -110,6 +111,7 @@ impl<S: State> SolanaTxPusher<S> {
                                 amplifier_client,
                                 task,
                                 &config_metadata,
+                                config,
                             )
                             .await;
                             (command_id, res)
@@ -197,6 +199,7 @@ async fn process_task(
     mut amplifier_client: relayer_amplifier_api_integration::AmplifierCommandClient,
     task_item: TaskItem,
     metadata: &ConfigMetadata,
+    config: Arc<config::Config>,
 ) -> eyre::Result<()> {
     use amplifier_api::types::Task;
     let signer = keypair.pubkey();
@@ -211,10 +214,11 @@ async fn process_task(
             let message_id = task.message.message_id.clone();
 
             // communicate with the destination program
-            let Err(error) = execute_task(task, metadata, signer, solana_rpc_client, keypair)
-                .instrument(info_span!("execute task"))
-                .in_current_span()
-                .await
+            let Err(error) =
+                execute_task(task, metadata, signer, solana_rpc_client, keypair, config)
+                    .instrument(info_span!("execute task"))
+                    .in_current_span()
+                    .await
             else {
                 return Ok(());
             };
@@ -374,6 +378,7 @@ async fn execute_task(
     signer: Pubkey,
     solana_rpc_client: &RpcClient,
     keypair: &Keypair,
+    config: Arc<config::Config>,
 ) -> Result<(), eyre::Error> {
     let payload = execute_task.payload;
 
@@ -414,7 +419,7 @@ async fn execute_task(
     // communicate with the destination program
     let execute_call_status = match message.destination_address.parse::<Pubkey>() {
         Ok(destination_address) => {
-            verify_destination(destination_address, &solana_rpc_client.url())?;
+            verify_destination(destination_address, config.allow_third_party_contract_calls)?;
             send_to_destination_program(
                 destination_address,
                 signer,
@@ -447,22 +452,28 @@ async fn execute_task(
     Ok(())
 }
 
-fn verify_destination(destination_address: Pubkey, solana_rpc_client: &str) -> eyre::Result<()> {
-    if solana_rpc_client == "https://api.mainnet-beta.solana.com" {
-        let valid_destination_addresses = [
-            axelar_solana_its::ID,
-            axelar_solana_governance::ID,
-            axelar_solana_gateway::ID,
-            axelar_solana_gas_service::ID,
-            axelar_solana_memo_program::ID,
-        ];
-        if !valid_destination_addresses.contains(&destination_address) {
-            return Err(eyre!(
-                "Destination address {:#?} is not valid",
-                destination_address
-            ));
-        }
+fn verify_destination(
+    destination_address: Pubkey,
+    allow_third_party_contract_call: bool,
+) -> eyre::Result<()> {
+    if allow_third_party_contract_call {
+        return Ok(());
     }
+
+    let valid_destination_addresses = [
+        axelar_solana_its::ID,
+        axelar_solana_governance::ID,
+        axelar_solana_gateway::ID,
+        axelar_solana_gas_service::ID,
+        axelar_solana_memo_program::ID,
+    ];
+    if !valid_destination_addresses.contains(&destination_address) {
+        return Err(eyre!(
+            "Destination address {:#?} is not valid",
+            destination_address
+        ));
+    }
+
     Ok(())
 }
 
@@ -795,47 +806,136 @@ mod tests {
 
         #[test]
         fn test_verify_destination() {
-            assert!(
-                verify_destination(axelar_solana_memo_program::ID, "http://127.0.0.1:123").is_ok()
-            );
-            assert!(verify_destination(
-                axelar_solana_gas_service::ID,
-                "https://api.devnet.solana.com/"
-            )
-            .is_ok());
-            assert!(
-                verify_destination(axelar_solana_its::ID, "https://devnet.helius-rpc.com").is_ok()
-            );
-            assert!(verify_destination(
-                axelar_solana_its::ID,
-                "https://api.mainnet-beta.solana.com"
-            )
-            .is_ok());
-            assert!(verify_destination(
-                axelar_solana_governance::ID,
-                "https://api.mainnet-beta.solana.com"
-            )
-            .is_ok());
-            assert!(verify_destination(
-                axelar_solana_gas_service::ID,
-                "https://api.mainnet-beta.solana.com"
-            )
-            .is_ok());
-            assert!(verify_destination(
-                axelar_solana_memo_program::ID,
-                "https://api.mainnet-beta.solana.com"
-            )
-            .is_ok());
-            assert!(verify_destination(
-                axelar_solana_gateway::ID,
-                "https://api.mainnet-beta.solana.com"
-            )
-            .is_ok());
+            // Whitelisted addresses are still reachable when allow_third_party_contract_calls is
+            // true
+            assert!(verify_destination(axelar_solana_memo_program::ID, true).is_ok());
+            // Check that the whitelisted addresses are reachable when
+            // allow_third_party_contract_calls is false
+            assert!(verify_destination(axelar_solana_its::ID, false).is_ok());
+            assert!(verify_destination(axelar_solana_governance::ID, false).is_ok());
+            assert!(verify_destination(axelar_solana_gas_service::ID, false).is_ok());
+            assert!(verify_destination(axelar_solana_memo_program::ID, false).is_ok());
+            assert!(verify_destination(axelar_solana_gateway::ID, false).is_ok());
+            // Check that the non-whitelisted addresses (third party programs) are not reachable
+            // when allow_third_party_contract_calls is false
             assert!(verify_destination(
                 Pubkey::from_str("its2RSrgfKfQDkuxFhov4nPRw4Wy9i6e757befoobar").unwrap(),
-                "https://api.mainnet-beta.solana.com"
+                false
             )
             .is_err());
+            assert!(verify_destination(
+                Pubkey::from_str("its2RSrgfKfQDkuxFhov4nPRw4Wy9i6e757befoobar").unwrap(),
+                true
+            )
+            .is_ok());
+        }
+    }
+
+    mod integration_tests {
+
+        use amplifier_api::types::{ExecuteTask, GatewayV2Message, MessageId, Token};
+        use axelar_solana_encoding::types::messages::{CrossChainId, Message};
+        use pretty_assertions::assert_eq;
+        use solana_sdk::signature::Signature;
+
+        use super::*;
+        use crate::component::tests::{setup, setup_aux_contracts};
+        use crate::component::{execute_task, ConfigMetadata};
+
+        #[test_log::test(tokio::test)]
+        async fn test_allow_third_party_contract_calls_config() {
+            let mut fixture = setup().await;
+            let (
+                gas_config,
+                _gas_init_sig,
+                _counter_pda,
+                _init_memo_sig,
+                _init_its_sig,
+                _gov_config_pda,
+            ) = setup_aux_contracts(&mut fixture).await;
+
+            let (_, _, _, rpc_client) = setup_tx_pusher(&fixture, &gas_config);
+
+            let destination_address = Pubkey::new_unique();
+
+            let payload = vec![1, 2, 3];
+            let payload_hash = keccak::hashv(&[&payload]).to_bytes();
+
+            let message_v2 = GatewayV2Message::builder()
+                .message_id(MessageId::new(&Signature::new_unique().to_string(), 1))
+                .destination_address(destination_address.to_string())
+                .source_chain("solana".to_string())
+                .source_address(fixture.payer.pubkey().to_string())
+                .payload_hash(payload_hash.to_vec())
+                .build();
+
+            let message = Message {
+                cc_id: CrossChainId {
+                    chain: message_v2.source_chain.clone(),
+                    id: message_v2.message_id.0.clone(),
+                },
+                source_address: message_v2.source_address.clone(),
+                destination_chain: "solana".to_string(),
+                destination_address: message_v2.destination_address.clone(),
+                payload_hash: message_v2
+                    .payload_hash
+                    .clone()
+                    .as_slice()
+                    .try_into()
+                    .unwrap(),
+            };
+
+            fixture
+                .sign_session_and_approve_messages(&fixture.signers.clone(), &[message])
+                .await
+                .unwrap();
+
+            let task = ExecuteTask {
+                message: message_v2,
+                payload: vec![1, 2, 3],
+                available_gas_balance: Token::builder()
+                    .amount(amplifier_api::types::BigInt(100_i32.into()))
+                    .build(),
+            };
+
+            let metadata = ConfigMetadata {
+                name_of_the_solana_chain: "solana".to_string(),
+                gateway_root_pda: axelar_solana_gateway::get_gateway_root_config_pda().0,
+                gas_service_config_pda: gas_config.config_pda,
+                commitment: CommitmentConfig::confirmed(),
+                gas_service_program_id: axelar_solana_gas_service::id(),
+            };
+
+            let tx_pusher_config = Arc::new(config::Config {
+                gateway_program_address: axelar_solana_gateway::id(),
+                gas_service_program_address: axelar_solana_gas_service::id(),
+                gas_service_config_pda: gas_config.config_pda,
+                signing_keypair: fixture.payer.insecure_clone().to_base58_string(),
+                commitment: CommitmentConfig::confirmed(),
+                allow_third_party_contract_calls: false, /* Disallow third party contract
+                                                          * calls */
+            });
+
+            let result = execute_task(
+                task,
+                &metadata,
+                fixture.payer.pubkey(),
+                &rpc_client,
+                &fixture.payer.insecure_clone(),
+                tx_pusher_config,
+            )
+            .await;
+
+            match result {
+                Ok(_) => panic!("Expected an error, but got Ok"),
+                Err(err) => {
+                    let expected_log = format!(
+                        "Destination address {} is not valid",
+                        destination_address.to_string()
+                    );
+                    assert_eq!(err.to_string(), expected_log)
+                }
+            }
         }
     }
 
@@ -1355,7 +1455,20 @@ mod tests {
             gas_service_config_pda: gas_config.config_pda,
             signing_keypair: fixture.payer.insecure_clone().to_base58_string(),
             commitment: CommitmentConfig::confirmed(),
+            allow_third_party_contract_calls: true,
         };
+        setup_tx_pusher_with_config(fixture, config)
+    }
+
+    fn setup_tx_pusher_with_config(
+        fixture: &SolanaAxelarIntegrationMetadata,
+        config: config::Config,
+    ) -> (
+        JoinHandle<eyre::Result<()>>,
+        UnboundedSender<TaskItem>,
+        UnboundedReceiver<AmplifierCommand>,
+        Arc<RpcClient>,
+    ) {
         let (tx_amplifier, rx_amplifier) = futures::channel::mpsc::unbounded();
         let (task_sender, task_receiver) = futures::channel::mpsc::unbounded();
         let amplifier_client = AmplifierCommandClient {
@@ -1382,7 +1495,7 @@ mod tests {
             });
 
         let solana_tx_pusher = SolanaTxPusher::new(
-            config,
+            Arc::new(config),
             "solana".to_owned(),
             Arc::clone(&rpc_client),
             amplifier_task_receiver,

@@ -51,6 +51,19 @@ pub struct Config {
         default_value = "finalized"
     )]
     pub commitment: CommitmentConfig,
+
+    /// Wether to allow third party contract calls. Currently calling user defined programs
+    /// is not allowed for testnet and mainnet environments.
+    /// Check the context on this issue for more details: <https://github.com/eigerco/axelar-solana-relayer/issues/37>
+    /// This is a temporary measure.
+    #[builder(default = config_defaults::allow_third_party_contract_calls())]
+    #[serde(default = "config_defaults::allow_third_party_contract_calls")]
+    #[arg(
+        value_name = "ALLOW_THIRD_PARTY_CONTRACT_CALLS",
+        env = "ALLOW_THIRD_PARTY_CONTRACT_CALLS",
+        default_value = config_defaults::gas_service_program_address().to_string()
+    )]
+    pub allow_third_party_contract_calls: bool,
 }
 
 impl Config {
@@ -70,6 +83,9 @@ pub(crate) mod config_defaults {
 
     pub(crate) const fn gas_service_program_address() -> Pubkey {
         axelar_solana_gas_service::id()
+    }
+    pub(crate) const fn allow_third_party_contract_calls() -> bool {
+        false
     }
 }
 
