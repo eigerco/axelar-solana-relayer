@@ -58,11 +58,7 @@ pub struct Config {
     /// This is a temporary measure.
     #[builder(default = config_defaults::allow_third_party_contract_calls())]
     #[serde(default = "config_defaults::allow_third_party_contract_calls")]
-    #[arg(
-        value_name = "ALLOW_THIRD_PARTY_CONTRACT_CALLS",
-        env = "ALLOW_THIRD_PARTY_CONTRACT_CALLS",
-        default_value = config_defaults::gas_service_program_address().to_string()
-    )]
+    #[arg(long, default_value_t = false)]
     pub allow_third_party_contract_calls: bool,
 }
 
@@ -84,6 +80,7 @@ pub(crate) mod config_defaults {
     pub(crate) const fn gas_service_program_address() -> Pubkey {
         axelar_solana_gas_service::id()
     }
+
     pub(crate) const fn allow_third_party_contract_calls() -> bool {
         false
     }

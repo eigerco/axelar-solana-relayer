@@ -39,7 +39,7 @@ fn main() -> eyre::Result<()> {
         }
         Commands::Test { args, coverage } => {
             println!("cargo test");
-            cmd!(sh, "cargo install cargo-nextest").run()?;
+            cmd!(sh, "cargo install cargo-nextest --version 0.9.96 --locked").run()?;
 
             if coverage {
                 cmd!(sh, "cargo install grcov").run()?;
