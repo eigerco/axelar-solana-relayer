@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use serde::Deserialize;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
@@ -58,7 +58,11 @@ pub struct Config {
     /// This is a temporary measure.
     #[builder(default = config_defaults::allow_third_party_contract_calls())]
     #[serde(default = "config_defaults::allow_third_party_contract_calls")]
-    #[arg(long, default_value_t = false)]
+    #[arg(
+        env = "ALLOW_THIRD_PARTY_CONTRACT_CALLS",
+        default_value_t = config_defaults::allow_third_party_contract_calls(),
+        action = ArgAction::Set
+    )]
     pub allow_third_party_contract_calls: bool,
 }
 
