@@ -39,8 +39,8 @@ pub struct Config {
         deserialize_with = "core_common_serde_utils::duration_ms_decode"
     )]
     #[arg(
-        value_name= "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD",
-        env = "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD",
+        value_name= "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD_MILLISECONDS",
+        env = "SOLANA_LISTENER_TX_SCAN_POLL_PERIOD_MILLISECONDS",
         value_parser = parse_tx_scan_poll_period,
         default_value = config_defaults::tx_scan_poll_period_value().to_string()
     )]
@@ -57,7 +57,7 @@ pub struct Config {
 }
 
 fn parse_tx_scan_poll_period(input: &str) -> Result<Duration> {
-    Ok(Duration::from_secs(input.parse::<u64>()?))
+    Ok(Duration::from_millis(input.parse::<u64>()?))
 }
 
 pub(crate) mod config_defaults {
