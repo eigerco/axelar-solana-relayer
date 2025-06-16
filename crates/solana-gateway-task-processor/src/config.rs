@@ -15,10 +15,7 @@ pub struct Config {
 
     /// The signing keypair for transactions.
     /// Can be represented as a base58 string or 64 element array `[42, 42, ..]`
-    #[arg(
-        value_name = "SOLANA_GATEWAY_SIGNING_KEYPAIR",
-        env = "SOLANA_GATEWAY_SIGNING_KEYPAIR"
-    )]
+    #[arg(value_name = "SOLANA_SIGNING_KEYPAIR", env = "SOLANA_SIGNING_KEYPAIR")]
     pub signing_keypair: String,
 
     /// Gateway program id
