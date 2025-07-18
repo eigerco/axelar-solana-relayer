@@ -35,3 +35,26 @@ test-log.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+devnet-amplifier = [
+    "axelar-solana-gateway/devnet-amplifier",
+    "gateway-event-stack/devnet-amplifier",
+    "solana-listener/devnet-amplifier"
+]
+stagenet = [
+    "axelar-solana-gateway/stagenet",
+    "gateway-event-stack/stagenet",
+    "solana-listener/stagenet"
+]
+testnet = [
+    "axelar-solana-gateway/testnet",
+    "gateway-event-stack/testnet",
+    "solana-listener/testnet"
+]
+mainnet = [
+    "axelar-solana-gateway/mainnet",
+    "gateway-event-stack/mainnet",
+    "solana-listener/mainnet"
+]
+default = ["devnet-amplifier"]

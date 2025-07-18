@@ -39,3 +39,30 @@ indoc.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+devnet-amplifier = [
+    "rest-service/devnet-amplifier",
+    "solana-event-forwarder/devnet-amplifier",
+    "solana-gateway-task-processor/devnet-amplifier",
+    "solana-listener/devnet-amplifier"
+]
+stagenet = [
+    "rest-service/stagenet",
+    "solana-event-forwarder/stagenet",
+    "solana-gateway-task-processor/stagenet",
+    "solana-listener/stagenet"
+]
+testnet = [
+    "rest-service/testnet",
+    "solana-event-forwarder/testnet",
+    "solana-gateway-task-processor/testnet",
+    "solana-listener/testnet"
+]
+mainnet = [
+    "rest-service/mainnet",
+    "solana-event-forwarder/mainnet",
+    "solana-gateway-task-processor/mainnet",
+    "solana-listener/mainnet"
+]
+default = ["devnet-amplifier"]
