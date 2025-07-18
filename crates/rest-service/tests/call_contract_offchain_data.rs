@@ -32,17 +32,17 @@ const RESPONSE_JSON: &str = indoc! {r#"
         "Ok": null
       },
       "logMessages": [
-        "Program memQuKMGBounhwP5yw9qomYNU97Eqcx9c4XwDUo6uGV invoke [1]",
+        "Program memPJFxP6H6bjEKpUSJ4KC7C4dKAfNE3xWrTpJBKDwN invoke [1]",
         "Program log: Invalid instruction data: [2, 136, 4, 0, 0, 240, 159, 144, 170, 240, 159, 144, 170, 240, 159, 144]",
         "Program log: Instruction: Native",
         "Program log: Instruction: SendToGateway",
-        "Program gtwLjHAsfKAR6GWB4hzTUAA1w4SDdFMKamtGA5ttMEe invoke [2]",
+        "Program gtwi5T9x6rTWPtuuz6DA7ia1VmH8bdazm9QfDdi6DVp invoke [2]",
         "Program log: Instruction: Call Contract Offchain Data",
         "Program data: b2ZmY2hhaW4gZGF0YV9fXw== 6NGe5cm7PkXHz/g8V2VdRg0nU0l7R48x8lll4s0Clz0= ik8DocGbvnSCYaX9IUJZUapVH+LFQmwjbrT91ZGn450= ZXRoZXJldW0= MHgwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDBhZmRlMGY1MWU2OTJmMGU0YmZkNDVkMGYyYmI2ODRmYjM3YmZjNjQz",
-        "Program gtwLjHAsfKAR6GWB4hzTUAA1w4SDdFMKamtGA5ttMEe consumed 4452 of 172724 compute units",
-        "Program gtwLjHAsfKAR6GWB4hzTUAA1w4SDdFMKamtGA5ttMEe success",
-        "Program memQuKMGBounhwP5yw9qomYNU97Eqcx9c4XwDUo6uGV consumed 31849 of 200000 compute units",
-        "Program memQuKMGBounhwP5yw9qomYNU97Eqcx9c4XwDUo6uGV success"
+        "Program gtwi5T9x6rTWPtuuz6DA7ia1VmH8bdazm9QfDdi6DVp consumed 4452 of 172724 compute units",
+        "Program gtwi5T9x6rTWPtuuz6DA7ia1VmH8bdazm9QfDdi6DVp success",
+        "Program memPJFxP6H6bjEKpUSJ4KC7C4dKAfNE3xWrTpJBKDwN consumed 31849 of 200000 compute units",
+        "Program memPJFxP6H6bjEKpUSJ4KC7C4dKAfNE3xWrTpJBKDwN success"
       ],
       "computeUnitsConsumed": 31849,
       "returnData": null

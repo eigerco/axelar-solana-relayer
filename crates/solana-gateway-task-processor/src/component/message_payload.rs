@@ -103,11 +103,10 @@ pub(crate) async fn upload(
     .await?;
     commit(solana_rpc_client, keypair, gateway_root_pda, msg_command_id).await?;
 
-    let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
-        gateway_root_pda,
-        message_to_command_id(message),
-        keypair.pubkey(),
-    );
+    let (incoming_message_pda, _bump) =
+        axelar_solana_gateway::get_incoming_message_pda(&message_to_command_id(message));
+    let (message_payload_pda, _bump) =
+        axelar_solana_gateway::find_message_payload_pda(incoming_message_pda);
 
     Ok(message_payload_pda)
 }

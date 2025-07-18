@@ -736,8 +736,9 @@ mod tests {
                 .unwrap();
             expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
         }
+        dbg!(tx.logs);
 
-        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
+        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 8);
         let event = MessageApprovedEvent {
             base: EventBase {
                 event_id,
@@ -860,7 +861,7 @@ mod tests {
             expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
         }
 
-        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 4);
+        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 8);
         let event = MessageApprovedEvent {
             base: EventBase {
                 event_id,
@@ -989,8 +990,10 @@ mod tests {
             .unwrap()
             .0[0];
 
+        let (incoming_message_pda, _bump) =
+            axelar_solana_gateway::get_incoming_message_pda(&command_id);
         let (message_payload_pda, _bump) =
-            axelar_solana_gateway::find_message_payload_pda(gateway_root_pda, command_id, payer);
+            axelar_solana_gateway::find_message_payload_pda(incoming_message_pda);
 
         let (incoming_message_pda, _bump) = get_incoming_message_pda(&command_id);
         let (execute_sigs, _execute_tx) = fixture
@@ -1147,7 +1150,6 @@ mod tests {
 
         // Check that the PDA contains the expected data
         let (verification_pda, _bump) = axelar_solana_gateway::get_signature_verification_pda(
-            &fixture.gateway_root_pda,
             &execute_data.payload_merkle_root,
         );
 
@@ -1408,7 +1410,7 @@ mod tests {
         let ix = axelar_solana_gas_service::instructions::init_config(
             &axelar_solana_gas_service::ID,
             &fixture.payer.pubkey(),
-            &gas_config.config_authority.pubkey(),
+            &gas_config.operator.pubkey(),
             &gas_config.config_pda,
             gas_config.salt,
         )
@@ -1417,7 +1419,7 @@ mod tests {
         let gas_init_sig = *fixture
             .send_tx_with_custom_signers_and_signature(
                 &[ix],
-                &[payer, gas_config.config_authority.insecure_clone()],
+                &[payer, gas_config.operator.insecure_clone()],
             )
             .await
             .unwrap()
@@ -1426,10 +1428,9 @@ mod tests {
             .unwrap();
 
         // init memo program
-        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
+        let counter_pda = axelar_solana_memo_program::get_counter_pda();
         let ix = axelar_solana_memo_program::instruction::initialize(
             &fixture.payer.pubkey(),
-            &fixture.gateway_root_pda,
             &counter_pda,
         )
         .unwrap();

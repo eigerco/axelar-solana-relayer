@@ -579,7 +579,7 @@ pub(crate) mod test {
         let ix = axelar_solana_gas_service::instructions::init_config(
             &axelar_solana_gas_service::ID,
             &fixture.payer.pubkey(),
-            &gas_config.config_authority.pubkey(),
+            &gas_config.operator.pubkey(),
             &gas_config.config_pda,
             gas_config.salt,
         )
@@ -588,7 +588,7 @@ pub(crate) mod test {
         let gas_init_sig = *fixture
             .send_tx_with_custom_signers_and_signature(
                 &[ix],
-                &[payer, gas_config.config_authority.insecure_clone()],
+                &[payer, gas_config.operator.insecure_clone()],
             )
             .await
             .unwrap()
@@ -597,10 +597,9 @@ pub(crate) mod test {
             .unwrap();
 
         // init memo program
-        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
+        let counter_pda = axelar_solana_memo_program::get_counter_pda();
         let ix = axelar_solana_memo_program::instruction::initialize(
             &fixture.payer.pubkey(),
-            &fixture.gateway_root_pda,
             &counter_pda,
         )
         .unwrap();

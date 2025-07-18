@@ -178,8 +178,8 @@ async fn ensure_gas_service_authority(
     let config = axelar_solana_gas_service::state::Config::read(&account.data)
         .ok_or_eyre("gas service config PDA account not initialized")?;
 
-    if config.authority != *key {
-        eyre::bail!("relayer is not the gas service authority")
+    if config.operator != *key {
+        eyre::bail!("relayer is not the gas service operator")
     }
 
     Ok(())
@@ -266,11 +266,11 @@ async fn process_task(
                 //
                 // In case no lamports were spent, no transaction could actually be executed in
                 // the execute_task flow.
-                let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
-                    gateway_root_pda,
-                    command_id(&source_chain, &message_id.0),
-                    keypair.pubkey(),
+                let (incoming_message_pda, _bump) = axelar_solana_gateway::get_incoming_message_pda(
+                    &command_id(&source_chain, &message_id.0),
                 );
+                let (message_payload_pda, _bump) =
+                    axelar_solana_gateway::find_message_payload_pda(incoming_message_pda);
 
                 let maybe_some_fee = gateway_gas_computation::cost_of_payload_uploading(
                     solana_rpc_client,
@@ -580,10 +580,7 @@ async fn gateway_tx_task(
 
     // Start a signing session
     let (verification_session_tracker_pda, ..) =
-        axelar_solana_gateway::get_signature_verification_pda(
-            &gateway_root_pda,
-            &execute_data.payload_merkle_root,
-        );
+        axelar_solana_gateway::get_signature_verification_pda(&execute_data.payload_merkle_root);
     let ix = axelar_solana_gateway::instructions::initialize_payload_verification_session(
         signer,
         gateway_root_pda,
@@ -1006,7 +1003,7 @@ mod tests {
 
             assert_eq!(rx_amplifier.next().await, None);
 
-            let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
+            let (its_root_pda, _) = axelar_solana_its::find_its_root_pda();
             let (mint_address, _) =
                 axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
 
@@ -1128,6 +1125,8 @@ mod tests {
             .unwrap()
             .into();
 
+            dbg!(axelar_solana_memo_program::id());
+
             let interchain_transfer_message = GMPPayload::InterchainTransfer(InterchainTransfer {
                 selector: 0_u32.try_into().unwrap(),
                 token_id: token_id.into(),
@@ -1158,7 +1157,7 @@ mod tests {
 
             assert_eq!(rx_amplifier.next().await, None);
 
-            let (its_root_pda, _) = axelar_solana_its::find_its_root_pda(&fixture.gateway_root_pda);
+            let (its_root_pda, _) = axelar_solana_its::find_its_root_pda();
             let (mint_address, _) =
                 axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
 
@@ -1172,6 +1171,7 @@ mod tests {
                 .get_account_data(&token_manager_address)
                 .await
                 .unwrap();
+
             let token_manager =
                 axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
                     &token_manager_raw_data,
@@ -1523,7 +1523,7 @@ mod tests {
 
         let gas_config = GasServiceUtils {
             upgrade_authority: fixture.payer.insecure_clone(),
-            config_authority: fixture.payer.insecure_clone(),
+            operator: fixture.payer.insecure_clone(),
             config_pda,
             salt,
         };
@@ -1531,7 +1531,7 @@ mod tests {
         let ix = axelar_solana_gas_service::instructions::init_config(
             &axelar_solana_gas_service::ID,
             &fixture.payer.pubkey(),
-            &gas_config.config_authority.pubkey(),
+            &gas_config.operator.pubkey(),
             &gas_config.config_pda,
             gas_config.salt,
         )
@@ -1545,10 +1545,9 @@ mod tests {
             .unwrap();
 
         // init memo program
-        let counter_pda = axelar_solana_memo_program::get_counter_pda(&fixture.gateway_root_pda);
+        let counter_pda = axelar_solana_memo_program::get_counter_pda();
         let ix = axelar_solana_memo_program::instruction::initialize(
             &fixture.payer.pubkey(),
-            &fixture.gateway_root_pda,
             &counter_pda,
         )
         .unwrap();
@@ -1556,7 +1555,6 @@ mod tests {
 
         let ix = axelar_solana_its::instruction::initialize(
             fixture.upgrade_authority.pubkey(),
-            fixture.gateway_root_pda,
             fixture.payer.pubkey(),
             "solana".to_owned(),
             "axelar157hl7gpuknjmhtac2qnphuazv2yerfagva7lsu9vuj2pgn32z22qa26dk4".to_owned(),
