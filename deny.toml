@@ -107,7 +107,6 @@ allow = [
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
-  "OpenSSL",
   "MPL-2.0",
   "CC0-1.0",
   "0BSD",
@@ -193,6 +192,10 @@ expression = "MIT"
 license-files = []
 [[licenses.clarify]]
 crate = "its-instruction-builder"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-solana-gateway-test-fixtures"
 expression = "MIT"
 license-files = []
 
