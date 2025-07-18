@@ -3,13 +3,15 @@ FROM rust:latest AS builder
 
 RUN rustup toolchain install nightly && rustup default nightly
 
+ARG AXELAR_NETWORK
+
 # Set working directory inside the container
 WORKDIR /app
 
 # Copy source code and build
 COPY . .
 #RUN cargo build --release disable release for now ...
-RUN cargo build
+RUN cargo build --no-default-features --features ${AXELAR_NETWORK}
 
 # ==== RUN STAGE ====
 FROM debian:bookworm-slim AS runtime
