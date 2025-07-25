@@ -3,6 +3,7 @@ FROM rust:latest AS builder
 
 RUN rustup toolchain install nightly && rustup default nightly
 
+# devnet-amplifier, stagenet, testnet, or mainnet
 ARG AXELAR_NETWORK
 
 # Set working directory inside the container
