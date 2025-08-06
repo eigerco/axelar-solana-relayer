@@ -52,6 +52,17 @@ pub struct Config {
     )]
     pub commitment: CommitmentConfig,
 
+    /// RPC URL for the gas estimation node (e.g., surfpool instance)
+    /// This is required for gas estimation functionality
+    #[builder(default = config_defaults::estimation_node_rpc_url())]
+    #[serde(default = "config_defaults::estimation_node_rpc_url")]
+    #[arg(
+        value_name = "ESTIMATION_NODE_RPC_URL",
+        env = "ESTIMATION_NODE_RPC_URL",
+        default_value = "http://127.0.0.1:8899"
+    )]
+    pub estimation_node_rpc_url: String,
+
     /// Wether to allow third party contract calls. Currently calling user defined programs
     /// is not allowed for testnet and mainnet environments.
     /// Check the context on this issue for more details: <https://github.com/eigerco/axelar-solana-relayer/issues/37>
@@ -88,6 +99,10 @@ pub(crate) mod config_defaults {
     pub(crate) const fn allow_third_party_contract_calls() -> bool {
         false
     }
+
+    pub(crate) fn estimation_node_rpc_url() -> String {
+        "http://127.0.0.1:8899".to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -108,7 +123,8 @@ mod tests {
         let data = json!({
             "gateway_program_address": Pubkey::new_unique().to_string(),
             "gas_service_config_pda": Pubkey::new_unique().to_string(),
-            "signing_keypair": base58_encoded
+            "signing_keypair": base58_encoded,
+            "estimation_node_rpc_url": "http://127.0.0.1:8899".to_string(),
         });
 
         // Deserialize Config
@@ -126,7 +142,8 @@ mod tests {
         // Prepare JSON data
         let data = json!({
             "gateway_program_address": Pubkey::new_unique().to_string(),
-            "signing_keypair": invalid_encoded
+            "signing_keypair": invalid_encoded,
+            "estimation_node_rpc_url": "http://127.0.0.1:8899".to_string(),
         });
 
         // Attempt to deserialize Config

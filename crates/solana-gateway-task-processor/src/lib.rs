@@ -3,5 +3,5 @@
 
 mod component;
 mod config;
-pub use component::SolanaTxPusher;
+pub use component::{GasEstimator, RealGasEstimator, SolanaTxPusher};
 pub use config::Config;

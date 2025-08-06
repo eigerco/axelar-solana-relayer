@@ -11,6 +11,7 @@ use eyre::Context as _;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt as _;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::hash::Hash;
 use solana_sdk::message::legacy::Message as SolanaMessage;
 use solana_sdk::packet::PACKET_DATA_SIZE;
@@ -39,12 +40,12 @@ use super::send_gateway_tx;
 /// - Fails to convert the size from a u64 value to a usize.
 ///
 /// Based on: `https://github.com/solana-labs/solana/pull/19654`
-static MAX_CHUNK_SIZE: LazyLock<usize> = LazyLock::new(|| {
+pub(crate) static MAX_CHUNK_SIZE: LazyLock<usize> = LazyLock::new(|| {
     // Generate a random pubkey for all fields since we only care about size
     let random_pubkey = Pubkey::new_unique();
 
     // Create baseline instruction with empty payload data
-    let instruction = axelar_solana_gateway::instructions::write_message_payload(
+    let write_instruction = axelar_solana_gateway::instructions::write_message_payload(
         random_pubkey,
         random_pubkey,
         random_pubkey.to_bytes(),
@@ -53,19 +54,35 @@ static MAX_CHUNK_SIZE: LazyLock<usize> = LazyLock::new(|| {
     )
     .expect("Failed to create baseline WriteMessagePayload instruction");
 
-    let baseline_msg =
-        SolanaMessage::new_with_blockhash(&[instruction], Some(&random_pubkey), &Hash::default());
+    // Include compute budget instructions that EffectiveTxSender adds in production
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000);
+    let priority_fee_ix = ComputeBudgetInstruction::set_compute_unit_price(1000);
 
-    let tx_size = bincode::serialized_size(&Transaction {
+    let baseline_msg = SolanaMessage::new_with_blockhash(
+        &[compute_budget_ix, priority_fee_ix, write_instruction],
+        Some(&random_pubkey),
+        &Hash::default(),
+    );
+
+    let tx = Transaction {
         signatures: vec![Signature::default(); baseline_msg.header.num_required_signatures.into()],
         message: baseline_msg,
-    })
-    .expect("Failed to calculate transaction size")
-    .try_into()
-    .expect("Failed to convert u64 value to usize");
+    };
 
-    // Subtract baseline size and 1 byte for shortvec encoding
-    PACKET_DATA_SIZE.saturating_sub(tx_size).saturating_sub(1)
+    let tx_size = bincode::serialized_size(&tx)
+        .expect("Failed to serialize transaction")
+        .try_into()
+        .expect("Failed to convert u64 value to usize");
+
+    // Based on empirical testing, there seems to be additional overhead that we could not find the
+    // source
+    let additional_overhead = 35;
+
+    // Subtract baseline size, 1 byte for shortvec encoding, and additional overhead
+    PACKET_DATA_SIZE
+        .saturating_sub(tx_size)
+        .saturating_sub(1)
+        .saturating_sub(additional_overhead)
 });
 
 /// Handles the upload of a message payload to a Program Derived Address (PDA) account.

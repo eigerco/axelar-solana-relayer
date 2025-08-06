@@ -37,6 +37,13 @@ async fn main() {
     let name_on_amplifier = config.amplifier_component.chain.clone();
     let (amplifier_component, amplifier_client, amplifier_task_receiver) =
         Amplifier::new(config.amplifier_component, file_based_storage.clone());
+
+    // Get the estimation node RPC URL from config - required for gas estimation
+    let estimation_rpc_url = config
+        .solana_gateway_task_processor
+        .estimation_node_rpc_url
+        .clone();
+
     let gateway_task_processor = solana_gateway_task_processor::SolanaTxPusher::new(
         Arc::new(config.solana_gateway_task_processor),
         name_on_amplifier.clone(),
@@ -44,6 +51,9 @@ async fn main() {
         amplifier_task_receiver,
         amplifier_client.clone(),
         file_based_storage.clone(),
+        Arc::new(solana_gateway_task_processor::RealGasEstimator::new(
+            estimation_rpc_url,
+        )),
     );
     let (solana_listener_component, solana_listener_client) = solana_listener::SolanaListener::new(
         config.solana_listener_component,
@@ -191,6 +201,7 @@ mod tests {
             gateway_program_address = "{gateway_program_address_as_str}"
             gas_service_program_address = "{gas_service_program_id_as_str}"
             gas_service_config_pda = "{gas_service_config_pda_as_str}"
+            estimation_node_rpc_url = "http://127.0.0.1:8899"
 
             [solana_rpc]            
             max_concurrent_rpc_requests = {max_concurrent_rpc_requests}
@@ -228,6 +239,7 @@ mod tests {
                 signing_keypair: signing_keypair_as_str,
                 commitment: CommitmentConfig::finalized(),
                 allow_third_party_contract_calls: false,
+                estimation_node_rpc_url: "http://127.0.0.1:8899".to_owned(),
             },
             solana_rpc: retrying_solana_http_sender::Config {
                 max_concurrent_rpc_requests,
