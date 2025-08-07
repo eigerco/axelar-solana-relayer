@@ -8,35 +8,36 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
-async-trait.workspace = true
-eyre.workspace = true
-solana-sdk.workspace = true
-typed-builder.workspace = true
-solana-client.workspace = true
-serde.workspace = true
-axelar-solana-gateway.workspace = true
-axelar-solana-its.workspace = true
-axelar-solana-governance.workspace = true
-axelar-solana-encoding.workspace = true
-axelar-solana-memo-program.workspace = true
-gateway-gas-computation.workspace = true
-solana-listener.workspace = true
-tracing.workspace = true
-futures.workspace = true
-common-serde-utils = { workspace = true }
-bs58.workspace = true
-relayer-engine.workspace = true
 amplifier-api.workspace = true
-relayer-amplifier-api-integration.workspace = true
-effective-tx-sender.workspace = true
+async-trait.workspace = true
 axelar-executable.workspace = true
-num-traits.workspace = true
-relayer-amplifier-state.workspace = true
-its-instruction-builder.workspace = true
-solana-transaction-status.workspace = true
+axelar-solana-encoding.workspace = true
 axelar-solana-gas-service.workspace = true
+axelar-solana-gateway.workspace = true
+axelar-solana-governance.workspace = true
+axelar-solana-its.workspace = true
+axelar-solana-memo-program.workspace = true
 bincode.workspace = true
+bs58.workspace = true
 clap.workspace = true
+common-serde-utils = { workspace = true }
+effective-tx-sender.workspace = true
+eyre.workspace = true
+futures.workspace = true
+gateway-gas-computation.workspace = true
+its-instruction-builder.workspace = true
+num-traits.workspace = true
+relayer-amplifier-api-integration.workspace = true
+relayer-amplifier-state.workspace = true
+relayer-engine.workspace = true
+serde.workspace = true
+solana-client.workspace = true
+solana-listener.workspace = true
+solana-sdk.workspace = true
+solana-transaction-status.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+typed-builder.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

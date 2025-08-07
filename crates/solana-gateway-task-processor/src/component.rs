@@ -1,3 +1,4 @@
+use core::fmt;
 use core::future::Future;
 use core::pin::Pin;
 use core::str::FromStr as _;
@@ -36,12 +37,29 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::TransactionError;
+use thiserror::Error;
 use tracing::{info_span, instrument, Instrument as _};
 
 use crate::config;
 
 mod execution_cost_estimation;
 mod message_payload;
+
+#[derive(Error, Debug)]
+struct InsufficientGasBalance {
+    cost: BigInt,
+    available: BigInt,
+}
+
+impl fmt::Display for InsufficientGasBalance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Insifficient Gas Balance. Required: {:?}. Available: {:?}",
+            self.cost, self.available
+        )
+    }
+}
 
 /// Trait for gas estimation to allow mocking in tests
 #[cfg_attr(test, mockall::automock)]
@@ -337,6 +355,14 @@ async fn process_task(
                         amount: BigInt::from_u64(total_fee),
                     },
                 )
+            } else if let Some(InsufficientGasBalance { .. }) = error.downcast_ref() {
+                cannot_execute_message_event(
+                    task_item.id,
+                    source_chain,
+                    message_id,
+                    CannotExecuteMessageReason::InsufficientGas,
+                    error.to_string(),
+                )
             } else {
                 // Any other error, probably happening before execution: Simulation error,
                 // error building an instruction, parsing pubkey, rpc transport error,
@@ -539,11 +565,11 @@ async fn execute_task_with_estimator(
 
     // Check if we have enough gas
     if BigInt::from_u64(estimated_cost).0 > available_gas_balance {
-        return Err(eyre::eyre!(
-            "Insufficient gas balance: estimated cost {} lamports, available {} lamports",
-            estimated_cost,
-            available_gas_balance
-        ));
+        return Err(InsufficientGasBalance {
+            cost: BigInt::from_u64(estimated_cost),
+            available: BigInt(available_gas_balance),
+        }
+        .into());
     }
 
     // Upload the message payload to a Gateway-owned PDA account and get its address back.

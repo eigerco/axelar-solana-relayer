@@ -7725,6 +7725,7 @@ dependencies = [
  "solana-test-validator",
  "solana-transaction-status",
  "test-log",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "typed-builder 0.2.0",
