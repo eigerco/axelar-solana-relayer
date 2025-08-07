@@ -274,8 +274,7 @@ pub(crate) mod test {
         let mut fixture = setup().await;
         let (gas_config, gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
-        let generated_signs =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+        let generated_signs = generate_test_solana_data(&mut fixture, counter_pda).await;
 
         let rpc_client_url = match fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
@@ -400,12 +399,9 @@ pub(crate) mod test {
         let mut fixture = setup().await;
         let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
-        let generated_signs_set_1 =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
-        let generated_signs_set_2 =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
-        let generated_signs_set_3 =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+        let generated_signs_set_1 = generate_test_solana_data(&mut fixture, counter_pda).await;
+        let generated_signs_set_2 = generate_test_solana_data(&mut fixture, counter_pda).await;
+        let generated_signs_set_3 = generate_test_solana_data(&mut fixture, counter_pda).await;
 
         let rpc_client_url = match fixture.fixture.test_node {
             axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
@@ -484,7 +480,6 @@ pub(crate) mod test {
     pub(crate) async fn generate_test_solana_data(
         fixture: &mut SolanaAxelarIntegrationMetadata,
         counter_pda: (Pubkey, u8),
-        gas_config: &axelar_solana_gateway_test_fixtures::gas_service::GasServiceUtils,
     ) -> GenerateTestSolanaDataResult {
         // solana memo program to evm raw message (3 logs)
         let mut memo_signatures = vec![];
@@ -518,9 +513,7 @@ pub(crate) mod test {
             .unwrap();
             let gas_ix =
                 axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
-                    &axelar_solana_gas_service::id(),
                     &fixture.payer.pubkey(),
-                    &gas_config.config_pda,
                     "evm".to_owned(),
                     destination_address.clone(),
                     payload_hash,
@@ -540,9 +533,7 @@ pub(crate) mod test {
         let mut gas_signatures = vec![];
         for i in 0_u8..2 {
             let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
-                &axelar_solana_gas_service::id(),
                 &fixture.payer.pubkey(),
-                &gas_config.config_pda,
                 [i.saturating_add(42); 64],
                 123,
                 5000,
@@ -577,11 +568,8 @@ pub(crate) mod test {
         let gas_service_upgr_auth = fixture.payer.insecure_clone();
         let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth);
         let ix = axelar_solana_gas_service::instructions::init_config(
-            &axelar_solana_gas_service::ID,
             &fixture.payer.pubkey(),
             &gas_config.operator.pubkey(),
-            &gas_config.config_pda,
-            gas_config.salt,
         )
         .unwrap();
         let payer = fixture.payer.insecure_clone();

@@ -1191,7 +1191,7 @@ mod tests {
     async fn event_forwrding_only_gas_event() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
-        let (gas_config, _gas_init_sig, _counter_pda, _init_memo_sig) =
+        let (_gas_config, _gas_init_sig, _counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
@@ -1201,9 +1201,7 @@ mod tests {
         let refund_address = Pubkey::new_unique();
         let amount_to_refund = 5000;
         let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
-            &axelar_solana_gas_service::id(),
             &fixture.payer.pubkey(),
-            &gas_config.config_pda,
             signature_to_fund,
             idx_to_fund,
             amount_to_refund,
@@ -1277,7 +1275,7 @@ mod tests {
     async fn event_forwrding_with_gas_and_contract_call() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
-        let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
+        let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
@@ -1298,9 +1296,7 @@ mod tests {
         let gas_fee_amount = 5000;
         let gas_ix =
             axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
-                &axelar_solana_gas_service::id(),
                 &fixture.payer.pubkey(),
-                &gas_config.config_pda,
                 destination_chain_name.clone(),
                 destination_address.clone(),
                 payload_hash,
@@ -1408,11 +1404,8 @@ mod tests {
         let gas_service_upgr_auth = fixture.payer.insecure_clone();
         let gas_config = fixture.setup_default_gas_config(gas_service_upgr_auth.insecure_clone());
         let ix = axelar_solana_gas_service::instructions::init_config(
-            &axelar_solana_gas_service::ID,
             &fixture.payer.pubkey(),
             &gas_config.operator.pubkey(),
-            &gas_config.config_pda,
-            gas_config.salt,
         )
         .unwrap();
         let payer = fixture.payer.insecure_clone();

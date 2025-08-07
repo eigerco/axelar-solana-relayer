@@ -308,7 +308,7 @@ async fn process_task(
             amplifier_client.sender.send(command).await?;
         }
         Task::Refund(task) => {
-            refund_task(task, metadata, solana_rpc_client, keypair).await?;
+            refund_task(task, solana_rpc_client, keypair).await?;
         }
         Task::Verify(_verify_task) => {
             tracing::warn!("solana blockchain is not supposed to receive the `verify_task`");
@@ -659,7 +659,6 @@ async fn gateway_tx_task(
 
 async fn refund_task(
     task: amplifier_api::types::RefundTask,
-    metadata: &ConfigMetadata,
     solana_rpc_client: &RpcClient,
     keypair: &Keypair,
 ) -> eyre::Result<()> {
@@ -677,10 +676,8 @@ async fn refund_task(
         eyre::bail!("non-native token refunds are not supported");
     } else {
         let instruction = axelar_solana_gas_service::instructions::refund_native_fees_instruction(
-            &metadata.gas_service_program_id,
             &keypair.pubkey(),
             &receiver,
-            &metadata.gas_service_config_pda,
             tx_hash,
             log_index,
             task.remaining_gas_balance
@@ -792,7 +789,7 @@ mod tests {
     use crate::config;
 
     mod unit_tests {
-        use std::str::FromStr;
+        use core::str::FromStr as _;
 
         use solana_sdk::pubkey::Pubkey;
 
@@ -802,14 +799,14 @@ mod tests {
         fn test_verify_destination() {
             // Whitelisted addresses are still reachable when allow_third_party_contract_calls is
             // true
-            assert!(verify_destination(axelar_solana_memo_program::ID, true).is_ok());
+            verify_destination(axelar_solana_memo_program::ID, true).unwrap();
             // Check that the whitelisted addresses are reachable when
             // allow_third_party_contract_calls is false
-            assert!(verify_destination(axelar_solana_its::ID, false).is_ok());
-            assert!(verify_destination(axelar_solana_governance::ID, false).is_ok());
-            assert!(verify_destination(axelar_solana_gas_service::ID, false).is_ok());
-            assert!(verify_destination(axelar_solana_memo_program::ID, false).is_ok());
-            assert!(verify_destination(axelar_solana_gateway::ID, false).is_ok());
+            verify_destination(axelar_solana_its::ID, false).unwrap();
+            verify_destination(axelar_solana_governance::ID, false).unwrap();
+            verify_destination(axelar_solana_gas_service::ID, false).unwrap();
+            verify_destination(axelar_solana_memo_program::ID, false).unwrap();
+            verify_destination(axelar_solana_gateway::ID, false).unwrap();
             // Check that the non-whitelisted addresses (third party programs) are not reachable
             // when allow_third_party_contract_calls is false
             assert!(verify_destination(
@@ -817,11 +814,11 @@ mod tests {
                 false
             )
             .is_err());
-            assert!(verify_destination(
+            verify_destination(
                 Pubkey::from_str("its2RSrgfKfQDkuxFhov4nPRw4Wy9i6e757befoobar").unwrap(),
-                true
+                true,
             )
-            .is_ok());
+            .unwrap();
         }
     }
 
@@ -858,7 +855,7 @@ mod tests {
             let message_v2 = GatewayV2Message::builder()
                 .message_id(MessageId::new(&Signature::new_unique().to_string(), 1))
                 .destination_address(destination_address.to_string())
-                .source_chain("solana".to_string())
+                .source_chain("solana".to_owned())
                 .source_address(fixture.payer.pubkey().to_string())
                 .payload_hash(payload_hash.to_vec())
                 .build();
@@ -869,7 +866,7 @@ mod tests {
                     id: message_v2.message_id.0.clone(),
                 },
                 source_address: message_v2.source_address.clone(),
-                destination_chain: "solana".to_string(),
+                destination_chain: "solana".to_owned(),
                 destination_address: message_v2.destination_address.clone(),
                 payload_hash: message_v2
                     .payload_hash
@@ -893,7 +890,7 @@ mod tests {
             };
 
             let metadata = ConfigMetadata {
-                name_of_the_solana_chain: "solana".to_string(),
+                name_of_the_solana_chain: "solana".to_owned(),
                 gateway_root_pda: axelar_solana_gateway::get_gateway_root_config_pda().0,
                 gas_service_config_pda: gas_config.config_pda,
                 commitment: CommitmentConfig::confirmed(),
@@ -921,13 +918,11 @@ mod tests {
             .await;
 
             match result {
-                Ok(_) => panic!("Expected an error, but got Ok"),
+                Ok(()) => panic!("Expected an error, but got Ok"),
                 Err(err) => {
-                    let expected_log = format!(
-                        "Destination address {} is not valid",
-                        destination_address.to_string()
-                    );
-                    assert_eq!(err.to_string(), expected_log)
+                    let expected_log =
+                        format!("Destination address {destination_address} is not valid");
+                    assert_eq!(err.to_string(), expected_log);
                 }
             }
         }
@@ -1252,7 +1247,7 @@ mod tests {
         use amplifier_api::types::{ExecuteTask, GatewayV2Message, MessageId, Task, Token};
         use axelar_solana_encoding::types::messages::{CrossChainId, Message};
         use axelar_solana_governance::instructions::builder::IxBuilder;
-        use futures::{SinkExt, StreamExt};
+        use futures::{SinkExt as _, StreamExt as _};
         use solana_sdk::instruction::AccountMeta;
         use uuid::Uuid;
 
@@ -1339,12 +1334,12 @@ mod tests {
         fn gmp_sample_metadata(message_id: &MessageId) -> Message {
             Message {
                 cc_id: CrossChainId {
-                    chain: "axelar".to_string(),
+                    chain: "axelar".to_owned(),
                     id: message_id.0.clone(), //uuid::Uuid::new_v4().to_string(),
                 },
-                source_address: "axelar1ure22quyrl8wdyxz4jdx285hp4dwufwt0g0akl".to_string(),
+                source_address: "axelar1ure22quyrl8wdyxz4jdx285hp4dwufwt0g0akl".to_owned(),
                 destination_address: axelar_solana_governance::ID.to_string(),
-                destination_chain: "solana".to_string(),
+                destination_chain: "solana".to_owned(),
                 payload_hash: [0_u8; 32], // This gets overwritten later by the builder
             }
         }
@@ -1514,26 +1509,17 @@ mod tests {
         Signature,
         Pubkey,
     ) {
-        let salt = keccak::hash(b"my gas service").0;
-        let (config_pda, ..) = axelar_solana_gas_service::get_config_pda(
-            &axelar_solana_gas_service::ID,
-            &salt,
-            &fixture.payer.pubkey(),
-        );
+        let (config_pda, ..) = axelar_solana_gas_service::get_config_pda();
 
         let gas_config = GasServiceUtils {
             upgrade_authority: fixture.payer.insecure_clone(),
             operator: fixture.payer.insecure_clone(),
             config_pda,
-            salt,
         };
 
         let ix = axelar_solana_gas_service::instructions::init_config(
-            &axelar_solana_gas_service::ID,
             &fixture.payer.pubkey(),
             &gas_config.operator.pubkey(),
-            &gas_config.config_pda,
-            gas_config.salt,
         )
         .unwrap();
         let gas_init_sig = *fixture
@@ -1602,14 +1588,15 @@ mod tests {
             )
             .build();
 
-        fixture
+        assert!(!fixture
             .send_tx_with_custom_signers_and_signature(
                 &[ix],
                 &[upgrade_authority.insecure_clone(), payer.insecure_clone()],
             )
             .await
             .unwrap()
-            .0[0];
+            .0
+            .is_empty());
         (
             gas_config,
             gas_init_sig,
