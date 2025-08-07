@@ -209,7 +209,7 @@ mod tests {
     use std::path::Path;
     use std::sync::Arc;
 
-    use file_based_storage::{MemmapState, SolanaListenerState};
+    use file_based_storage::{MemmapState, SolanaListenerState as _};
     use futures::StreamExt as _;
     use pretty_assertions::{assert_eq, assert_ne};
     use solana_client::nonblocking::rpc_client::RpcClient;
@@ -231,8 +231,7 @@ mod tests {
         let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
             setup_aux_contracts(&mut fixture).await;
         // 2. generate test data
-        let generated_signs_set_1 =
-            generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+        let generated_signs_set_1 = generate_test_solana_data(&mut fixture, counter_pda).await;
 
         // 3. setup client
         let (rpc_client_url, pubsub_url) = match fixture.fixture.test_node {
@@ -312,8 +311,7 @@ mod tests {
 
         for _ in 0..2_u8 {
             // 4. generate more test data
-            let generated_signs_set_2 =
-                generate_test_solana_data(&mut fixture, counter_pda, &gas_config).await;
+            let generated_signs_set_2 = generate_test_solana_data(&mut fixture, counter_pda).await;
             // 5. assert that we receive all the items we generated, and there's no overlap with the
             //    old data
             let new_items = generated_signs_set_2.flatten_sequentially();
