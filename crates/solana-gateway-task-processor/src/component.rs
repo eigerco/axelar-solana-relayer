@@ -3,8 +3,8 @@ use core::future::Future;
 use core::pin::Pin;
 use core::str::FromStr as _;
 use core::task::Poll;
-use std::collections::VecDeque;
-use std::sync::Arc;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
 
 use amplifier_api::chrono::{DateTime, Utc};
 use amplifier_api::types::{
@@ -52,11 +52,15 @@ struct InsufficientGasBalance {
 }
 
 impl fmt::Display for InsufficientGasBalance {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    #[expect(
+        clippy::min_ident_chars,
+        reason = "either this or clippy::renamed_function_params"
+    )]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Insifficient Gas Balance. Required: {:?}. Available: {:?}",
-            self.cost, self.available
+            "Insifficient Gas Balance. Required: {}. Available: {}",
+            self.cost.0, self.available.0
         )
     }
 }
@@ -69,7 +73,8 @@ pub trait GasEstimator: Send + Sync {
     async fn update_program_accounts(&self, address: &Pubkey);
 
     /// Estimates the total cost of executing a gateway transaction
-    async fn estimate_total_execute_cost(
+    #[expect(clippy::too_many_arguments, reason = "necessary")]
+    async fn ensure_enough_gas(
         &self,
         rpc_client: &RpcClient,
         keypair: &Keypair,
@@ -77,12 +82,15 @@ pub trait GasEstimator: Send + Sync {
         message: &Message,
         payload: &[u8],
         destination_address: Pubkey,
-    ) -> eyre::Result<u64>;
+        incoming_message_pda: Pubkey,
+        available_gas: BigInt,
+    ) -> eyre::Result<()>;
 }
 
 /// Actual implementation of `GasEstimator`
 pub struct RealGasEstimator {
     rpc_client: RpcClient,
+    cache: Arc<Mutex<HashMap<Pubkey, BigInt>>>,
 }
 
 impl RealGasEstimator {
@@ -90,7 +98,10 @@ impl RealGasEstimator {
     #[must_use]
     pub fn new(rpc_url: String) -> Self {
         let rpc_client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::processed());
-        Self { rpc_client }
+        Self {
+            rpc_client,
+            cache: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 }
 
@@ -101,7 +112,8 @@ impl GasEstimator for RealGasEstimator {
         let _accounts = self.rpc_client.get_program_accounts(address).await;
     }
 
-    async fn estimate_total_execute_cost(
+    #[expect(clippy::unwrap_used, reason = "Lock poisoning")]
+    async fn ensure_enough_gas(
         &self,
         rpc_client: &RpcClient,
         keypair: &Keypair,
@@ -109,17 +121,48 @@ impl GasEstimator for RealGasEstimator {
         message: &Message,
         payload: &[u8],
         destination_address: Pubkey,
-    ) -> eyre::Result<u64> {
-        execution_cost_estimation::estimate_total_execute_cost(
-            &self.rpc_client,
-            rpc_client,
-            keypair,
-            gateway_root_pda,
-            message,
-            payload,
-            destination_address,
-        )
-        .await
+        incoming_message_pda: Pubkey,
+        available_gas: BigInt,
+    ) -> eyre::Result<()> {
+        let check = |cost: BigInt,
+                     available: BigInt,
+                     cache: &mut HashMap<Pubkey, BigInt>|
+         -> eyre::Result<()> {
+            if cost.0 > available.0 {
+                cache.insert(incoming_message_pda, cost.clone());
+
+                return Err(InsufficientGasBalance { cost, available }.into());
+            }
+
+            Ok(())
+        };
+
+        {
+            let mut cache = self.cache.lock().unwrap();
+            if let Some(cost) = cache.get(&incoming_message_pda).cloned() {
+                return check(cost, available_gas, &mut cache);
+            }
+        }
+
+        let cost = BigInt::from_u64(
+            execution_cost_estimation::estimate_total_execute_cost(
+                &self.rpc_client,
+                rpc_client,
+                keypair,
+                gateway_root_pda,
+                message,
+                payload,
+                destination_address,
+            )
+            .await?,
+        );
+
+        {
+            let mut cache = self.cache.lock().unwrap();
+            check(cost, available_gas, &mut cache)
+        }?;
+
+        Ok(())
     }
 }
 
@@ -148,14 +191,14 @@ impl<S: State, G: GasEstimator + 'static> relayer_engine::RelayerComponent
 impl<S: State, G: GasEstimator> SolanaTxPusher<S, G> {
     /// Create a new [`SolanaTxPusher`] component
     #[must_use]
-    pub const fn new(
+    pub fn new(
         config: Arc<config::Config>,
         name_on_amplifier: String,
         rpc_client: Arc<RpcClient>,
         task_receiver: relayer_amplifier_api_integration::AmplifierTaskReceiver,
         amplifier_client: relayer_amplifier_api_integration::AmplifierCommandClient,
         state: S,
-        gas_estimator: Arc<G>,
+        gas_estimator: G,
     ) -> Self {
         Self {
             config,
@@ -164,7 +207,7 @@ impl<S: State, G: GasEstimator> SolanaTxPusher<S, G> {
             task_receiver,
             amplifier_client,
             state,
-            gas_estimator,
+            gas_estimator: Arc::new(gas_estimator),
         }
     }
 
@@ -205,7 +248,7 @@ impl<S: State, G: GasEstimator> SolanaTxPusher<S, G> {
                                 task,
                                 &config_metadata,
                                 config,
-                                &*gas_estimator,
+                                gas_estimator,
                             )
                             .await;
                             (command_id, res)
@@ -287,14 +330,14 @@ struct ConfigMetadata {
 }
 
 #[instrument(skip_all)]
-async fn process_task(
+async fn process_task<G: GasEstimator>(
     keypair: &Keypair,
     solana_rpc_client: &RpcClient,
     mut amplifier_client: relayer_amplifier_api_integration::AmplifierCommandClient,
     task_item: TaskItem,
     metadata: &ConfigMetadata,
     config: Arc<config::Config>,
-    gas_estimator: &dyn GasEstimator,
+    gas_estimator: Arc<G>,
 ) -> eyre::Result<()> {
     use amplifier_api::types::Task;
     let signer = keypair.pubkey();
@@ -482,14 +525,14 @@ fn cannot_execute_message_event(
     })
 }
 
-async fn execute_task(
+async fn execute_task<G: GasEstimator>(
     execute_task: amplifier_api::types::ExecuteTask,
     metadata: &ConfigMetadata,
     signer: Pubkey,
     solana_rpc_client: &RpcClient,
     keypair: &Keypair,
     config: Arc<config::Config>,
-    gas_estimator: &dyn GasEstimator,
+    gas_estimator: Arc<G>,
 ) -> Result<(), eyre::Error> {
     execute_task_with_estimator(
         execute_task,
@@ -503,17 +546,17 @@ async fn execute_task(
     .await
 }
 
-async fn execute_task_with_estimator(
+async fn execute_task_with_estimator<G: GasEstimator>(
     execute_task: amplifier_api::types::ExecuteTask,
     metadata: &ConfigMetadata,
     signer: Pubkey,
     solana_rpc_client: &RpcClient,
     keypair: &Keypair,
     config: Arc<config::Config>,
-    gas_estimator: &dyn GasEstimator,
+    gas_estimator: Arc<G>,
 ) -> Result<(), eyre::Error> {
     let payload = execute_task.payload;
-    let available_gas_balance = execute_task.available_gas_balance.amount.0;
+    let available_gas_balance = execute_task.available_gas_balance.amount;
 
     // compose the message
     let message = Message {
@@ -548,29 +591,18 @@ async fn execute_task_with_estimator(
     // Verify destination and communicate with the destination program
     verify_destination(destination_address, config.allow_third_party_contract_calls)?;
 
-    // Try to estimate gas cost
-    let estimated_cost = gas_estimator
-        .estimate_total_execute_cost(
+    gas_estimator
+        .ensure_enough_gas(
             solana_rpc_client,
             keypair,
             metadata.gateway_root_pda,
             &message,
             &payload,
             destination_address,
+            gateway_incoming_message_pda,
+            available_gas_balance,
         )
-        .await
-        .context("Failed to estimate gas usage")?;
-
-    tracing::info!("estimated cost for task execution: {estimated_cost}");
-
-    // Check if we have enough gas
-    if BigInt::from_u64(estimated_cost).0 > available_gas_balance {
-        return Err(InsufficientGasBalance {
-            cost: BigInt::from_u64(estimated_cost),
-            available: BigInt(available_gas_balance),
-        }
-        .into());
-    }
+        .await?;
 
     // Upload the message payload to a Gateway-owned PDA account and get its address back.
     let gateway_message_payload_pda = message_payload::upload(
@@ -1074,8 +1106,8 @@ mod tests {
                 .times(..)
                 .returning(|_| ());
             mock_estimator
-                .expect_estimate_total_execute_cost()
-                .returning(|_, _, _, _, _, _| Ok(50_u64));
+                .expect_ensure_enough_gas()
+                .returning(|_, _, _, _, _, _, _, _| Ok(()));
 
             let result = execute_task_with_estimator(
                 task,
@@ -1084,7 +1116,7 @@ mod tests {
                 &rpc_client,
                 &fixture.payer.insecure_clone(),
                 tx_pusher_config,
-                &mock_estimator,
+                Arc::new(mock_estimator),
             )
             .await;
 
@@ -1667,8 +1699,8 @@ mod tests {
             .times(..)
             .returning(|_| ());
         mock_estimator
-            .expect_estimate_total_execute_cost()
-            .returning(|_, _, _, _, _, _| Ok(0_u64));
+            .expect_ensure_enough_gas()
+            .returning(|_, _, _, _, _, _, _, _| Ok(()));
 
         let solana_tx_pusher = SolanaTxPusher::new(
             Arc::new(config),
@@ -1677,7 +1709,7 @@ mod tests {
             amplifier_task_receiver,
             amplifier_client,
             MockState,
-            Arc::new(mock_estimator),
+            mock_estimator,
         );
         let task = tokio::task::spawn(solana_tx_pusher.process_internal());
 

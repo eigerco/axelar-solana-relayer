@@ -6,7 +6,6 @@
 use axelar_solana_encoding::types::messages::Message;
 use axelar_solana_gateway::state::incoming_message::command_id;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
@@ -37,20 +36,11 @@ pub(crate) async fn estimate_total_execute_cost(
     let mut total_cost = 0_u64;
     let msg_command_id = message_payload::message_to_command_id(message);
 
-    // Fetch the incoming message account to ensure the fork updates its ledger
-    let (incoming_message_pda, _) =
-        axelar_solana_gateway::get_incoming_message_pda(&msg_command_id);
-
-    simnet_rpc_client
-        .get_account_with_commitment(&incoming_message_pda, CommitmentConfig::confirmed())
-        .await?;
-
-    simnet_rpc_client
-        .get_account_with_commitment(&destination_address, CommitmentConfig::confirmed())
-        .await?;
-    simnet_rpc_client
-        .get_program_accounts(&destination_address)
-        .await?;
+    //// Fetch the incoming message account to ensure the fork updates its ledger
+    //let (incoming_message_pda, _) =
+    //    axelar_solana_gateway::get_incoming_message_pda(&msg_command_id);
+    //
+    //simnet_rpc_client.get_account(&incoming_message_pda).await?;
 
     // 1. Initialize payload account
     let init_ix = axelar_solana_gateway::instructions::initialize_message_payload(

@@ -51,9 +51,7 @@ async fn main() {
         amplifier_task_receiver,
         amplifier_client.clone(),
         file_based_storage.clone(),
-        Arc::new(solana_gateway_task_processor::RealGasEstimator::new(
-            estimation_rpc_url,
-        )),
+        solana_gateway_task_processor::RealGasEstimator::new(estimation_rpc_url),
     );
     let (solana_listener_component, solana_listener_client) = solana_listener::SolanaListener::new(
         config.solana_listener_component,
