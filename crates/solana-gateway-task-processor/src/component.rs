@@ -1277,9 +1277,6 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         #[expect(clippy::non_ascii_literal, reason = "it's cool")]
-        // This test hangs before returning, seems likely to be in the `join` within the drop
-        // implementation of the TestValidator.
-        #[ignore]
         async fn process_successful_transfer_with_executable() {
             let mut fixture = setup().await;
             let (gas_config, _gas_init_sig, counter_pda, _init_memo_sig, _init_its_sig, _) =
