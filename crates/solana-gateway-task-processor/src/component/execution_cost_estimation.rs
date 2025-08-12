@@ -181,9 +181,12 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (init_cost, init_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![init_ix]).await?;
-    account_cleanup
-        .accounts
-        .extend(init_metadata.accounts.iter());
+    account_cleanup.accounts.extend(
+        init_metadata
+            .accounts
+            .iter()
+            .filter(|acc| **acc != keypair.pubkey()),
+    );
     cost_breakdown.initialization = init_metadata;
     total_fee = total_fee.saturating_add(init_cost);
 
@@ -200,9 +203,12 @@ pub(crate) async fn estimate_total_execute_cost(
 
         let (write_cost, write_metadata) =
             execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![write_ix]).await?;
-        account_cleanup
-            .accounts
-            .extend(write_metadata.accounts.iter());
+        account_cleanup.accounts.extend(
+            write_metadata
+                .accounts
+                .iter()
+                .filter(|acc| **acc != keypair.pubkey()),
+        );
         cost_breakdown.upload.push(write_metadata);
         total_fee = total_fee.saturating_add(write_cost);
     }
@@ -216,9 +222,12 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (commit_cost, commit_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![commit_ix]).await?;
-    account_cleanup
-        .accounts
-        .extend(commit_metadata.accounts.iter());
+    account_cleanup.accounts.extend(
+        commit_metadata
+            .accounts
+            .iter()
+            .filter(|acc| **acc != keypair.pubkey()),
+    );
     cost_breakdown.commitment = commit_metadata;
     total_fee = total_fee.saturating_add(commit_cost);
 
@@ -234,9 +243,12 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (execute_cost, execute_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![execute_ix]).await?;
-    account_cleanup
-        .accounts
-        .extend(execute_metadata.accounts.iter());
+    account_cleanup.accounts.extend(
+        execute_metadata
+            .accounts
+            .iter()
+            .filter(|acc| **acc != keypair.pubkey()),
+    );
     cost_breakdown.execution = execute_metadata;
     total_fee = total_fee.saturating_add(execute_cost);
 
@@ -249,9 +261,12 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (close_cost, close_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![close_ix]).await?;
-    account_cleanup
-        .accounts
-        .extend(close_metadata.accounts.iter());
+    account_cleanup.accounts.extend(
+        close_metadata
+            .accounts
+            .iter()
+            .filter(|acc| **acc != keypair.pubkey()),
+    );
     cost_breakdown.closure = close_metadata;
     total_fee = total_fee.saturating_add(close_cost);
 
