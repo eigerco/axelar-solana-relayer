@@ -36,7 +36,7 @@ pub(crate) struct ExecuteTaskConsumptionBreakdown {
 }
 
 impl ExecuteTaskConsumptionBreakdown {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             initialization: StageMetadata {
                 compute_units_consumed: 0,
@@ -60,14 +60,14 @@ impl ExecuteTaskConsumptionBreakdown {
 
     pub(crate) async fn calculate_cost(&self, rpc_client: &RpcClient) -> eyre::Result<u64> {
         let calculate_stage_fee = |metadata: &StageMetadata, compute_unit_price: u64| -> u64 {
-            let base_fee = 5000u64; // Base transaction fee in lamports
+            let base_fee = 5000_u64; // Base transaction fee in lamports
             let priority_fee = metadata
                 .compute_units_consumed
                 .saturating_mul(compute_unit_price);
             base_fee.saturating_add(priority_fee)
         };
 
-        let mut total_fee = 0u64;
+        let mut total_fee = 0_u64;
 
         if !self.initialization.accounts.is_empty() {
             let compute_unit_price =
@@ -122,22 +122,23 @@ impl Drop for AccountsReset {
 
         // Sets accounts lamports to 0 so they're garbage collected within surfpool
         tokio::spawn(async move {
-            for account in accounts.iter() {
-                let _result = rpc_client
-                    .send::<()>(
-                        RpcRequest::Custom {
-                            method: "surfnet_setAccount",
-                        },
-                        serde_json::from_value(json!(
-                        [
-                            account.to_string(),
-                            {
-                                "lamports": 0
-                            }
-                        ]))
-                        .unwrap(),
-                    )
-                    .await;
+            for account in accounts {
+                if let Ok(request_body) = serde_json::from_value(json!(
+                [
+                    account.to_string(),
+                    {
+                        "lamports": 0_u64
+                    }
+                ])) {
+                    let _result = rpc_client
+                        .send::<()>(
+                            RpcRequest::Custom {
+                                method: "surfnet_setAccount",
+                            },
+                            request_body,
+                        )
+                        .await;
+                }
             }
         });
     }
@@ -184,7 +185,7 @@ pub(crate) async fn estimate_total_execute_cost(
         .accounts
         .extend(init_metadata.accounts.iter());
     cost_breakdown.initialization = init_metadata;
-    total_fee += total_fee.saturating_add(init_cost);
+    total_fee = total_fee.saturating_add(init_cost);
 
     // 2. Write payload in chunks
     for (index, chunk) in payload.chunks(*MAX_CHUNK_SIZE).enumerate() {
@@ -203,7 +204,7 @@ pub(crate) async fn estimate_total_execute_cost(
             .accounts
             .extend(write_metadata.accounts.iter());
         cost_breakdown.upload.push(write_metadata);
-        total_fee += total_fee.saturating_add(write_cost);
+        total_fee = total_fee.saturating_add(write_cost);
     }
 
     // 3. Commit payload
@@ -219,7 +220,7 @@ pub(crate) async fn estimate_total_execute_cost(
         .accounts
         .extend(commit_metadata.accounts.iter());
     cost_breakdown.commitment = commit_metadata;
-    total_fee += total_fee.saturating_add(commit_cost);
+    total_fee = total_fee.saturating_add(commit_cost);
 
     // 4. Execute message
     let execute_ix = build_execute_instruction(
@@ -237,7 +238,7 @@ pub(crate) async fn estimate_total_execute_cost(
         .accounts
         .extend(execute_metadata.accounts.iter());
     cost_breakdown.execution = execute_metadata;
-    total_fee += total_fee.saturating_add(execute_cost);
+    total_fee = total_fee.saturating_add(execute_cost);
 
     // 5. Close payload account
     let close_ix = axelar_solana_gateway::instructions::close_message_payload(
@@ -252,7 +253,7 @@ pub(crate) async fn estimate_total_execute_cost(
         .accounts
         .extend(close_metadata.accounts.iter());
     cost_breakdown.closure = close_metadata;
-    total_fee += total_fee.saturating_add(close_cost);
+    total_fee = total_fee.saturating_add(close_cost);
 
     Ok((total_fee, cost_breakdown))
 }
@@ -400,7 +401,7 @@ async fn calculate_compute_unit_price(
 
     // Get recent prioritization fees
     let fees = rpc_client
-        .get_recent_prioritization_fees(&accounts)
+        .get_recent_prioritization_fees(accounts)
         .await
         .map_err(|err| eyre::eyre!("Failed to get prioritization fees: {}", err))?;
 

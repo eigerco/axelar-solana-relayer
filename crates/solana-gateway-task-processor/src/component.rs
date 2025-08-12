@@ -4,7 +4,7 @@ use core::pin::Pin;
 use core::str::FromStr as _;
 use core::task::Poll;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use amplifier_api::chrono::{DateTime, Utc};
 use amplifier_api::types::{
@@ -38,7 +38,6 @@ use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::TransactionError;
 use thiserror::Error;
-use tokio::sync::RwLock;
 use tracing::{info_span, instrument, Instrument as _};
 
 use crate::config;
@@ -93,7 +92,7 @@ pub trait GasEstimator: Send + Sync {
 /// Actual implementation of `GasEstimator`
 pub struct RealGasEstimator {
     rpc_client: Arc<RpcClient>,
-    cache: Arc<RwLock<HashMap<Pubkey, ExecuteTaskConsumptionBreakdown>>>,
+    cache: Arc<Mutex<HashMap<Pubkey, ExecuteTaskConsumptionBreakdown>>>,
 }
 
 impl RealGasEstimator {
@@ -106,7 +105,7 @@ impl RealGasEstimator {
         ));
         Self {
             rpc_client,
-            cache: Arc::new(RwLock::new(HashMap::new())),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -117,8 +116,7 @@ impl GasEstimator for RealGasEstimator {
         let _account = self.rpc_client.get_account(address).await;
         let _accounts = self.rpc_client.get_program_accounts(address).await;
     }
-
-    #[expect(clippy::unwrap_used, reason = "Lock poisoning")]
+    #[expect(clippy::unwrap_used, reason = "Poisoned lock, just panic")]
     async fn ensure_enough_gas(
         &self,
         rpc_client: &RpcClient,
@@ -130,39 +128,32 @@ impl GasEstimator for RealGasEstimator {
         incoming_message_pda: Pubkey,
         available_gas: BigInt,
     ) -> eyre::Result<()> {
-        if let Some(consumption_breakdown) = self.cache.read().await.get(&incoming_message_pda) {
-            let current_cost = consumption_breakdown.calculate_cost(rpc_client).await?;
-            let cost = BigInt::from_u64(current_cost);
+        let maybe_cached = self.cache.lock().unwrap().remove(&incoming_message_pda);
 
-            if cost.0 > available_gas.0 {
-                return Err(InsufficientGasBalance {
-                    cost,
-                    available: available_gas,
-                }
-                .into());
-            } else {
-                self.cache.write().await.remove(&incoming_message_pda);
-                return Ok(())
-            }
-        }
-
-        let (cost, consumption_breakdown) = execution_cost_estimation::estimate_total_execute_cost(
-            Arc::clone(&self.rpc_client),
-            rpc_client,
-            keypair,
-            gateway_root_pda,
-            message,
-            payload,
-            destination_address,
-        )
-        .await?;
+        let (cost, breakdown) = if let Some(consumption_breakdown) = maybe_cached {
+            (
+                consumption_breakdown.calculate_cost(rpc_client).await?,
+                consumption_breakdown,
+            )
+        } else {
+            execution_cost_estimation::estimate_total_execute_cost(
+                Arc::clone(&self.rpc_client),
+                rpc_client,
+                keypair,
+                gateway_root_pda,
+                message,
+                payload,
+                destination_address,
+            )
+            .await?
+        };
 
         let cost = BigInt::from_u64(cost);
         if cost.0 > available_gas.0 {
             self.cache
-                .write()
-                .await
-                .insert(incoming_message_pda, consumption_breakdown);
+                .lock()
+                .unwrap()
+                .insert(incoming_message_pda, breakdown);
 
             return Err(InsufficientGasBalance {
                 cost,
