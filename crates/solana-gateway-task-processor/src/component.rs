@@ -92,7 +92,7 @@ pub trait GasEstimator: Send + Sync {
 
 /// Actual implementation of `GasEstimator`
 pub struct RealGasEstimator {
-    rpc_client: RpcClient,
+    rpc_client: Arc<RpcClient>,
     cache: Arc<RwLock<HashMap<Pubkey, ExecuteTaskConsumptionBreakdown>>>,
 }
 
@@ -100,7 +100,10 @@ impl RealGasEstimator {
     /// Creates a new `RealGasEstimator` with the specified RPC URL
     #[must_use]
     pub fn new(rpc_url: String) -> Self {
-        let rpc_client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::processed());
+        let rpc_client = Arc::new(RpcClient::new_with_commitment(
+            rpc_url,
+            CommitmentConfig::processed(),
+        ));
         Self {
             rpc_client,
             cache: Arc::new(RwLock::new(HashMap::new())),
@@ -144,7 +147,7 @@ impl GasEstimator for RealGasEstimator {
         }
 
         let (cost, consumption_breakdown) = execution_cost_estimation::estimate_total_execute_cost(
-            &self.rpc_client,
+            Arc::clone(&self.rpc_client),
             rpc_client,
             keypair,
             gateway_root_pda,
