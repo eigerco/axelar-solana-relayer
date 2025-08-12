@@ -721,7 +721,7 @@ dependencies = [
 [[package]]
 name = "axelar-executable"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "alloy-sol-types",
  "axelar-solana-encoding",
@@ -736,7 +736,7 @@ dependencies = [
 [[package]]
 name = "axelar-message-primitives"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -744,7 +744,6 @@ dependencies = [
  "borsh 1.5.7",
  "bytemuck",
  "hex",
- "rkyv",
  "solana-program",
  "thiserror 1.0.69",
 ]
@@ -752,13 +751,12 @@ dependencies = [
 [[package]]
 name = "axelar-solana-encoding"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "arrayref",
  "borsh 1.5.7",
  "bs58",
  "hex",
- "rkyv",
  "rs_merkle",
  "sha3",
  "solana-program",
@@ -769,7 +767,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gas-service"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "axelar-solana-gas-service-events",
  "borsh 1.5.7",
@@ -784,7 +782,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gas-service-events"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "event-utils",
  "solana-program",
@@ -793,7 +791,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "axelar-message-primitives",
  "axelar-solana-encoding",
@@ -817,7 +815,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway-test-fixtures"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "axelar-executable",
  "axelar-solana-encoding",
@@ -844,7 +842,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-governance"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "alloy-sol-types",
  "axelar-executable",
@@ -861,7 +859,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-its"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -887,7 +885,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-memo-program"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "axelar-executable",
  "axelar-solana-encoding",
@@ -1321,28 +1319,6 @@ name = "byte-slice-cast"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7575182f7272186991736b70173b0ea045398f984bf5ebbb3804736ce1330c9d"
-
-[[package]]
-name = "bytecheck"
-version = "0.6.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23cdc57ce23ac53c931e88a43d06d070a6fd142f2617be5855eb75efc9beb1c2"
-dependencies = [
- "bytecheck_derive",
- "ptr_meta",
- "simdutf8",
-]
-
-[[package]]
-name = "bytecheck_derive"
-version = "0.6.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3db406d29fbcd95542e92559bed4d8ad92636d1ca8b3b72ede10b4bcc010e659"
-dependencies = [
- "proc-macro2 1.0.94",
- "quote 1.0.40",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "bytemuck"
@@ -2424,7 +2400,7 @@ dependencies = [
 [[package]]
 name = "event-macros"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "keccak-const",
  "quote 1.0.40",
@@ -2434,7 +2410,7 @@ dependencies = [
 [[package]]
 name = "event-utils"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "axelar-message-primitives",
  "base64 0.21.7",
@@ -2795,7 +2771,7 @@ dependencies = [
 [[package]]
 name = "gateway-event-stack"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "axelar-solana-gas-service-events",
  "axelar-solana-gateway",
@@ -2941,7 +2917,7 @@ dependencies = [
 [[package]]
 name = "governance-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3726,7 +3702,7 @@ dependencies = [
 [[package]]
 name = "interchain-token-transfer-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3790,7 +3766,7 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 [[package]]
 name = "its-instruction-builder"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "async-recursion",
  "axelar-executable",
@@ -5360,7 +5336,7 @@ dependencies = [
 [[package]]
 name = "program-utils"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -5473,26 +5449,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7ac8852baeb3cc6fb83b93646fb93c0ffe5d14bf138c945ceb4b9948ee0e3c1"
 dependencies = [
  "autotools",
-]
-
-[[package]]
-name = "ptr_meta"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0738ccf7ea06b608c10564b31debd4f5bc5e197fc8bfe088f68ae5ce81e7a4f1"
-dependencies = [
- "ptr_meta_derive",
-]
-
-[[package]]
-name = "ptr_meta_derive"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16b845dbfca988fa33db069c0e230574d15a3088f147a87b64c7589eb662c9ac"
-dependencies = [
- "proc-macro2 1.0.94",
- "quote 1.0.40",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -5931,15 +5887,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rend"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71fe3824f5629716b1589be05dacd749f6aa084c87e00e016714a8cdfccc997c"
-dependencies = [
- "bytecheck",
-]
-
-[[package]]
 name = "reqwest"
 version = "0.11.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6120,35 +6067,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rkyv"
-version = "0.7.45"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9008cd6385b9e161d8229e1f6549dd23c3d022f132a2ea37ac3a10ac4935779b"
-dependencies = [
- "bitvec",
- "bytecheck",
- "bytes",
- "hashbrown 0.12.3",
- "ptr_meta",
- "rend",
- "rkyv_derive",
- "seahash",
- "tinyvec",
- "uuid",
-]
-
-[[package]]
-name = "rkyv_derive"
-version = "0.7.45"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "503d1d27590a2b0a3a4ca4c94755aa2875657196ecbf401a42eff41d7de532c0"
-dependencies = [
- "proc-macro2 1.0.94",
- "quote 1.0.40",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "rlp"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6171,7 +6089,7 @@ dependencies = [
 [[package]]
 name = "role-management"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=f4da7b6#f4da7b6a586f77ce47958e176da39f3ff1595371"
+source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=1bcb7a2#1bcb7a249828a59bedf159a683355fce1e84931c"
 dependencies = [
  "bincode",
  "bitflags 2.9.0",
@@ -6526,12 +6444,6 @@ name = "sdd"
 version = "3.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "584e070911c7017da6cb2eb0788d09f43d789029b5877d3e5ecc8acf86ceee21"
-
-[[package]]
-name = "seahash"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 
 [[package]]
 name = "sec1"
