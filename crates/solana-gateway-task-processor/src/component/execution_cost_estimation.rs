@@ -3,14 +3,11 @@
 //! This module estimates gas costs by broadcasting transactions on a forked
 //! Solana cluster state (e.g., using surfpool as an external RPC service).
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use axelar_solana_encoding::types::messages::Message;
 use axelar_solana_gateway::state::incoming_message::command_id;
-use serde_json::json;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_client::rpc_request::RpcRequest;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
@@ -110,40 +107,6 @@ impl ExecuteTaskConsumptionBreakdown {
     }
 }
 
-struct AccountsReset {
-    accounts: HashSet<Pubkey>,
-    rpc_client: Arc<RpcClient>,
-}
-
-impl Drop for AccountsReset {
-    fn drop(&mut self) {
-        let accounts: Vec<Pubkey> = self.accounts.drain().collect();
-        let rpc_client = Arc::clone(&self.rpc_client);
-
-        // Sets accounts lamports to 0 so they're garbage collected within surfpool
-        tokio::spawn(async move {
-            for account in accounts {
-                if let Ok(request_body) = serde_json::from_value(json!(
-                [
-                    account.to_string(),
-                    {
-                        "lamports": 0_u64
-                    }
-                ])) {
-                    let _result = rpc_client
-                        .send::<()>(
-                            RpcRequest::Custom {
-                                method: "surfnet_setAccount",
-                            },
-                            request_body,
-                        )
-                        .await;
-                }
-            }
-        });
-    }
-}
-
 /// Estimates the total gas cost for executing a task
 ///
 /// This includes:
@@ -164,11 +127,6 @@ pub(crate) async fn estimate_total_execute_cost(
 ) -> eyre::Result<(u64, ExecuteTaskConsumptionBreakdown)> {
     let mut total_fee: u64 = 0;
     let mut cost_breakdown = ExecuteTaskConsumptionBreakdown::new();
-    let mut account_cleanup = AccountsReset {
-        accounts: HashSet::new(),
-        rpc_client: Arc::clone(&simnet_rpc_client),
-    };
-
     let msg_command_id = message_payload::message_to_command_id(message);
 
     // 1. Initialize payload account
@@ -181,12 +139,6 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (init_cost, init_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![init_ix]).await?;
-    account_cleanup.accounts.extend(
-        init_metadata
-            .accounts
-            .iter()
-            .filter(|acc| **acc != keypair.pubkey()),
-    );
     cost_breakdown.initialization = init_metadata;
     total_fee = total_fee.saturating_add(init_cost);
 
@@ -203,12 +155,6 @@ pub(crate) async fn estimate_total_execute_cost(
 
         let (write_cost, write_metadata) =
             execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![write_ix]).await?;
-        account_cleanup.accounts.extend(
-            write_metadata
-                .accounts
-                .iter()
-                .filter(|acc| **acc != keypair.pubkey()),
-        );
         cost_breakdown.upload.push(write_metadata);
         total_fee = total_fee.saturating_add(write_cost);
     }
@@ -222,12 +168,6 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (commit_cost, commit_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![commit_ix]).await?;
-    account_cleanup.accounts.extend(
-        commit_metadata
-            .accounts
-            .iter()
-            .filter(|acc| **acc != keypair.pubkey()),
-    );
     cost_breakdown.commitment = commit_metadata;
     total_fee = total_fee.saturating_add(commit_cost);
 
@@ -243,12 +183,6 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (execute_cost, execute_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![execute_ix]).await?;
-    account_cleanup.accounts.extend(
-        execute_metadata
-            .accounts
-            .iter()
-            .filter(|acc| **acc != keypair.pubkey()),
-    );
     cost_breakdown.execution = execute_metadata;
     total_fee = total_fee.saturating_add(execute_cost);
 
@@ -261,12 +195,6 @@ pub(crate) async fn estimate_total_execute_cost(
 
     let (close_cost, close_metadata) =
         execute_and_get_cost(&simnet_rpc_client, rpc_client, keypair, vec![close_ix]).await?;
-    account_cleanup.accounts.extend(
-        close_metadata
-            .accounts
-            .iter()
-            .filter(|acc| **acc != keypair.pubkey()),
-    );
     cost_breakdown.closure = close_metadata;
     total_fee = total_fee.saturating_add(close_cost);
 
