@@ -15,6 +15,96 @@ use solana_sdk::transaction::Transaction;
 
 use super::message_payload::{self, MAX_CHUNK_SIZE};
 
+#[derive(Debug, Clone)]
+pub(crate) struct StageMetadata {
+    compute_units_consumed: u64,
+    accounts: Vec<Pubkey>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ExecuteTaskConsumptionBreakdown {
+    initialization: StageMetadata,
+    upload: Vec<StageMetadata>,
+    commitment: StageMetadata,
+    execution: StageMetadata,
+    closure: StageMetadata,
+}
+
+impl ExecuteTaskConsumptionBreakdown {
+    fn new() -> Self {
+        Self {
+            initialization: StageMetadata {
+                compute_units_consumed: 0,
+                accounts: vec![],
+            },
+            upload: vec![],
+            commitment: StageMetadata {
+                compute_units_consumed: 0,
+                accounts: vec![],
+            },
+            execution: StageMetadata {
+                compute_units_consumed: 0,
+                accounts: vec![],
+            },
+            closure: StageMetadata {
+                compute_units_consumed: 0,
+                accounts: vec![],
+            },
+        }
+    }
+
+    pub(crate) async fn calculate_cost(&self, rpc_client: &RpcClient) -> eyre::Result<u64> {
+        let calculate_stage_fee = |metadata: &StageMetadata, compute_unit_price: u64| -> u64 {
+            let base_fee = 5000u64; // Base transaction fee in lamports
+            let priority_fee = metadata
+                .compute_units_consumed
+                .saturating_mul(compute_unit_price);
+            base_fee.saturating_add(priority_fee)
+        };
+
+        let mut total_fee = 0u64;
+
+        if !self.initialization.accounts.is_empty() {
+            let compute_unit_price =
+                calculate_compute_unit_price(&self.initialization.accounts, rpc_client).await?;
+            let stage_fee = calculate_stage_fee(&self.initialization, compute_unit_price);
+            total_fee = total_fee.saturating_add(stage_fee);
+        }
+
+        for metadata in &self.upload {
+            if !metadata.accounts.is_empty() {
+                let compute_unit_price =
+                    calculate_compute_unit_price(&metadata.accounts, rpc_client).await?;
+                let stage_fee = calculate_stage_fee(metadata, compute_unit_price);
+                total_fee = total_fee.saturating_add(stage_fee);
+            }
+        }
+
+        if !self.commitment.accounts.is_empty() {
+            let compute_unit_price =
+                calculate_compute_unit_price(&self.commitment.accounts, rpc_client).await?;
+            let stage_fee = calculate_stage_fee(&self.commitment, compute_unit_price);
+            total_fee = total_fee.saturating_add(stage_fee);
+        }
+
+        if !self.execution.accounts.is_empty() {
+            let compute_unit_price =
+                calculate_compute_unit_price(&self.execution.accounts, rpc_client).await?;
+            let stage_fee = calculate_stage_fee(&self.execution, compute_unit_price);
+            total_fee = total_fee.saturating_add(stage_fee);
+        }
+
+        if !self.closure.accounts.is_empty() {
+            let compute_unit_price =
+                calculate_compute_unit_price(&self.closure.accounts, rpc_client).await?;
+            let stage_fee = calculate_stage_fee(&self.closure, compute_unit_price);
+            total_fee = total_fee.saturating_add(stage_fee);
+        }
+
+        Ok(total_fee)
+    }
+}
+
 /// Estimates the total gas cost for executing a task
 ///
 /// This includes:
@@ -32,15 +122,10 @@ pub(crate) async fn estimate_total_execute_cost(
     message: &Message,
     payload: &[u8],
     destination_address: Pubkey,
-) -> eyre::Result<u64> {
-    let mut total_cost = 0_u64;
+) -> eyre::Result<(u64, ExecuteTaskConsumptionBreakdown)> {
+    let mut total_fee: u64 = 0;
+    let mut cost_breakdown = ExecuteTaskConsumptionBreakdown::new();
     let msg_command_id = message_payload::message_to_command_id(message);
-
-    //// Fetch the incoming message account to ensure the fork updates its ledger
-    //let (incoming_message_pda, _) =
-    //    axelar_solana_gateway::get_incoming_message_pda(&msg_command_id);
-    //
-    //simnet_rpc_client.get_account(&incoming_message_pda).await?;
 
     // 1. Initialize payload account
     let init_ix = axelar_solana_gateway::instructions::initialize_message_payload(
@@ -50,9 +135,10 @@ pub(crate) async fn estimate_total_execute_cost(
         payload.len().try_into()?,
     )?;
 
-    let init_cost =
+    let (init_cost, init_metadata) =
         execute_and_get_cost(simnet_rpc_client, rpc_client, keypair, vec![init_ix]).await?;
-    total_cost = total_cost.saturating_add(init_cost);
+    cost_breakdown.initialization = init_metadata;
+    total_fee += total_fee.saturating_add(init_cost);
 
     // 2. Write payload in chunks
     for (index, chunk) in payload.chunks(*MAX_CHUNK_SIZE).enumerate() {
@@ -65,9 +151,10 @@ pub(crate) async fn estimate_total_execute_cost(
             offset.try_into()?,
         )?;
 
-        let write_cost =
+        let (write_cost, write_metadata) =
             execute_and_get_cost(simnet_rpc_client, rpc_client, keypair, vec![write_ix]).await?;
-        total_cost = total_cost.saturating_add(write_cost);
+        cost_breakdown.upload.push(write_metadata);
+        total_fee += total_fee.saturating_add(write_cost);
     }
 
     // 3. Commit payload
@@ -77,9 +164,10 @@ pub(crate) async fn estimate_total_execute_cost(
         msg_command_id,
     )?;
 
-    let commit_cost =
+    let (commit_cost, commit_metadata) =
         execute_and_get_cost(simnet_rpc_client, rpc_client, keypair, vec![commit_ix]).await?;
-    total_cost = total_cost.saturating_add(commit_cost);
+    cost_breakdown.commitment = commit_metadata;
+    total_fee += total_fee.saturating_add(commit_cost);
 
     // 4. Execute message
     let execute_ix = build_execute_instruction(
@@ -91,9 +179,10 @@ pub(crate) async fn estimate_total_execute_cost(
     )
     .await?;
 
-    let execute_cost =
+    let (execute_cost, execute_metadata) =
         execute_and_get_cost(simnet_rpc_client, rpc_client, keypair, vec![execute_ix]).await?;
-    total_cost = total_cost.saturating_add(execute_cost);
+    cost_breakdown.execution = execute_metadata;
+    total_fee += total_fee.saturating_add(execute_cost);
 
     // 5. Close payload account
     let close_ix = axelar_solana_gateway::instructions::close_message_payload(
@@ -102,20 +191,21 @@ pub(crate) async fn estimate_total_execute_cost(
         msg_command_id,
     )?;
 
-    let close_cost =
+    let (close_cost, close_metadata) =
         execute_and_get_cost(simnet_rpc_client, rpc_client, keypair, vec![close_ix]).await?;
-    total_cost = total_cost.saturating_add(close_cost);
+    cost_breakdown.closure = close_metadata;
+    total_fee += total_fee.saturating_add(close_cost);
 
-    Ok(total_cost)
+    Ok((total_fee, cost_breakdown))
 }
 
-/// Executes a transaction on surfpool and returns the actual gas cost
+/// Executes a transaction on surfpool and returns the actual gas cost with metadata
 async fn execute_and_get_cost(
     simnet_rpc_client: &RpcClient,
     rpc_client: &RpcClient,
     keypair: &Keypair,
     mut instructions: Vec<Instruction>,
-) -> eyre::Result<u64> {
+) -> eyre::Result<(u64, StageMetadata)> {
     let blockhash = simnet_rpc_client
         .get_latest_blockhash()
         .await
@@ -126,8 +216,22 @@ async fn execute_and_get_cost(
 
     // NOTE: For the priority fee, we fetch it from the actual chain since it depends on network
     // congestion, etc.
-    let priority_fee_ix = calculate_compute_unit_price(&instructions, rpc_client).await?;
+    let priority_fee_ix = build_compute_unit_price_instruction(
+        &instructions
+            .iter()
+            .flat_map(|ix| ix.accounts.iter())
+            .map(|acc| acc.pubkey)
+            .collect::<Vec<_>>(),
+        rpc_client,
+    )
+    .await?;
     instructions.insert(0, priority_fee_ix);
+
+    // Extract accounts and compute budget for metadata
+    let accounts: Vec<Pubkey> = instructions
+        .iter()
+        .flat_map(|ix| ix.accounts.iter().map(|acc| acc.pubkey))
+        .collect();
 
     let tx = Transaction::new_signed_with_payer(
         &instructions,
@@ -152,10 +256,23 @@ async fn execute_and_get_cost(
     let fee = tx_status
         .transaction
         .meta
+        .as_ref()
         .map(|meta| meta.fee)
         .ok_or_else(|| eyre::eyre!("Transaction metadata not available"))?;
 
-    Ok(fee)
+    let compute_units_consumed = tx_status
+        .transaction
+        .meta
+        .ok_or_else(|| eyre::eyre!("Transaction metadata not available"))?
+        .compute_units_consumed
+        .ok_or_else(|| eyre::eyre!("Missing compute units consumption details"))?;
+
+    let metadata = StageMetadata {
+        compute_units_consumed,
+        accounts,
+    };
+
+    Ok((fee, metadata))
 }
 
 /// Build execute instruction
@@ -202,24 +319,30 @@ async fn build_execute_instruction(
 }
 
 /// Calculate compute unit price based on recent prioritization fees
-async fn calculate_compute_unit_price(
-    instructions: &[Instruction],
+async fn build_compute_unit_price_instruction(
+    accounts: &[Pubkey],
     rpc_client: &RpcClient,
 ) -> eyre::Result<Instruction> {
+    let average_fee = calculate_compute_unit_price(accounts, rpc_client).await?;
+    Ok(ComputeBudgetInstruction::set_compute_unit_price(
+        average_fee,
+    ))
+}
+
+async fn calculate_compute_unit_price(
+    accounts: &[Pubkey],
+    rpc_client: &RpcClient,
+) -> eyre::Result<u64> {
     const MAX_ACCOUNTS: usize = 128;
     const N_SLOTS_TO_CHECK: usize = 10;
 
-    // Collect all accounts touched by the instructions
-    let all_touched_accounts: Vec<Pubkey> = instructions
-        .iter()
-        .flat_map(|ix| ix.accounts.iter())
-        .take(MAX_ACCOUNTS)
-        .map(|acc| acc.pubkey)
-        .collect();
+    if accounts.len() > MAX_ACCOUNTS {
+        eyre::bail!("Too many accounts, cannot calculate compute unit price");
+    }
 
     // Get recent prioritization fees
     let fees = rpc_client
-        .get_recent_prioritization_fees(&all_touched_accounts)
+        .get_recent_prioritization_fees(&accounts)
         .await
         .map_err(|err| eyre::eyre!("Failed to get prioritization fees: {}", err))?;
 
@@ -239,7 +362,5 @@ async fn calculate_compute_unit_price(
         0
     };
 
-    Ok(ComputeBudgetInstruction::set_compute_unit_price(
-        average_fee,
-    ))
+    Ok(average_fee)
 }
