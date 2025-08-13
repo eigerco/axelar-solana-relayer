@@ -44,6 +44,55 @@ The relayer is built of composable plug-n-play items, called `components`, which
 
 - [Rust](https://www.rust-lang.org/tools/install)
 - [Solana CLI (for running tests during development)](https://solana.com/docs/intro/installation)
+- [Surfpool](https://github.com/txtx/surfpool) (for gas cost estimation) [(docker image)](https://hub.docker.com/r/surfpool/surfpool).
+
+### Surfpool Dependency
+
+This relayer depends on [Surfpool](https://hub.docker.com/r/surfpool/surfpool), a Solana state forking service that enables accurate gas cost estimation by running transactions on forked cluster state. Surfpool is used by the [Solana Gateway Task Processor](crates/solana-gateway-task-processor) component for estimating execution costs.
+
+#### Running Surfpool with Docker
+
+An official Docker image is available at `surfpool/surfpool`. Here's how to run it:
+
+```bash
+# Run Surfpool for devnet
+docker run -p 8899:8899 surfpool/surfpool:latest start --slot-time 1 --no-tui -n devnet
+
+# Run Surfpool for testnet
+docker run -p 8899:8899 surfpool/surfpool:latest start --slot-time 1 --no-tui -n testnet
+
+# Run Surfpool for mainnet
+docker run -p 8899:8899 surfpool/surfpool:latest start --slot-time 1 --no-tui -n mainnet
+```
+
+#### Architecture Compatibility
+
+**Important**: Currently, only ARM64 Docker images are available for Surfpool. If you're running on a different architecture (x86_64, etc.), you'll need to use QEMU emulation:
+
+1. Install `qemu-user-static` for cross-architecture support:
+   ```bash
+   # On Ubuntu/Debian
+   sudo apt-get install qemu-user-static
+
+   # On macOS
+   brew install qemu
+   ```
+
+2. Enable multi-architecture support:
+   ```bash
+   docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+   ```
+
+3. Run Surfpool with platform specification:
+   ```bash
+   # For devnet
+   docker run --platform linux/arm64 -p 8899:8899 surfpool/surfpool:latest start --slot-time 1 --no-tui -n devnet
+
+   # For mainnet
+   docker run --platform linux/arm64 -p 8899:8899 surfpool/surfpool:latest start --slot-time 1 --no-tui -n mainnet
+   ```
+
+For more information about QEMU user static emulation, see the [official repository](https://github.com/multiarch/qemu-user-static).
 
 ### Installation
 
