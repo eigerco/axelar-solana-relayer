@@ -123,7 +123,7 @@ pub(crate) async fn upload(
     let (incoming_message_pda, _bump) =
         axelar_solana_gateway::get_incoming_message_pda(&message_to_command_id(message));
     let (message_payload_pda, _bump) =
-        axelar_solana_gateway::find_message_payload_pda(incoming_message_pda);
+        axelar_solana_gateway::find_message_payload_pda(incoming_message_pda, keypair.pubkey());
 
     Ok(message_payload_pda)
 }
