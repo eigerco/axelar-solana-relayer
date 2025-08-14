@@ -1,0 +1,68 @@
+name: so-libs-update
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'Source repository'
+        required: true
+      release_tag:
+        description: 'Release tag'
+        required: true
+      commit_sha:
+        description: 'Commit SHA'
+        required: true
+      short_sha:
+        description: 'Short commit SHA'
+        required: true
+      download_url:
+        description: 'Download URL for the libraries'
+        required: true
+
+jobs:
+  update-libraries:
+    runs-on: self-hosted
+    name: Update Dynamic Libraries
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate download URL
+        run: |
+          if [[ "${{ inputs.download_url }}" != https://github.com/eigerco/* ]]; then
+            echo "Error: Download URL must start with https://github.com/eigerco/"
+            echo "Provided URL: ${{ inputs.download_url }}"
+            exit 1
+          fi
+
+      - name: Download dynamic libraries
+        run: |
+          echo "Downloading libraries from: ${{ inputs.download_url }}"
+          curl -L -o solana-dynamic-libraries.zip "${{ inputs.download_url }}"
+          
+      - name: Extract and update fixtures
+        run: |
+          unzip -o solana-dynamic-libraries.zip -d tests/fixtures/
+          rm solana-dynamic-libraries.zip
+          
+      - name: Check for changes
+        id: changes
+        run: |
+          git diff --quiet tests/fixtures/ || echo "changes=true" >> $GITHUB_OUTPUT
+          
+      - name: Create pull request
+        if: steps.changes.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            Update dynamic libraries from ${{ inputs.repository }}@${{ inputs.short_sha }}
+          title: "Update dynamic libraries (${{ inputs.short_sha }})"
+          body: |
+            Automatic update of dynamic libraries from [${{ inputs.repository }}](${{ inputs.repository }}).
+            
+            **Source commit**: ${{ inputs.commit_sha }}
+            **Release**: ${{ inputs.release_tag }}
+            
+            This PR updates the dynamic libraries in `tests/fixtures/` with the latest build.
+          branch: update-dynamic-libraries-${{ inputs.short_sha }}
+          delete-branch: true
