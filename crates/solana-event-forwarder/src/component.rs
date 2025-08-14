@@ -993,7 +993,7 @@ mod tests {
         let (incoming_message_pda, _bump) =
             axelar_solana_gateway::get_incoming_message_pda(&command_id);
         let (message_payload_pda, _bump) =
-            axelar_solana_gateway::find_message_payload_pda(incoming_message_pda);
+            axelar_solana_gateway::find_message_payload_pda(incoming_message_pda, payer);
 
         let (incoming_message_pda, _bump) = get_incoming_message_pda(&command_id);
         let (execute_sigs, _execute_tx) = fixture
