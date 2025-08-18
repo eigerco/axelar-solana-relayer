@@ -289,7 +289,7 @@ async fn build_execute_instruction(
         &command_id(&message.cc_id.chain, &message.cc_id.id),
     );
     let (gateway_message_payload_pda, _) =
-        axelar_solana_gateway::find_message_payload_pda(gateway_incoming_message_pda);
+        axelar_solana_gateway::find_message_payload_pda(gateway_incoming_message_pda, signer);
 
     match destination_address {
         axelar_solana_its::ID => Ok(its_instruction_builder::build_its_gmp_instruction(

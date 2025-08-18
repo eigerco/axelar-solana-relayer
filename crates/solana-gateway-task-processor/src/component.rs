@@ -421,8 +421,10 @@ async fn process_task<G: GasEstimator>(
                 let (incoming_message_pda, _bump) = axelar_solana_gateway::get_incoming_message_pda(
                     &command_id(&source_chain, &message_id.0),
                 );
-                let (message_payload_pda, _bump) =
-                    axelar_solana_gateway::find_message_payload_pda(incoming_message_pda);
+                let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
+                    incoming_message_pda,
+                    keypair.pubkey(),
+                );
 
                 let maybe_some_fee = gateway_gas_computation::cost_of_payload_uploading(
                     solana_rpc_client,

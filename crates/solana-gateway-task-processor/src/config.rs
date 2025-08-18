@@ -124,7 +124,7 @@ mod tests {
             "gateway_program_address": Pubkey::new_unique().to_string(),
             "gas_service_config_pda": Pubkey::new_unique().to_string(),
             "signing_keypair": base58_encoded,
-            "estimation_node_rpc_url": "http://127.0.0.1:8899".to_string(),
+            "estimation_node_rpc_url": "http://127.0.0.1:8899".to_owned(),
         });
 
         // Deserialize Config
@@ -143,7 +143,7 @@ mod tests {
         let data = json!({
             "gateway_program_address": Pubkey::new_unique().to_string(),
             "signing_keypair": invalid_encoded,
-            "estimation_node_rpc_url": "http://127.0.0.1:8899".to_string(),
+            "estimation_node_rpc_url": "http://127.0.0.1:8899".to_owned(),
         });
 
         // Attempt to deserialize Config
