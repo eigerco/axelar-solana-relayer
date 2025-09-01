@@ -989,26 +989,34 @@ mod tests {
             .unwrap()
             .0[0];
 
-        let mut expected_sum = 0_u64;
-        for sig in [
+        let signatures = [
             close_sig,
             execute_sig,
             commit_sig,
             write_sig_1,
             write_sig_2,
             init_payload_sig,
-        ] {
+        ];
+
+        let mut total_cost = 0_u64;
+        for sig in signatures {
             let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
                 .await
                 .unwrap()
                 .unwrap();
-            expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
+            total_cost = total_cost.saturating_add(tx.cost_in_lamports);
         }
 
         let tx = fetch_logs(CommitmentConfig::confirmed(), execute_sig, &rpc_client)
             .await
             .unwrap()
             .unwrap();
+
+        #[allow(
+            clippy::as_conversions,
+            reason = "signatures is a fixed-size array, conversion is safe"
+        )]
+        let expected_per_event_cost = total_cost.checked_div(signatures.len() as u64).unwrap_or(0);
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
         let event_id = TxEvent::new(execute_sig.to_string().as_str(), 4);
@@ -1031,9 +1039,10 @@ mod tests {
             message_id: TxEvent(cc_id_id.clone()),
             cost: Token {
                 token_id: None,
-                amount: BigInt::from_u64(expected_sum),
+                amount: BigInt::from_u64(expected_per_event_cost),
             },
         };
+
         assert_eq!(
             item,
             AmplifierCommand::PublishEvents(
