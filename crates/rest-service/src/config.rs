@@ -12,12 +12,6 @@ pub struct Config {
         env = "REST_SERVICE_BIND_ADDRESS"
     )]
     pub bind_addr: SocketAddr,
-    /// The maximum size of the data in a contract call with offchain data handling.
-    #[arg(
-        value_name = "REST_SERVICE_CALL_CONTRACT_OFFCHAIN_DATA_SIZE_LIMIT",
-        env = "REST_SERVICE_CALL_CONTRACT_OFFCHAIN_DATA_SIZE_LIMIT"
-    )]
-    pub call_contract_offchain_data_size_limit: usize,
     /// The maximum number of concurrent HTTP requests.
     #[arg(
         value_name = "REST_SERVICE_MAX_CONCURRENT_HTTP_REQUESTS",
