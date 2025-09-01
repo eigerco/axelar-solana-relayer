@@ -5,8 +5,7 @@ use axelar_solana_gas_service_events::events::{
     GasServiceEvent, NativeGasAddedEvent, NativeGasPaidForContractCallEvent, NativeGasRefundedEvent,
 };
 use axelar_solana_gateway::processor::{
-    CallContractEvent, CallContractOffchainDataEvent, GatewayEvent, MessageEvent,
-    VerifierSetRotated,
+    CallContractEvent, GatewayEvent, MessageEvent, VerifierSetRotated,
 };
 use futures::{SinkExt as _, StreamExt as _};
 use gateway_event_stack::{
@@ -52,10 +51,6 @@ enum GatewayOrGasEvent {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum GatewayAndGasEvent {
     CallContract(Option<NativeGasPaidForContractCallEvent>, CallContractEvent),
-    CallContractOffchainData(
-        Option<NativeGasPaidForContractCallEvent>,
-        CallContractOffchainDataEvent,
-    ),
     VerifierSetRotated(VerifierSetRotated),
     MessageApproved(MessageEvent),
     MessageExecuted(MessageEvent),
@@ -186,16 +181,6 @@ fn merge_all_events(
                             let event = GatewayAndGasEvent::CallContract(gas, call_event);
                             acc.push((idx, event));
                         }
-                        GatewayEvent::CallContractOffchainData(call_event) => {
-                            let gas = find_corresponding_gas_call(
-                                &call_event.payload_hash,
-                                &call_event.destination_chain,
-                                &call_event.destination_contract_address,
-                            );
-                            let event =
-                                GatewayAndGasEvent::CallContractOffchainData(gas, call_event);
-                            acc.push((idx, event));
-                        }
                         GatewayEvent::VerifierSetRotated(evt) => {
                             let event = GatewayAndGasEvent::VerifierSetRotated(evt);
                             acc.push((idx, event));
@@ -224,8 +209,7 @@ fn merge_all_events(
                             acc.push((idx, GatewayAndGasEvent::NativeGasRefunded(evt)));
                         }
                         GasServiceEvent::NativeGasPaidForContractCall(evt) => {
-                            // Store this gas event and wait for the next CallContract /
-                            // CallContractOffchainData
+                            // Store this gas event and wait for the next CallContract
                             pending_gas.push(evt);
                         }
                         GasServiceEvent::SplGasPaidForContractCall(_) |
@@ -285,25 +269,6 @@ fn map_gateway_event_to_amplifier_event(
         reason = "we are guaranteed correct conversion"
     )]
     match event {
-        GatewayAndGasEvent::CallContractOffchainData(maybe_gas_paid, _event) => {
-            let message_id = MessageId::new(&signature, log_index);
-
-            tracing::info!(
-                ?message_id,
-                "CallContractOffchainData event is handled on user request"
-            );
-
-            if let Some(gas_paid_event) = maybe_gas_paid {
-                gas_event = Some(construct_gas_event(
-                    event_id,
-                    tx_id,
-                    message,
-                    message_id,
-                    gas_paid_event.gas_fee_amount,
-                    gas_paid_event.refund_address,
-                ));
-            };
-        }
         GatewayAndGasEvent::CallContract(maybe_gas_paid, call_contract) => {
             let message_id = MessageId::new(&signature, log_index);
             let source_address = call_contract.sender_key.to_string();
@@ -577,10 +542,10 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use axelar_executable::EncodingScheme;
     use axelar_solana_encoding::types::execute_data::MerkleisedPayload;
     use axelar_solana_encoding::types::messages::{CrossChainId, Message, Messages};
     use axelar_solana_encoding::types::payload::Payload;
+    use axelar_solana_gateway::executable::EncodingScheme;
     use axelar_solana_gateway::state::incoming_message::command_id;
     use axelar_solana_gateway::{get_incoming_message_pda, get_verifier_set_tracker_pda};
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
@@ -997,13 +962,15 @@ mod tests {
 
         let (incoming_message_pda, _bump) = get_incoming_message_pda(&command_id);
         let (execute_sigs, _execute_tx) = fixture
-            .send_tx_with_signatures(&[axelar_executable::construct_axelar_executable_ix(
-                &message,
-                &encoded_payload,
-                incoming_message_pda,
-                message_payload_pda,
-            )
-            .unwrap()])
+            .send_tx_with_signatures(&[
+                axelar_solana_gateway::executable::construct_axelar_executable_ix(
+                    &message,
+                    &encoded_payload,
+                    incoming_message_pda,
+                    message_payload_pda,
+                )
+                .unwrap(),
+            ])
             .await
             .unwrap();
         let execute_sig = execute_sigs[0];

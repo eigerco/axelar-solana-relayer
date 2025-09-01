@@ -13,11 +13,11 @@ use amplifier_api::types::{
     MessageExecutedEventMetadata, MessageExecutionStatus, PublishEventsRequest, TaskItem,
     TaskItemId, Token, TxEvent,
 };
-use axelar_executable::AxelarMessagePayload;
 use axelar_solana_encoding::borsh::BorshDeserialize as _;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
+use axelar_solana_gateway::executable::{construct_axelar_executable_ix, AxelarMessagePayload};
 use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage};
 use axelar_solana_gateway::{get_verifier_set_tracker_pda, BytemuckedPda as _};
 use effective_tx_sender::ComputeBudgetError;
@@ -698,7 +698,7 @@ async fn send_to_destination_program(
         _ => {
             validate_relayer_not_in_payload(&payload, signer)?;
             // if security passed, we broadcast the tx
-            axelar_executable::construct_axelar_executable_ix(
+            construct_axelar_executable_ix(
                 message,
                 &payload,
                 gateway_incoming_message_pda,
@@ -1141,9 +1141,11 @@ mod tests {
             Event, ExecuteTask, GatewayV2Message, MessageExecutedEvent, MessageExecutionStatus,
             MessageId, PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
         };
-        use axelar_executable::{AxelarMessagePayload, EncodingScheme, SolanaAccountRepr};
         use axelar_solana_encoding::borsh;
         use axelar_solana_encoding::types::messages::{CrossChainId, Message};
+        use axelar_solana_gateway::executable::{
+            AxelarMessagePayload, EncodingScheme, SolanaAccountRepr,
+        };
         use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
         use axelar_solana_memo_program::instruction::AxelarMemoInstruction;
         use futures::channel::mpsc::UnboundedSender;

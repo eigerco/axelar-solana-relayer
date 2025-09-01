@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use axelar_solana_encoding::types::messages::Message;
+use axelar_solana_gateway::executable::construct_axelar_executable_ix;
 use axelar_solana_gateway::state::incoming_message::command_id;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
@@ -311,7 +312,7 @@ async fn build_execute_instruction(
                 payload,
             )?,
         ),
-        _ => Ok(axelar_executable::construct_axelar_executable_ix(
+        _ => Ok(construct_axelar_executable_ix(
             message,
             payload,
             gateway_incoming_message_pda,
