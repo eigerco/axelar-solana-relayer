@@ -1,6 +1,5 @@
 //! Utility crate to compute the total gas used for multi-transaction operations on the Gateway
 
-use axelar_solana_gateway::executable::AxelarMessagePayload;
 use axelar_solana_gateway::instructions::GatewayInstruction;
 use futures::stream::FuturesUnordered;
 use futures::TryStreamExt as _;
@@ -115,7 +114,9 @@ pub async fn compute_total_gas(
             _other => {
                 const MESSAGE_PAYLOAD_PDA_IDX: usize = 1;
                 // check if this is `axelar_executable` call
-                let Some(Ok(_message)) = axelar_solana_gateway::executable::parse_axelar_message(payload) else {
+                let Some(Ok(_message)) =
+                    axelar_solana_gateway::executable::parse_axelar_message(payload)
+                else {
                     continue;
                 };
 
