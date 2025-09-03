@@ -552,7 +552,7 @@ mod tests {
     use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
     use axelar_solana_memo_program::instruction::from_axelar_to_solana::build_memo;
-    use futures::{SinkExt as _, StreamExt as _};
+    use futures::{stream, SinkExt as _, StreamExt as _, TryStreamExt as _};
     use pretty_assertions::assert_eq;
     use relayer_amplifier_api_integration::amplifier_api::types::{
         BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventMetadata,
@@ -561,7 +561,7 @@ mod tests {
         PublishEventsRequest, Token, TxEvent, TxId,
     };
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
-    use solana_listener::{fetch_logs, SolanaListenerClient};
+    use solana_listener::{fetch_logs, SolanaListenerClient, TxStatus};
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_rpc_client::nonblocking::rpc_client::RpcClient;
@@ -998,25 +998,24 @@ mod tests {
             init_payload_sig,
         ];
 
-        let mut total_cost = 0_u64;
-        for sig in signatures {
-            let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
-                .await
-                .unwrap()
-                .unwrap();
-            total_cost = total_cost.saturating_add(tx.cost_in_lamports);
-        }
+        let total_cost = stream::iter(signatures)
+            .then(|sig| fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client))
+            .try_fold(0_u64, |acc, tx_status| async move {
+                match tx_status {
+                    TxStatus::Successful(tx) => Ok(acc.saturating_add(tx.cost_in_lamports)),
+                    TxStatus::Failed { tx, error } => {
+                        panic!("Transaction {} failed with error: {}", tx.signature, error)
+                    }
+                }
+            })
+            .await
+            .unwrap();
 
         let tx = fetch_logs(CommitmentConfig::confirmed(), execute_sig, &rpc_client)
             .await
             .unwrap()
             .unwrap();
 
-        #[allow(
-            clippy::as_conversions,
-            reason = "signatures is a fixed-size array, conversion is safe"
-        )]
-        let expected_per_event_cost = total_cost.checked_div(signatures.len() as u64).unwrap_or(0);
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
         let event_id = TxEvent::new(execute_sig.to_string().as_str(), 4);
@@ -1039,7 +1038,7 @@ mod tests {
             message_id: TxEvent(cc_id_id.clone()),
             cost: Token {
                 token_id: None,
-                amount: BigInt::from_u64(expected_per_event_cost),
+                amount: BigInt::from_u64(total_cost),
             },
         };
 
