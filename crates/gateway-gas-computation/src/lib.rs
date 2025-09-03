@@ -115,7 +115,7 @@ pub async fn compute_total_gas(
             _other => {
                 const MESSAGE_PAYLOAD_PDA_IDX: usize = 1;
                 // check if this is `axelar_executable` call
-                let Ok(_message) = AxelarMessagePayload::decode(payload) else {
+                let Some(Ok(_message)) = axelar_solana_gateway::executable::parse_axelar_message(payload) else {
                     continue;
                 };
 
