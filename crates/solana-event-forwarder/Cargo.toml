@@ -22,7 +22,6 @@ bs58.workspace = true
 solana-sdk.workspace = true
 axelar-solana-gateway.workspace = true
 itertools.workspace = true
-axelar-executable.workspace = true
 gateway-event-stack.workspace = true
 solana-rpc-client.workspace = true
 
@@ -45,7 +44,6 @@ workspace = true
 
 [features]
 devnet-amplifier = [
-    "axelar-executable/devnet-amplifier",
     "axelar-solana-gas-service/devnet-amplifier",
     "axelar-solana-gateway-test-fixtures/devnet-amplifier",
     "axelar-solana-gateway/devnet-amplifier",
@@ -56,7 +54,6 @@ devnet-amplifier = [
     "solana-listener/devnet-amplifier"
 ]
 stagenet = [
-    "axelar-executable/stagenet",
     "axelar-solana-gas-service/stagenet",
     "axelar-solana-gateway-test-fixtures/stagenet",
     "axelar-solana-gateway/stagenet",
@@ -67,7 +64,6 @@ stagenet = [
     "solana-listener/stagenet"
 ]
 testnet = [
-    "axelar-executable/testnet",
     "axelar-solana-gas-service/testnet",
     "axelar-solana-gateway-test-fixtures/testnet",
     "axelar-solana-gateway/testnet",
@@ -78,7 +74,6 @@ testnet = [
     "solana-listener/testnet"
 ]
 mainnet = [
-    "axelar-executable/mainnet",
     "axelar-solana-gas-service/mainnet",
     "axelar-solana-gateway-test-fixtures/mainnet",
     "axelar-solana-gateway/mainnet",

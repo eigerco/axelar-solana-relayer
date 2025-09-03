@@ -64,12 +64,7 @@ async fn main() {
         amplifier_client.clone(),
     );
 
-    let rest_service_component = rest_service::RestService::new(
-        &config.rest_service,
-        name_on_amplifier,
-        Arc::clone(&rpc_client),
-        amplifier_client,
-    );
+    let rest_service_component = rest_service::RestService::new(&config.rest_service);
 
     let components: Vec<Box<dyn RelayerComponent>> = vec![
         Box::new(amplifier_component),
@@ -169,8 +164,7 @@ mod tests {
         let identity = identity_fixture();
         let missed_signature_catchup_strategy = "until_beginning";
         let rest_service_bind_addr = "127.0.0.1:80";
-        let call_contract_offchain_data_size_limit = 10 * 1024 * 1024;
-        let max_concurrent_http_requests = 10;
+        let max_concurrent_http_requests = 10_i32;
 
         let input = indoc::formatdoc! {r#"
             storage_path = "./store"
@@ -207,7 +201,6 @@ mod tests {
 
             [rest_service]
             bind_addr = "{rest_service_bind_addr}"
-            call_contract_offchain_data_size_limit = {call_contract_offchain_data_size_limit}
             max_concurrent_http_requests = {max_concurrent_http_requests}
         "#};
 
@@ -247,7 +240,6 @@ mod tests {
             storage_path: "./store".parse().unwrap(),
             rest_service: rest_service::Config {
                 bind_addr: SocketAddr::from_str(rest_service_bind_addr)?,
-                call_contract_offchain_data_size_limit,
                 max_concurrent_http_requests: 10,
             },
         };

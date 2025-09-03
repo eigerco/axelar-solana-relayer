@@ -15,29 +15,24 @@ futures.workspace = true
 axelar-solana-gateway.workspace = true
 eyre.workspace = true
 borsh.workspace = true
-axelar-executable.workspace = true
 
 [lints]
 workspace = true
 
 [features]
 devnet-amplifier = [
-    "axelar-executable/devnet-amplifier",
     "axelar-solana-gateway/devnet-amplifier",
     "solana-listener/devnet-amplifier"
 ]
 stagenet = [
-    "axelar-executable/stagenet",
     "axelar-solana-gateway/stagenet",
     "solana-listener/stagenet"
 ]
 testnet = [
-    "axelar-executable/testnet",
     "axelar-solana-gateway/testnet",
     "solana-listener/testnet"
 ]
 mainnet = [
-    "axelar-executable/mainnet",
     "axelar-solana-gateway/mainnet",
     "solana-listener/mainnet"
 ]

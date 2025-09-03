@@ -5,8 +5,7 @@ use axelar_solana_gas_service_events::events::{
     GasServiceEvent, NativeGasAddedEvent, NativeGasPaidForContractCallEvent, NativeGasRefundedEvent,
 };
 use axelar_solana_gateway::processor::{
-    CallContractEvent, CallContractOffchainDataEvent, GatewayEvent, MessageEvent,
-    VerifierSetRotated,
+    CallContractEvent, GatewayEvent, MessageEvent, VerifierSetRotated,
 };
 use futures::{SinkExt as _, StreamExt as _};
 use gateway_event_stack::{
@@ -52,10 +51,6 @@ enum GatewayOrGasEvent {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum GatewayAndGasEvent {
     CallContract(Option<NativeGasPaidForContractCallEvent>, CallContractEvent),
-    CallContractOffchainData(
-        Option<NativeGasPaidForContractCallEvent>,
-        CallContractOffchainDataEvent,
-    ),
     VerifierSetRotated(VerifierSetRotated),
     MessageApproved(MessageEvent),
     MessageExecuted(MessageEvent),
@@ -186,16 +181,6 @@ fn merge_all_events(
                             let event = GatewayAndGasEvent::CallContract(gas, call_event);
                             acc.push((idx, event));
                         }
-                        GatewayEvent::CallContractOffchainData(call_event) => {
-                            let gas = find_corresponding_gas_call(
-                                &call_event.payload_hash,
-                                &call_event.destination_chain,
-                                &call_event.destination_contract_address,
-                            );
-                            let event =
-                                GatewayAndGasEvent::CallContractOffchainData(gas, call_event);
-                            acc.push((idx, event));
-                        }
                         GatewayEvent::VerifierSetRotated(evt) => {
                             let event = GatewayAndGasEvent::VerifierSetRotated(evt);
                             acc.push((idx, event));
@@ -224,8 +209,7 @@ fn merge_all_events(
                             acc.push((idx, GatewayAndGasEvent::NativeGasRefunded(evt)));
                         }
                         GasServiceEvent::NativeGasPaidForContractCall(evt) => {
-                            // Store this gas event and wait for the next CallContract /
-                            // CallContractOffchainData
+                            // Store this gas event and wait for the next CallContract
                             pending_gas.push(evt);
                         }
                         GasServiceEvent::SplGasPaidForContractCall(_) |
@@ -285,25 +269,6 @@ fn map_gateway_event_to_amplifier_event(
         reason = "we are guaranteed correct conversion"
     )]
     match event {
-        GatewayAndGasEvent::CallContractOffchainData(maybe_gas_paid, _event) => {
-            let message_id = MessageId::new(&signature, log_index);
-
-            tracing::info!(
-                ?message_id,
-                "CallContractOffchainData event is handled on user request"
-            );
-
-            if let Some(gas_paid_event) = maybe_gas_paid {
-                gas_event = Some(construct_gas_event(
-                    event_id,
-                    tx_id,
-                    message,
-                    message_id,
-                    gas_paid_event.gas_fee_amount,
-                    gas_paid_event.refund_address,
-                ));
-            };
-        }
         GatewayAndGasEvent::CallContract(maybe_gas_paid, call_contract) => {
             let message_id = MessageId::new(&signature, log_index);
             let source_address = call_contract.sender_key.to_string();
@@ -577,17 +542,17 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use axelar_executable::EncodingScheme;
     use axelar_solana_encoding::types::execute_data::MerkleisedPayload;
     use axelar_solana_encoding::types::messages::{CrossChainId, Message, Messages};
     use axelar_solana_encoding::types::payload::Payload;
+    use axelar_solana_gateway::executable::EncodingScheme;
     use axelar_solana_gateway::state::incoming_message::command_id;
     use axelar_solana_gateway::{get_incoming_message_pda, get_verifier_set_tracker_pda};
     use axelar_solana_gateway_test_fixtures::base::TestFixture;
     use axelar_solana_gateway_test_fixtures::gateway::make_verifiers_with_quorum;
     use axelar_solana_gateway_test_fixtures::SolanaAxelarIntegrationMetadata;
     use axelar_solana_memo_program::instruction::from_axelar_to_solana::build_memo;
-    use futures::{SinkExt as _, StreamExt as _};
+    use futures::{stream, SinkExt as _, StreamExt as _, TryStreamExt as _};
     use pretty_assertions::assert_eq;
     use relayer_amplifier_api_integration::amplifier_api::types::{
         BigInt, CallEvent, CallEventMetadata, CommandId, Event, EventBase, EventMetadata,
@@ -596,7 +561,7 @@ mod tests {
         PublishEventsRequest, Token, TxEvent, TxId,
     };
     use relayer_amplifier_api_integration::{AmplifierCommand, AmplifierCommandClient};
-    use solana_listener::{fetch_logs, SolanaListenerClient};
+    use solana_listener::{fetch_logs, SolanaListenerClient, TxStatus};
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_rpc::rpc_pubsub_service::PubSubConfig;
     use solana_rpc_client::nonblocking::rpc_client::RpcClient;
@@ -997,13 +962,15 @@ mod tests {
 
         let (incoming_message_pda, _bump) = get_incoming_message_pda(&command_id);
         let (execute_sigs, _execute_tx) = fixture
-            .send_tx_with_signatures(&[axelar_executable::construct_axelar_executable_ix(
-                &message,
-                &encoded_payload,
-                incoming_message_pda,
-                message_payload_pda,
-            )
-            .unwrap()])
+            .send_tx_with_signatures(&[
+                axelar_solana_gateway::executable::construct_axelar_executable_ix(
+                    &message,
+                    &encoded_payload,
+                    incoming_message_pda,
+                    message_payload_pda,
+                )
+                .unwrap(),
+            ])
             .await
             .unwrap();
         let execute_sig = execute_sigs[0];
@@ -1022,26 +989,33 @@ mod tests {
             .unwrap()
             .0[0];
 
-        let mut expected_sum = 0_u64;
-        for sig in [
+        let signatures = [
             close_sig,
             execute_sig,
             commit_sig,
             write_sig_1,
             write_sig_2,
             init_payload_sig,
-        ] {
-            let tx = fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client)
-                .await
-                .unwrap()
-                .unwrap();
-            expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
-        }
+        ];
+
+        let total_cost = stream::iter(signatures)
+            .then(|sig| fetch_logs(CommitmentConfig::confirmed(), sig, &rpc_client))
+            .try_fold(0_u64, |acc, tx_status| async move {
+                match tx_status {
+                    TxStatus::Successful(tx) => Ok(acc.saturating_add(tx.cost_in_lamports)),
+                    TxStatus::Failed { tx, error } => {
+                        panic!("Transaction {} failed with error: {}", tx.signature, error)
+                    }
+                }
+            })
+            .await
+            .unwrap();
 
         let tx = fetch_logs(CommitmentConfig::confirmed(), execute_sig, &rpc_client)
             .await
             .unwrap()
             .unwrap();
+
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
         let event_id = TxEvent::new(execute_sig.to_string().as_str(), 4);
@@ -1064,9 +1038,10 @@ mod tests {
             message_id: TxEvent(cc_id_id.clone()),
             cost: Token {
                 token_id: None,
-                amount: BigInt::from_u64(expected_sum),
+                amount: BigInt::from_u64(total_cost),
             },
         };
+
         assert_eq!(
             item,
             AmplifierCommand::PublishEvents(

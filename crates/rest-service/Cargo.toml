@@ -7,22 +7,25 @@ homepage.workspace = true
 license.workspace = true
 edition.workspace = true
 
+
+[package.metadata.cargo-machete]
+# used in features
+ignored = [
+    "axelar-solana-gateway",
+    "gateway-event-stack",
+    "solana-listener"
+]
+
 [dependencies]
-amplifier-api.workspace = true
-axelar-solana-gateway.workspace = true
+axelar-solana-gateway = { workspace = true, optional = true }
 axum.workspace = true
 clap.workspace = true
 eyre.workspace = true
 futures.workspace = true
-gateway-event-stack.workspace = true
-indoc.workspace = true
-relayer-amplifier-api-integration.workspace = true
+gateway-event-stack = { workspace = true, optional = true }
 relayer-engine.workspace = true
 serde.workspace = true
-solana-client.workspace = true
-solana-listener.workspace = true
-solana-sdk.workspace = true
-thiserror.workspace = true
+solana-listener = { workspace = true, optional = true }
 tokio.workspace = true
 tower-http.workspace = true
 tower.workspace = true

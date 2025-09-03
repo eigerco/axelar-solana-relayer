@@ -98,7 +98,6 @@ pub async fn compute_total_gas(
                         total_gas_cost = total_gas_cost.saturating_add(verify_signatures_costs);
                     }
                     GatewayInstruction::CallContract { .. } |
-                    GatewayInstruction::CallContractOffchainData { .. } |
                     GatewayInstruction::InitializeConfig(_) |
                     GatewayInstruction::InitializePayloadVerificationSession { .. } |
                     GatewayInstruction::VerifySignature { .. } |
@@ -115,7 +114,9 @@ pub async fn compute_total_gas(
             _other => {
                 const MESSAGE_PAYLOAD_PDA_IDX: usize = 1;
                 // check if this is `axelar_executable` call
-                let Some(Ok(_message)) = axelar_executable::parse_axelar_message(payload) else {
+                let Some(Ok(_message)) =
+                    axelar_solana_gateway::executable::parse_axelar_message(payload)
+                else {
                     continue;
                 };
 
@@ -174,7 +175,6 @@ async fn cost_of_signature_verification(
                 GatewayInstruction::ApproveMessage { .. } |
                 GatewayInstruction::RotateSigners { .. } |
                 GatewayInstruction::CallContract { .. } |
-                GatewayInstruction::CallContractOffchainData { .. } |
                 GatewayInstruction::InitializeConfig(_) |
                 GatewayInstruction::InitializeMessagePayload { .. } |
                 GatewayInstruction::WriteMessagePayload { .. } |
@@ -231,7 +231,6 @@ pub async fn cost_of_payload_uploading(
                 GatewayInstruction::ApproveMessage { .. } |
                 GatewayInstruction::RotateSigners { .. } |
                 GatewayInstruction::CallContract { .. } |
-                GatewayInstruction::CallContractOffchainData { .. } |
                 GatewayInstruction::InitializeConfig(_) |
                 GatewayInstruction::InitializePayloadVerificationSession { .. } |
                 GatewayInstruction::VerifySignature { .. } |

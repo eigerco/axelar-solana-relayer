@@ -3,14 +3,10 @@ use core::future::Future;
 use core::net::SocketAddr;
 use core::pin::Pin;
 use core::time::Duration;
-use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::DefaultBodyLimit;
 use axum::http::{Request, Response};
 use axum::Router;
-use relayer_amplifier_api_integration::AmplifierCommandClient;
-use solana_client::nonblocking::rpc_client::RpcClient;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
@@ -34,64 +30,17 @@ impl relayer_engine::RelayerComponent for RestService {
     }
 }
 
-pub(crate) struct ServiceState {
-    chain_name: String,
-    rpc_client: Arc<RpcClient>,
-    amplifier_client: AmplifierCommandClient,
-    shutdown_tx: tokio::sync::mpsc::Sender<Result<(), eyre::Error>>,
-}
-
-impl ServiceState {
-    pub(crate) fn rpc_client(&self) -> Arc<RpcClient> {
-        Arc::clone(&self.rpc_client)
-    }
-
-    pub(crate) fn chain_name(&self) -> &str {
-        &self.chain_name
-    }
-
-    pub(crate) const fn amplifier_client(&self) -> &AmplifierCommandClient {
-        &self.amplifier_client
-    }
-
-    pub(crate) async fn shutdown(&self, error: eyre::Error) {
-        self.shutdown_tx
-            .send(Err(error))
-            .await
-            .expect("Failed to send shutdown signal");
-    }
-}
-
 impl RestService {
     /// Create a new REST service component.
     #[must_use]
-    pub fn new(
-        config: &Config,
-        chain_name: String,
-        rpc_client: Arc<RpcClient>,
-        amplifier_client: AmplifierCommandClient,
-    ) -> Self {
+    pub fn new(config: &Config) -> Self {
         let (shutdown_tx, shutdown_rx) = tokio::sync::mpsc::channel(1);
-        let state = ServiceState {
-            chain_name,
-            rpc_client,
-            amplifier_client,
-            shutdown_tx: shutdown_tx.clone(),
-        };
         let router = Router::new()
             .route(
                 endpoints::health::PATH,
                 endpoints::health::handlers(),
             )
-            .route(
-                endpoints::call_contract_offchain_data::PATH,
-                endpoints::call_contract_offchain_data::handlers(),
-            )
-            .with_state(Arc::new(state))
             .layer(ConcurrencyLimitLayer::new(config.max_concurrent_http_requests))
-            .layer(DefaultBodyLimit::max(
-                config.call_contract_offchain_data_size_limit,
-            ))
             .layer(TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
                 tracing::info_span!("", method = %req.method(), uri = %req.uri())
             }).on_response(|res: &Response<Body>, latency: Duration, _span: &Span| {
