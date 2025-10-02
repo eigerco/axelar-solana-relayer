@@ -17,7 +17,7 @@ use solana_sdk::signature::Signature;
 use tracing::{info_span, Instrument as _};
 
 use super::MessageSender;
-use crate::component::log_processor::fetch_logs;
+use crate::component::log_processor::fetch_transaction;
 use crate::component::signature_batch_scanner;
 use crate::{SolanaTransaction, TxStatus};
 
@@ -76,7 +76,7 @@ pub(crate) async fn process_realtime_logs(
             // Process the first successful item
             let sig = Signature::from_str(&first_item.value.signature)
                 .expect("signature from RPC must be valid");
-            let tx = fetch_logs(config.commitment, sig, &rpc_client).await?;
+            let tx = fetch_transaction(config.commitment, sig, &rpc_client).await?;
             if let TxStatus::Successful(tx) = tx {
                 break tx;
             };
@@ -130,7 +130,8 @@ pub(crate) async fn process_realtime_logs(
                         // Push fetch_logs future into fetch_futures
                         let rpc_client = Arc::clone(&rpc_client);
                         let fetch_future = async move {
-                            let log_item = fetch_logs(config.commitment, sig, &rpc_client).await?;
+                            let log_item =
+                                fetch_transaction(config.commitment, sig, &rpc_client).await?;
                             let TxStatus::Successful(log_item) = log_item else {
                                 return Ok(None)
                             };
@@ -168,7 +169,7 @@ pub(crate) async fn process_realtime_logs(
                     // no op
                 }
                 Err(err) => {
-                    // Handle error in fetch_logs
+                    // Handle error in fetch_transaction
                     tracing::error!(?err, "Error in merged stream");
                     continue 'outer;
                 }
