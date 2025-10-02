@@ -22,7 +22,7 @@ The relayer is built of composable plug-n-play items, called `components`, which
 
 ### Components
 - [**Solana Listener**](crates/solana-listener): Receives transaction log data from Solana using WebSockets. Listens to Gas Service and the Gateway.
-- [**Solana Event Forwarder**](crates/solana-event-forwarder): Parses transaction logs into events and combines the Gas Service events with the Gateway logs. Forwards them to the Amplifier component.
+- [**Solana Event Forwarder**](crates/solana-event-forwarder): Parses transaction inner instructions into events and combines the Gas Service events with the Gateway events. Forwards them to the Amplifier component.
 - [**Rest Service**](crates/rest-service): Receives an off-chain payload from the end-user, combines it with an on-chain event and sends it to the Amplifier API.
 - [**Solana Gateway Task Processor**](crates/solana-gateway-task-processor): Receives tasks from Amplifier API and composes transactions to interact with the Gateway and the destination contract.
 
