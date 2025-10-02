@@ -1,3 +1,4 @@
+use core::str::FromStr as _;
 use core::time::Duration;
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use eyre::OptionExt as _;
 use futures::SinkExt as _;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_transaction_status::option_serializer::OptionSerializer;
 use solana_transaction_status::{EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding};
@@ -27,7 +29,7 @@ pub(crate) async fn fetch_and_send(
             let rpc_client = Arc::clone(&rpc_client);
             let mut signature_sender = signature_sender.clone();
             async move {
-                let tx = fetch_logs(commitment, signature, &rpc_client).await?;
+                let tx = fetch_transaction(commitment, signature, &rpc_client).await?;
                 let TxStatus::Successful(tx) = tx else {
                     return Ok(());
                 };
@@ -51,8 +53,10 @@ pub(crate) async fn fetch_and_send(
 /// - If request to the Solana RPC fails
 /// - If the metadata is not included with the logs
 /// - If the logs are not included
+/// - If the inner instructions are not included
+/// - If the account pubkeys are malformed
 #[tracing::instrument(skip_all, fields(signtaure))]
-pub async fn fetch_logs(
+pub async fn fetch_transaction(
     commitment: CommitmentConfig,
     signature: Signature,
     rpc_client: &RpcClient,
@@ -120,12 +124,32 @@ pub async fn fetch_logs(
         eyre::bail!("logs not included");
     };
 
+    let OptionSerializer::Some(inner_ixs) = meta.inner_instructions else {
+        eyre::bail!("inner instructions not included");
+    };
+
+    // static keys first
+    let mut account_keys: Vec<solana_sdk::pubkey::Pubkey> = accounts.to_vec();
+
+    // writable first and then readonly
+    if let solana_transaction_status::option_serializer::OptionSerializer::Some(loaded) =
+        &meta.loaded_addresses
+    {
+        for key_str in &loaded.writable {
+            account_keys.push(Pubkey::from_str(key_str)?);
+        }
+        for key_str in &loaded.readonly {
+            account_keys.push(Pubkey::from_str(key_str)?);
+        }
+    }
     let tx = SolanaTransaction {
         signature,
+        inner_ixs,
         logs,
         slot,
         timestamp: block_time.and_then(|secs| DateTime::from_timestamp(secs, 0)),
         cost_in_lamports: meta.fee,
+        account_keys,
         ixs: parsed_ixs,
     };
 
