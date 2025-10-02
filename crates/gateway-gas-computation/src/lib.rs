@@ -3,7 +3,7 @@
 use axelar_solana_gateway::instructions::GatewayInstruction;
 use futures::stream::FuturesUnordered;
 use futures::TryStreamExt as _;
-use solana_listener::{fetch_logs, SolanaTransaction, TxStatus};
+use solana_listener::{fetch_transaction, SolanaTransaction, TxStatus};
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 use solana_rpc_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
 use solana_sdk::commitment_config::CommitmentConfig;
@@ -148,7 +148,7 @@ async fn cost_of_signature_verification(
     let signatures = fetch_signatures(rpc, commitment, &verification_session_pda).await?;
     let tx_logs = signatures
         .into_iter()
-        .map(|x| fetch_logs(commitment, x, rpc))
+        .map(|x| fetch_transaction(commitment, x, rpc))
         .collect::<FuturesUnordered<_>>();
     let tx_logs = tx_logs.try_collect::<Vec<_>>().await?;
     let mut verify_signatures_costs = 0_u64;
@@ -203,7 +203,7 @@ pub async fn cost_of_payload_uploading(
     let signatures = fetch_signatures(rpc, commitment, &message_payload_pda).await?;
     let tx_logs = signatures
         .into_iter()
-        .map(|x| fetch_logs(commitment, x, rpc))
+        .map(|x| fetch_transaction(commitment, x, rpc))
         .collect::<FuturesUnordered<_>>();
     let tx_logs = tx_logs.try_collect::<Vec<_>>().await?;
     let mut total_gas_costs = 0_u64;
