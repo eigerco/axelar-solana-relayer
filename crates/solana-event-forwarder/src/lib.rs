@@ -3,5 +3,8 @@
 
 mod component;
 mod config;
+mod utils;
+
 pub use component::SolanaEventForwarder;
 pub use config::Config;
+pub use utils::{convert_to_parser_transaction, map_core_events_to_amplifier};
