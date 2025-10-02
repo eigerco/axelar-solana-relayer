@@ -9,6 +9,7 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::transaction::TransactionError;
+use solana_transaction_status::UiInnerInstructions;
 use tracing::{info_span, Instrument as _};
 
 use crate::config;
@@ -17,7 +18,7 @@ mod log_processor;
 mod signature_batch_scanner;
 mod signature_realtime_scanner;
 
-pub use log_processor::fetch_logs;
+pub use log_processor::fetch_transaction;
 
 /// Environment variable that expects a base58 encoded signature
 /// of the last processed signature we want to force.
@@ -32,11 +33,16 @@ pub struct SolanaTransaction {
     pub timestamp: Option<DateTime<Utc>>,
     /// The raw transaction logs
     pub logs: Vec<String>,
+    /// Ordered account keys for the transaction message, including loaded address table key
+    /// (writable then readonly).
+    pub account_keys: Vec<Pubkey>,
     /// The accounts that were passed to an instructoin.
     /// - first item: the program id
     /// - second item: the Pubkeys provided to the ix
     /// - third item: payload data
     pub ixs: Vec<(Pubkey, Vec<Pubkey>, Vec<u8>)>,
+    /// The inner instructions of the transaction that contain the `emit_cpi!` events as data
+    pub inner_ixs: Vec<UiInnerInstructions>,
     /// the slot number of the tx
     pub slot: u64,
     /// How expensive was the transaction expressed in lamports
