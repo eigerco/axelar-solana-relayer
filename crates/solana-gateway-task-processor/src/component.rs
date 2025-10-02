@@ -30,7 +30,7 @@ use relayer_amplifier_api_integration::AmplifierCommand;
 use relayer_amplifier_state::State;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
-use solana_listener::fetch_logs;
+use solana_listener::fetch_transaction;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::instruction::{Instruction, InstructionError};
 use solana_sdk::pubkey::Pubkey;
@@ -375,7 +375,8 @@ async fn process_task<G: GasEstimator>(
                 signature,
             }) = error.downcast_ref::<ComputeBudgetError>()
             {
-                let tx = fetch_logs(metadata.commitment, signature, solana_rpc_client).await?;
+                let tx =
+                    fetch_transaction(metadata.commitment, signature, solana_rpc_client).await?;
 
                 let tx = tx.tx();
                 let total_fee = gateway_gas_computation::compute_total_gas(
