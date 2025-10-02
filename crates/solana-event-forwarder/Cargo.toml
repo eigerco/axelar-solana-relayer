@@ -19,13 +19,19 @@ relayer-engine.workspace = true
 tracing.workspace = true
 eyre.workspace = true
 bs58.workspace = true
+base64.workspace = true
+chrono.workspace = true
 solana-sdk.workspace = true
 axelar-solana-gateway.workspace = true
 itertools.workspace = true
 gateway-event-stack.workspace = true
 solana-rpc-client.workspace = true
+serde_json.workspace = true
+solana-transaction-parser.workspace = true
+solana-transaction-status.workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
 base64.workspace = true
 serial_test.workspace = true
 axelar-solana-gateway-test-fixtures.workspace = true
