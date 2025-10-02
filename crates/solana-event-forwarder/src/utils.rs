@@ -79,7 +79,7 @@ fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Even
         } => convert_message_executed(common, message_id, source_chain, status, cost)
             .map(amp_types::Event::MessageExecuted),
 
-        // Not currently published to Amplifier API; skip safely with a warning
+        // Not currently published to Amplifier API by this relayer
         core_types::Event::ITSInterchainTransfer { .. } |
         core_types::Event::ITSTokenMetadataRegistered { .. } |
         core_types::Event::ITSLinkTokenStarted { .. } |
@@ -88,13 +88,12 @@ fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Even
             None
         }
 
-        // CannotExecuteMessageV2 in Amplifier requires task_item_id in metadata; not available here
         core_types::Event::CannotExecuteMessageV2 { .. } => {
-            warn!("Skipping CannotExecuteMessageV2 - missing task_item_id for Amplifier metadata");
+            warn!("Skipping CannotExecuteMessageV2, not part of the Programs");
             None
         }
 
-        // SignersRotated in Amplifier expects extra metadata/cost; not produced by parser right now
+        // SignersRotated in Amplifier expects extra metadata/cost which should not be there
         core_types::Event::SignersRotated { .. } => {
             warn!("Skipping SignersRotated - mapping not implemented yet");
             None
