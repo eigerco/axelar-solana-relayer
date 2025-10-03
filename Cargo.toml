@@ -84,7 +84,7 @@ relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-cor
 core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6", package = "common-serde-utils" }
 
 # External crates
-solana-transaction-parser = { git = "https://github.com/commonprefix/solana-transaction-parser.git", branch = "main" }
+solana-transaction-parser = { git = "https://github.com/commonprefix/solana-transaction-parser.git", rev = "784b4cc" }
 
 # Solana Gateway
 # ⚠️ If you change the revision here make sure to also update the *.so files.
