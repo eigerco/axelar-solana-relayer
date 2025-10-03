@@ -126,6 +126,7 @@ fn convert_call(
         timestamp: m.timestamp,
         from_address: m.from_address,
         finalized: m.finalized,
+        // TODO: Eventually support this for multihop calls
         extra: amp_types::CallEventMetadata {
             parent_message_id: None,
         },
