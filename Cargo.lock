@@ -11998,7 +11998,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-parser"
 version = "0.1.0"
-source = "git+https://github.com/commonprefix/solana-transaction-parser.git?branch=main#784b4cca4f9212444542e33fd9d3735824dca75d"
+source = "git+https://github.com/commonprefix/solana-transaction-parser.git?rev=784b4cc#784b4cca4f9212444542e33fd9d3735824dca75d"
 dependencies = [
  "anchor-lang",
  "anyhow",
