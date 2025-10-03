@@ -93,7 +93,9 @@ fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Even
             None
         }
 
-        // SignersRotated in Amplifier expects extra metadata/cost which should not be there
+        // SignersRotated in the locked commit of Amplifier expects extra metadata/cost which should
+        // not be there. Dependency needs to be updated and then the mapping can be done without
+        // the cost field
         core_types::Event::SignersRotated { .. } => {
             warn!("Skipping SignersRotated - mapping not implemented yet");
             None
