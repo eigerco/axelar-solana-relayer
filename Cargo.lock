@@ -7523,7 +7523,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "proc-macro2 1.0.94",
  "quote 1.0.40",
  "syn 2.0.100",
@@ -8725,7 +8725,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.1",
 ]
 
 [[package]]
@@ -11998,7 +11998,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-parser"
 version = "0.1.0"
-source = "git+https://github.com/commonprefix/solana-transaction-parser.git?branch=main#59ee15c3a8b20effdb8655f8cc12a9ebef19e512"
+source = "git+https://github.com/commonprefix/solana-transaction-parser.git?branch=main#d1b50b227ebd818a1518395754d211798e50d7ed"
 dependencies = [
  "anchor-lang",
  "anyhow",
