@@ -569,7 +569,7 @@ dependencies = [
 [[package]]
 name = "anchor-discriminators"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "borsh 1.5.7",
  "bs58",
@@ -581,7 +581,7 @@ dependencies = [
 [[package]]
 name = "anchor-discriminators-macros"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "anchor-discriminators",
  "borsh 1.5.7",
@@ -1380,7 +1380,7 @@ dependencies = [
 [[package]]
 name = "axelar-message-primitives"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -1409,7 +1409,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-encoding"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "arrayref",
  "borsh 1.5.7",
@@ -1441,7 +1441,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gas-service"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "anchor-discriminators",
  "anchor-discriminators-macros",
@@ -1449,7 +1449,7 @@ dependencies = [
  "bytemuck",
  "event-cpi",
  "event-cpi-macros",
- "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
  "solana-program",
  "spl-associated-token-account 6.0.0",
  "spl-token 6.0.0",
@@ -1483,13 +1483,13 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "alloy-sol-types",
  "anchor-discriminators",
  "anchor-discriminators-macros",
- "axelar-message-primitives 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
- "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
+ "axelar-message-primitives 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
  "bincode",
  "bitvec",
  "borsh 1.5.7",
@@ -1502,8 +1502,8 @@ dependencies = [
  "libsecp256k1 0.6.0",
  "num-derive 0.4.2",
  "num-traits",
- "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
- "role-management 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
+ "role-management 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
  "solana-program",
  "thiserror 1.0.69",
 ]
@@ -3713,7 +3713,7 @@ dependencies = [
 [[package]]
 name = "event-cpi"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "anchor-discriminators",
  "borsh 1.5.7",
@@ -3722,7 +3722,7 @@ dependencies = [
 [[package]]
 name = "event-cpi-macros"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "anchor-discriminators",
  "event-cpi",
@@ -7420,7 +7420,7 @@ dependencies = [
 [[package]]
 name = "program-utils"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -7523,7 +7523,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "proc-macro2 1.0.94",
  "quote 1.0.40",
  "syn 2.0.100",
@@ -8485,12 +8485,12 @@ dependencies = [
 [[package]]
 name = "role-management"
 version = "0.1.0"
-source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi#79d1b827f727f7afbad5493dffe6a00f246f8806"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events#ea57c7733e0955bcbdd6b1bb702a53469603870b"
 dependencies = [
  "bincode",
  "bitflags 2.9.0",
  "borsh 1.5.7",
- "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
  "solana-program",
 ]
 
@@ -11998,13 +11998,13 @@ dependencies = [
 [[package]]
 name = "solana-transaction-parser"
 version = "0.1.0"
-source = "git+https://github.com/commonprefix/solana-transaction-parser.git?branch=main#d1b50b227ebd818a1518395754d211798e50d7ed"
+source = "git+https://github.com/commonprefix/solana-transaction-parser.git?branch=main#784b4cca4f9212444542e33fd9d3735824dca75d"
 dependencies = [
  "anchor-lang",
  "anyhow",
  "async-trait",
- "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=gas-service-event-cpi)",
+ "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana?branch=emit-cpi-gas-service-events)",
  "base64 0.22.1",
  "borsh 1.5.7",
  "bs58",
