@@ -79,6 +79,10 @@ fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Even
         } => convert_message_executed(common, message_id, source_chain, status, cost)
             .map(amp_types::Event::MessageExecuted),
 
+        core_types::Event::SignersRotated { common, message_id } => {
+            convert_signers_rotated(common, message_id).map(amp_types::Event::SignersRotated)
+        }
+
         // Not currently published to Amplifier API by this relayer
         core_types::Event::ITSInterchainTransfer { .. } |
         core_types::Event::ITSTokenMetadataRegistered { .. } |
@@ -90,14 +94,6 @@ fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Even
 
         core_types::Event::CannotExecuteMessageV2 { .. } => {
             warn!("Skipping CannotExecuteMessageV2, not part of the Programs");
-            None
-        }
-
-        // SignersRotated in the locked commit of Amplifier expects extra metadata/cost which should
-        // not be there. Dependency needs to be updated and then the mapping can be done without
-        // the cost field
-        core_types::Event::SignersRotated { .. } => {
-            warn!("Skipping SignersRotated - mapping not implemented yet");
             None
         }
     }
@@ -213,6 +209,58 @@ fn convert_message_executed(
             }
         },
         cost: token_from_amount(cost),
+    })
+}
+
+fn convert_signers_rotated(
+    common: core_types::CommonEventFields<core_types::SignersRotatedEventMetadata>,
+    message_id: String,
+) -> Option<amp_types::SignersRotatedEvent> {
+    let (meta_common, signers_hash, epoch) = match common.meta {
+        Some(m) => (Some(m.common_meta), m.signers_hash, m.epoch),
+        None => (None, None, None),
+    };
+
+    let event_id = amp_types::TxEvent(common.event_id);
+
+    let signer_hash = match signers_hash {
+        Some(hash_b64) => match BASE64_STANDARD.decode(hash_b64) {
+            Ok(hash) => hash,
+            Err(err) => {
+                warn!(
+                    ?err,
+                    "invalid base64 signers_hash in SignersRotated event; skipping"
+                );
+                return None;
+            }
+        },
+        None => {
+            warn!("missing signers_hash in SignersRotated event; skipping");
+            return None;
+        }
+    };
+
+    let epoch = match epoch {
+        Some(e) => e,
+        None => {
+            warn!("missing epoch in SignersRotated event; skipping");
+            return None;
+        }
+    };
+
+    let meta = convert_event_metadata(meta_common).map(|m| amp_types::EventMetadata::<
+        amp_types::SignersRotatedMetadata,
+    > {
+        tx_id: m.tx_id,
+        timestamp: m.timestamp,
+        from_address: m.from_address,
+        finalized: m.finalized,
+        extra: amp_types::SignersRotatedMetadata { signer_hash, epoch },
+    });
+
+    Some(amp_types::SignersRotatedEvent {
+        base: amp_types::EventBase { event_id, meta },
+        message_id: amp_types::TxEvent(message_id),
     })
 }
 
@@ -602,5 +650,46 @@ mod tests {
 
         let amp_events = map_core_events_to_amplifier(vec![its_event]);
         assert_eq!(amp_events.len(), 0, "ITS events should be skipped");
+    }
+
+    #[test]
+    fn test_signers_rotated_event_conversion() {
+        let signer_hash = vec![0xaa; 32];
+        let signer_hash_b64 = BASE64_STANDARD.encode(&signer_hash);
+
+        let core_event = core_types::Event::SignersRotated {
+            common: core_types::CommonEventFields {
+                r#type: "SIGNERS_ROTATED".to_string(),
+                event_id: "0xrot-1".to_string(),
+                meta: Some(core_types::SignersRotatedEventMetadata {
+                    common_meta: core_types::EventMetadata {
+                        tx_id: Some("0xrot".to_string()),
+                        from_address: Some("0xrotator".to_string()),
+                        finalized: Some(true),
+                        source_context: None,
+                        timestamp: "2024-01-09T00:00:00Z".to_string(),
+                    },
+                    signers_hash: Some(signer_hash_b64),
+                    epoch: Some(42),
+                }),
+            },
+            message_id: "0xrot-msg".to_string(),
+        };
+
+        let amp_events = map_core_events_to_amplifier(vec![core_event]);
+        assert_eq!(amp_events.len(), 1);
+
+        if let amp_types::Event::SignersRotated(event) = &amp_events[0] {
+            assert_eq!(event.base.event_id.0, "0xrot-1");
+            assert_eq!(event.message_id.0, "0xrot-msg");
+            assert!(event.base.meta.is_some());
+            let meta = event.base.meta.as_ref().unwrap();
+            assert_eq!(meta.extra.signer_hash, signer_hash);
+            assert_eq!(meta.extra.epoch, 42);
+            assert_eq!(meta.tx_id.as_ref().unwrap().0, "0xrot");
+            assert_eq!(meta.from_address.as_ref().unwrap(), "0xrotator");
+        } else {
+            panic!("Expected SignersRotated event");
+        }
     }
 }
