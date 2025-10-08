@@ -83,14 +83,64 @@ fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Even
             convert_signers_rotated(common, message_id).map(amp_types::Event::SignersRotated)
         }
 
-        // Not currently published to Amplifier API by this relayer
-        core_types::Event::ITSInterchainTransfer { .. } |
-        core_types::Event::ITSTokenMetadataRegistered { .. } |
-        core_types::Event::ITSLinkTokenStarted { .. } |
-        core_types::Event::ITSInterchainTokenDeploymentStarted { .. } => {
-            warn!("Skipping ITS event - not supported by Amplifier API event schema");
-            None
-        }
+        core_types::Event::ITSInterchainTransfer {
+            common,
+            message_id,
+            destination_chain,
+            token_spent,
+            source_address,
+            destination_address,
+            data_hash,
+        } => convert_its_interchain_transfer(
+            common,
+            message_id,
+            destination_chain,
+            token_spent,
+            source_address,
+            destination_address,
+            data_hash,
+        )
+        .map(amp_types::Event::ItsInterchainTransfer),
+
+        core_types::Event::ITSTokenMetadataRegistered {
+            common,
+            message_id,
+            address,
+            decimals,
+        } => convert_its_token_metadata_registered(common, message_id, address, decimals)
+            .map(amp_types::Event::ItsTokenMetadataRegistered),
+
+        core_types::Event::ITSLinkTokenStarted {
+            common,
+            message_id,
+            token_id,
+            destination_chain,
+            source_token_address,
+            destination_token_address,
+            token_manager_type,
+        } => convert_its_link_token_started(
+            common,
+            message_id,
+            token_id,
+            destination_chain,
+            source_token_address,
+            destination_token_address,
+            token_manager_type,
+        )
+        .map(amp_types::Event::ItsLinkTokenStarted),
+
+        core_types::Event::ITSInterchainTokenDeploymentStarted {
+            common,
+            message_id,
+            destination_chain,
+            token,
+        } => convert_its_interchain_token_deployment_started(
+            common,
+            message_id,
+            destination_chain,
+            token,
+        )
+        .map(amp_types::Event::ItsInterchainTokenDeploymentStarted),
 
         core_types::Event::CannotExecuteMessageV2 { .. } => {
             warn!("Skipping CannotExecuteMessageV2, not part of the Programs");
@@ -262,6 +312,106 @@ fn convert_signers_rotated(
         base: amp_types::EventBase { event_id, meta },
         message_id: amp_types::TxEvent(message_id),
     })
+}
+
+fn convert_its_interchain_transfer(
+    common: core_types::CommonEventFields<core_types::EventMetadata>,
+    message_id: String,
+    destination_chain: String,
+    token_spent: core_types::Amount,
+    source_address: String,
+    destination_address: String,
+    data_hash: String,
+) -> Option<amp_types::ItsInterchainTransferEvent> {
+    let token_id = match &token_spent.token_id {
+        Some(id) => amp_types::TokenId(id.clone()),
+        None => {
+            warn!("missing token_id in ITSInterchainTransfer event; skipping");
+            return None;
+        }
+    };
+
+    let token = token_from_amount(token_spent);
+
+    Some(amp_types::ItsInterchainTransferEvent {
+        base: convert_base_meta(common.event_id, common.meta),
+        message_id: amp_types::TxEvent(message_id),
+        destination_chain,
+        token_spent: amp_types::InterchainTransferTokenWithId {
+            token_id,
+            amount: token.amount,
+        },
+        source_address,
+        destination_address,
+        data_hash,
+    })
+}
+
+fn convert_its_token_metadata_registered(
+    common: core_types::CommonEventFields<core_types::EventMetadata>,
+    message_id: String,
+    address: String,
+    decimals: u8,
+) -> Option<amp_types::ItsTokenMetadataRegisteredEvent> {
+    Some(amp_types::ItsTokenMetadataRegisteredEvent {
+        base: convert_base_meta(common.event_id, common.meta),
+        message_id: amp_types::TxEvent(message_id),
+        address,
+        decimals,
+    })
+}
+
+fn convert_its_link_token_started(
+    common: core_types::CommonEventFields<core_types::EventMetadata>,
+    message_id: String,
+    token_id: String,
+    destination_chain: String,
+    source_token_address: String,
+    destination_token_address: String,
+    token_manager_type: core_types::TokenManagerType,
+) -> Option<amp_types::ItsLinkTokenStartedEvent> {
+    Some(amp_types::ItsLinkTokenStartedEvent {
+        base: convert_base_meta(common.event_id, common.meta),
+        message_id: amp_types::TxEvent(message_id),
+        token_id: amp_types::TokenId(token_id),
+        destination_chain,
+        source_token_address,
+        destination_token_address,
+        token_manager_type: convert_token_manager_type(token_manager_type),
+    })
+}
+
+fn convert_its_interchain_token_deployment_started(
+    common: core_types::CommonEventFields<core_types::EventMetadata>,
+    message_id: String,
+    destination_chain: String,
+    token: core_types::InterchainTokenDefinition,
+) -> Option<amp_types::ItsInterchainTokenDeploymentStartedEvent> {
+    Some(amp_types::ItsInterchainTokenDeploymentStartedEvent {
+        base: convert_base_meta(common.event_id, common.meta),
+        message_id: amp_types::TxEvent(message_id),
+        destination_chain,
+        token: amp_types::InterchainTokenDefinition {
+            id: amp_types::TokenId(token.id),
+            name: token.name,
+            symbol: token.symbol,
+            decimals: token.decimals,
+        },
+    })
+}
+
+fn convert_token_manager_type(
+    token_manager_type: core_types::TokenManagerType,
+) -> amp_types::TokenManagerType {
+    match token_manager_type {
+        core_types::TokenManagerType::NativeInterchainToken => {
+            amp_types::TokenManagerType::NativeInterchainToken
+        }
+        core_types::TokenManagerType::MintBurnFrom => amp_types::TokenManagerType::MintBurnFrom,
+        core_types::TokenManagerType::LockUnlock => amp_types::TokenManagerType::LockUnlock,
+        core_types::TokenManagerType::LockUnlockFee => amp_types::TokenManagerType::LockUnlockFee,
+        core_types::TokenManagerType::MintBurn => amp_types::TokenManagerType::MintBurn,
+    }
 }
 
 fn convert_gateway_message(
@@ -631,7 +781,8 @@ mod tests {
 
     #[test]
     fn test_skip_unsupported_events() {
-        let its_event = core_types::Event::ITSInterchainTransfer {
+        // ITS event without token_id should be skipped
+        let its_event_missing_token = core_types::Event::ITSInterchainTransfer {
             common: core_types::CommonEventFields {
                 r#type: "ITS_INTERCHAIN_TRANSFER".to_string(),
                 event_id: "test".to_string(),
@@ -648,8 +799,12 @@ mod tests {
             data_hash: "test".to_string(),
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![its_event]);
-        assert_eq!(amp_events.len(), 0, "ITS events should be skipped");
+        let amp_events = map_core_events_to_amplifier(vec![its_event_missing_token]);
+        assert_eq!(
+            amp_events.len(),
+            0,
+            "ITS events without token_id should be skipped"
+        );
     }
 
     #[test]
@@ -690,6 +845,164 @@ mod tests {
             assert_eq!(meta.from_address.as_ref().unwrap(), "0xrotator");
         } else {
             panic!("Expected SignersRotated event");
+        }
+    }
+
+    #[test]
+    fn test_its_interchain_transfer_event_conversion() {
+        let its_event = core_types::Event::ITSInterchainTransfer {
+            common: core_types::CommonEventFields {
+                r#type: "ITS_INTERCHAIN_TRANSFER".to_string(),
+                event_id: "0xits-1".to_string(),
+                meta: Some(core_types::EventMetadata {
+                    tx_id: Some("0xits".to_string()),
+                    from_address: Some("0xsender".to_string()),
+                    finalized: Some(true),
+                    source_context: None,
+                    timestamp: "2024-01-05T00:00:00Z".to_string(),
+                }),
+            },
+            message_id: "0xits-msg".to_string(),
+            destination_chain: "avalanche".to_string(),
+            token_spent: core_types::Amount {
+                token_id: Some("token123".to_string()),
+                amount: "1000".to_string(),
+            },
+            source_address: "0xsrc".to_string(),
+            destination_address: "0xdest".to_string(),
+            data_hash: "0xhash".to_string(),
+        };
+
+        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        assert_eq!(amp_events.len(), 1);
+
+        if let amp_types::Event::ItsInterchainTransfer(event) = &amp_events[0] {
+            assert_eq!(event.base.event_id.0, "0xits-1");
+            assert_eq!(event.message_id.0, "0xits-msg");
+            assert_eq!(event.destination_chain, "avalanche");
+            assert_eq!(event.token_spent.token_id.0, "token123");
+            assert_eq!(event.token_spent.amount.0.to_string(), "1000");
+            assert_eq!(event.source_address, "0xsrc");
+            assert_eq!(event.destination_address, "0xdest");
+            assert_eq!(event.data_hash, "0xhash");
+        } else {
+            panic!("Expected ItsInterchainTransfer event");
+        }
+    }
+
+    #[test]
+    fn test_its_token_metadata_registered_event_conversion() {
+        let its_event = core_types::Event::ITSTokenMetadataRegistered {
+            common: core_types::CommonEventFields {
+                r#type: "ITS_TOKEN_METADATA_REGISTERED".to_string(),
+                event_id: "0xits-2".to_string(),
+                meta: Some(core_types::EventMetadata {
+                    tx_id: Some("0xits2".to_string()),
+                    from_address: Some("0xregistrar".to_string()),
+                    finalized: Some(true),
+                    source_context: None,
+                    timestamp: "2024-01-06T00:00:00Z".to_string(),
+                }),
+            },
+            message_id: "0xits-msg-2".to_string(),
+            address: "0xtokenaddr".to_string(),
+            decimals: 18,
+        };
+
+        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        assert_eq!(amp_events.len(), 1);
+
+        if let amp_types::Event::ItsTokenMetadataRegistered(event) = &amp_events[0] {
+            assert_eq!(event.base.event_id.0, "0xits-2");
+            assert_eq!(event.message_id.0, "0xits-msg-2");
+            assert_eq!(event.address, "0xtokenaddr");
+            assert_eq!(event.decimals, 18);
+            assert!(event.base.meta.is_some());
+        } else {
+            panic!("Expected ItsTokenMetadataRegistered event");
+        }
+    }
+
+    #[test]
+    fn test_its_link_token_started_event_conversion() {
+        let its_event = core_types::Event::ITSLinkTokenStarted {
+            common: core_types::CommonEventFields {
+                r#type: "ITS_LINK_TOKEN_STARTED".to_string(),
+                event_id: "0xits-3".to_string(),
+                meta: Some(core_types::EventMetadata {
+                    tx_id: Some("0xits3".to_string()),
+                    from_address: Some("0xlinker".to_string()),
+                    finalized: Some(false),
+                    source_context: None,
+                    timestamp: "2024-01-07T00:00:00Z".to_string(),
+                }),
+            },
+            message_id: "0xits-msg-3".to_string(),
+            token_id: "token-id-123".to_string(),
+            destination_chain: "polygon".to_string(),
+            source_token_address: "0xsrctoken".to_string(),
+            destination_token_address: "0xdesttoken".to_string(),
+            token_manager_type: core_types::TokenManagerType::LockUnlock,
+        };
+
+        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        assert_eq!(amp_events.len(), 1);
+
+        if let amp_types::Event::ItsLinkTokenStarted(event) = &amp_events[0] {
+            assert_eq!(event.base.event_id.0, "0xits-3");
+            assert_eq!(event.message_id.0, "0xits-msg-3");
+            assert_eq!(event.token_id.0, "token-id-123");
+            assert_eq!(event.destination_chain, "polygon");
+            assert_eq!(event.source_token_address, "0xsrctoken");
+            assert_eq!(event.destination_token_address, "0xdesttoken");
+            assert!(matches!(
+                event.token_manager_type,
+                amp_types::TokenManagerType::LockUnlock
+            ));
+            assert!(event.base.meta.is_some());
+        } else {
+            panic!("Expected ItsLinkTokenStarted event");
+        }
+    }
+
+    #[test]
+    fn test_its_interchain_token_deployment_started_event_conversion() {
+        let its_event = core_types::Event::ITSInterchainTokenDeploymentStarted {
+            common: core_types::CommonEventFields {
+                r#type: "ITS_INTERCHAIN_TOKEN_DEPLOYMENT_STARTED".to_string(),
+                event_id: "0xits-4".to_string(),
+                meta: Some(core_types::EventMetadata {
+                    tx_id: Some("0xits4".to_string()),
+                    from_address: Some("0xdeployer".to_string()),
+                    finalized: Some(true),
+                    source_context: None,
+                    timestamp: "2024-01-08T00:00:00Z".to_string(),
+                }),
+            },
+            message_id: "0xits-msg-4".to_string(),
+            destination_chain: "arbitrum".to_string(),
+            token: core_types::InterchainTokenDefinition {
+                id: "token-def-456".to_string(),
+                name: "Test Token".to_string(),
+                symbol: "TEST".to_string(),
+                decimals: 6,
+            },
+        };
+
+        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        assert_eq!(amp_events.len(), 1);
+
+        if let amp_types::Event::ItsInterchainTokenDeploymentStarted(event) = &amp_events[0] {
+            assert_eq!(event.base.event_id.0, "0xits-4");
+            assert_eq!(event.message_id.0, "0xits-msg-4");
+            assert_eq!(event.destination_chain, "arbitrum");
+            assert_eq!(event.token.id.0, "token-def-456");
+            assert_eq!(event.token.name, "Test Token");
+            assert_eq!(event.token.symbol, "TEST");
+            assert_eq!(event.token.decimals, 6);
+            assert!(event.base.meta.is_some());
+        } else {
+            panic!("Expected ItsInterchainTokenDeploymentStarted event");
         }
     }
 }
