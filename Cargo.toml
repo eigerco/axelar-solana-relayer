@@ -77,11 +77,11 @@ effective-tx-sender = { path = "crates/effective-tx-sender" }
 gateway-gas-computation = { path = "crates/gateway-gas-computation", default-features = false }
 
 # Relayer core
-amplifier-api = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-relayer-engine = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-relayer-amplifier-api-integration = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6", package = "common-serde-utils" }
+amplifier-api = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+relayer-engine = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+relayer-amplifier-api-integration = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana", package = "common-serde-utils" }
 
 # External crates
 solana-transaction-parser = { git = "https://github.com/commonprefix/solana-transaction-parser.git", rev = "784b4cc" }
