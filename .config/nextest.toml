@@ -2,6 +2,9 @@
 serial-8080-port = { max-threads = 1 }
 serial-test-validator = { max-threads = 4 }
 
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 2 }
+
 [[profile.default.overrides]]
 filter = 'package(solana-listener)'
 test-group = 'serial-test-validator'
@@ -20,3 +23,4 @@ threads-required = 4
 [[profile.default.overrides]]
 filter = 'package(rest-service)'
 test-group = 'serial-8080-port'
+

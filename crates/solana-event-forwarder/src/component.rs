@@ -162,22 +162,30 @@ mod tests {
         .unwrap();
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
-        let event_id = TxEvent::new(only_call_contract_sig.to_string().as_str(), 5);
+        // Extract the event_id and message_id from the received item
+        let AmplifierCommand::PublishEvents(PublishEventsRequest { events }) = &item;
+        let Some(Event::Call(event)) = events.first() else {
+            panic!("Expected Call event");
+        };
+
+        let event_id = event.base.event_id.clone();
+        let message_id = event.message.message_id.clone();
+
         let expected_event = CallEvent {
             base: EventBase {
                 event_id: event_id.clone(),
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(only_call_contract_sig.to_string())),
                     timestamp: tx.timestamp,
-                    from_address: Some(axelar_solana_memo_program::ID.to_string()),
-                    finalized: Some(true),
+                    from_address: None,
+                    finalized: None,
                     extra: CallEventMetadata {
                         parent_message_id: None,
                     },
                 }),
             },
             message: GatewayV2Message {
-                message_id: event_id,
+                message_id,
                 source_chain: "solana".to_owned(),
                 source_address: axelar_solana_memo_program::ID.to_string(),
                 destination_address: destination_contract.clone(),
@@ -253,17 +261,22 @@ mod tests {
                 .unwrap();
             expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
         }
-        dbg!(tx.logs);
 
-        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 8);
+        // Extract the event_id from the received item
+        let AmplifierCommand::PublishEvents(PublishEventsRequest { events }) = &item;
+        let Some(Event::MessageApproved(event)) = events.first() else {
+            panic!("Expected MessageApproved event");
+        };
+        let event_id = event.base.event_id.clone();
+
         let event = MessageApprovedEvent {
             base: EventBase {
                 event_id,
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(approve_signature.to_string())),
                     timestamp: tx.timestamp,
-                    from_address: Some(source_address.clone()),
-                    finalized: Some(true),
+                    from_address: None,
+                    finalized: None,
                     extra: MessageApprovedEventMetadata {
                         command_id: Some(CommandId(bs58::encode(command_id).into_string())),
                     },
@@ -378,15 +391,21 @@ mod tests {
             expected_sum = expected_sum.saturating_add(tx.cost_in_lamports);
         }
 
-        let event_id = TxEvent::new(approve_signature.to_string().as_str(), 8);
+        // Extract the event_id from the received item
+        let AmplifierCommand::PublishEvents(PublishEventsRequest { events }) = &item;
+        let Some(Event::MessageApproved(event)) = events.first() else {
+            panic!("Expected MessageApproved event");
+        };
+        let event_id = event.base.event_id.clone();
+
         let event = MessageApprovedEvent {
             base: EventBase {
                 event_id,
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(approve_signature.to_string())),
                     timestamp: tx.timestamp,
-                    from_address: Some(source_address.clone()),
-                    finalized: Some(true),
+                    from_address: None,
+                    finalized: None,
                     extra: MessageApprovedEventMetadata {
                         command_id: Some(CommandId(bs58::encode(command_id).into_string())),
                     },
@@ -415,7 +434,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn event_forwrding_execute_message() {
+    async fn event_forwarding_execute_message() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
         let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
@@ -516,6 +535,7 @@ mod tests {
         let (execute_sigs, _execute_tx) = fixture
             .send_tx_with_signatures(&[
                 axelar_solana_gateway::executable::construct_axelar_executable_ix(
+                    payer,
                     &message,
                     &encoded_payload,
                     incoming_message_pda,
@@ -570,7 +590,14 @@ mod tests {
 
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
-        let event_id = TxEvent::new(execute_sig.to_string().as_str(), 4);
+        // Extract the event_id and message_id from the received item
+        let AmplifierCommand::PublishEvents(PublishEventsRequest { events }) = &item;
+        let Some(Event::MessageExecuted(event)) = events.first() else {
+            panic!("Expected MessageExecuted event");
+        };
+
+        let event_id = event.base.event_id.clone();
+        let message_id = event.message_id.clone();
         let event = MessageExecutedEvent {
             status: MessageExecutionStatus::Successful,
             source_chain: "ethereum".to_owned(),
@@ -579,15 +606,15 @@ mod tests {
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(execute_sig.to_string())),
                     timestamp: tx.timestamp,
-                    from_address: Some(source_address.clone()),
-                    finalized: Some(true),
+                    from_address: None,
+                    finalized: None,
                     extra: MessageExecutedEventMetadata {
                         command_id: Some(CommandId(bs58::encode(command_id).into_string())),
                         child_message_ids: None,
                     },
                 }),
             },
-            message_id: TxEvent(cc_id_id.clone()),
+            message_id,
             cost: Token {
                 token_id: None,
                 amount: BigInt::from_u64(total_cost),
@@ -648,6 +675,7 @@ mod tests {
             fixture.payer.pubkey(),
             fixture.gateway_root_pda,
             execute_data.payload_merkle_root,
+            execute_data.signing_verifier_set_merkle_root,
         )
         .unwrap();
         let sigs = fixture.send_tx_with_signatures(&[ix]).await.unwrap().0;
@@ -656,11 +684,17 @@ mod tests {
         let (verifier_set_tracker_pda, _verifier_set_tracker_bump) =
             get_verifier_set_tracker_pda(execute_data.signing_verifier_set_merkle_root);
 
+        let (verification_pda, _bump) = axelar_solana_gateway::get_signature_verification_pda(
+            &execute_data.payload_merkle_root,
+            &execute_data.signing_verifier_set_merkle_root,
+        );
+
         for signature_leaves in &execute_data.signing_verifier_set_leaves {
             // Verify the signature
             let ix = axelar_solana_gateway::instructions::verify_signature(
                 fixture.gateway_root_pda,
                 verifier_set_tracker_pda,
+                verification_pda,
                 execute_data.payload_merkle_root,
                 signature_leaves.clone(),
             )
@@ -676,13 +710,10 @@ mod tests {
         }
 
         // Check that the PDA contains the expected data
-        let (verification_pda, _bump) = axelar_solana_gateway::get_signature_verification_pda(
-            &execute_data.payload_merkle_root,
-        );
-
         let MerkleisedPayload::NewMessages { messages } = execute_data.payload_items.clone() else {
             unreachable!("we constructed a message batch");
         };
+
         (execute_data, verification_pda, messages)
     }
 
@@ -723,14 +754,16 @@ mod tests {
         let (mut rx_amplifier, mut tx_listener) = setup_forwarder(&rpc_client);
 
         // solana memo program to evm raw message
-        let signature_to_fund = [111; 64];
-        let idx_to_fund = 123;
+        let signature_to_fund = Signature::from([111; 64]);
+        let ix_idx = 0;
+        let event_idx = 0;
+        let message_id = format!("{signature_to_fund}-{ix_idx}.{event_idx}");
+
         let refund_address = Pubkey::new_unique();
         let amount_to_refund = 5000;
-        let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
+        let gas_ix = axelar_solana_gas_service::instructions::add_gas_instruction(
             &fixture.payer.pubkey(),
-            signature_to_fund,
-            idx_to_fund,
+            message_id.clone(),
             amount_to_refund,
             refund_address,
         )
@@ -764,11 +797,14 @@ mod tests {
             .unwrap();
         tx_listener.send(tx.clone()).await.unwrap();
         let item = rx_amplifier.next().await.unwrap();
-        let event_id = TxEvent::new(only_gas_add_sig.to_string().as_str(), 3);
-        let message_id_to_fund = TxEvent::new(
-            Signature::from(signature_to_fund).to_string().as_str(),
-            idx_to_fund.try_into().unwrap(),
-        );
+
+        // Extract the event_id from the received item
+        let AmplifierCommand::PublishEvents(PublishEventsRequest { events }) = &item;
+        let Some(Event::GasCredit(event)) = events.first() else {
+            panic!("Expected GasCredit event");
+        };
+        let event_id = event.base.event_id.clone();
+
         let expected_event = GasCreditEvent {
             base: EventBase {
                 event_id,
@@ -776,11 +812,11 @@ mod tests {
                     tx_id: Some(TxId(only_gas_add_sig.to_string())),
                     timestamp: tx.timestamp,
                     from_address: None,
-                    finalized: Some(true),
+                    finalized: None,
                     extra: (),
                 }),
             },
-            message_id: message_id_to_fund,
+            message_id: TxEvent(message_id),
             refund_address: refund_address.to_string(),
             payment: Token {
                 token_id: None,
@@ -821,17 +857,15 @@ mod tests {
         .unwrap();
         let refund_address = Pubkey::new_unique();
         let gas_fee_amount = 5000;
-        let gas_ix =
-            axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
-                &fixture.payer.pubkey(),
-                destination_chain_name.clone(),
-                destination_address.clone(),
-                payload_hash,
-                refund_address,
-                vec![],
-                gas_fee_amount,
-            )
-            .unwrap();
+        let gas_ix = axelar_solana_gas_service::instructions::pay_gas_instruction(
+            &fixture.payer.pubkey(),
+            destination_chain_name.clone(),
+            destination_address.clone(),
+            payload_hash,
+            refund_address,
+            gas_fee_amount,
+        )
+        .unwrap();
         let gas_and_call_contract_sig = fixture
             .send_tx_with_signatures(&[gas_ix, ix])
             .await
@@ -862,23 +896,34 @@ mod tests {
         .unwrap()
         .unwrap();
         tx_listener.send(tx.clone()).await.unwrap();
-        let item = rx_amplifier.next().await.unwrap();
-        let event_id = TxEvent::new(gas_and_call_contract_sig.to_string().as_str(), 11);
+        let items = rx_amplifier.next().await.unwrap();
+        // Extract the event_id and message_id from the received item
+        let AmplifierCommand::PublishEvents(PublishEventsRequest { events }) = &items;
+        let mut events_iter = events.iter();
+        let Some(Event::Call(call_event)) = events_iter.next() else {
+            panic!("Expected Call event");
+        };
+        let Some(Event::GasCredit(gas_credit_event)) = events_iter.next() else {
+            panic!("Expected GasCredit event");
+        };
+        let call_event_id = call_event.base.event_id.clone();
+        let gas_credit_event_id = gas_credit_event.base.event_id.clone();
+        let message_id = call_event.message.message_id.clone();
         let expected_call_event = CallEvent {
             base: EventBase {
-                event_id: event_id.clone(),
+                event_id: call_event_id.clone(),
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(gas_and_call_contract_sig.to_string())),
                     timestamp: tx.timestamp,
-                    from_address: Some(axelar_solana_memo_program::ID.to_string()),
-                    finalized: Some(true),
+                    from_address: None,
+                    finalized: None,
                     extra: CallEventMetadata {
                         parent_message_id: None,
                     },
                 }),
             },
             message: GatewayV2Message {
-                message_id: event_id.clone(),
+                message_id: message_id.clone(),
                 source_chain: "solana".to_owned(),
                 source_address: axelar_solana_memo_program::ID.to_string(),
                 destination_address: destination_address.clone(),
@@ -889,16 +934,16 @@ mod tests {
         };
         let expected_gas_event = GasCreditEvent {
             base: EventBase {
-                event_id: event_id.clone(),
+                event_id: gas_credit_event_id.clone(),
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(gas_and_call_contract_sig.to_string())),
                     timestamp: tx.timestamp,
                     from_address: None,
-                    finalized: Some(true),
+                    finalized: None,
                     extra: (),
                 }),
             },
-            message_id: event_id,
+            message_id,
             refund_address: refund_address.to_string(),
             payment: Token {
                 token_id: None,
@@ -907,7 +952,7 @@ mod tests {
         };
 
         assert_eq!(
-            item,
+            items,
             AmplifierCommand::PublishEvents(
                 PublishEventsRequest::builder()
                     .events(vec![
@@ -937,7 +982,8 @@ mod tests {
         .unwrap();
         let payer = fixture.payer.insecure_clone();
         let gas_init_sig = *fixture
-            .send_tx_with_custom_signers_and_signature(
+            .send_tx_with_custom(
+                &payer.pubkey(),
                 &[ix],
                 &[payer, gas_config.operator.insecure_clone()],
             )

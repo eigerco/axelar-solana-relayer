@@ -677,7 +677,7 @@ async fn send_to_destination_program(
     // for ITS & Governance programs
     let ix = match destination_address {
         axelar_solana_its::ID => {
-            its_instruction_builder::build_its_gmp_instruction(
+            its_instruction_builder::build_execute_instruction(
                 signer,
                 gateway_incoming_message_pda,
                 gateway_message_payload_pda,
@@ -700,6 +700,7 @@ async fn send_to_destination_program(
             validate_relayer_not_in_payload(&payload, signer)?;
             // if security passed, we broadcast the tx
             construct_axelar_executable_ix(
+                signer,
                 message,
                 &payload,
                 gateway_incoming_message_pda,
@@ -773,11 +774,15 @@ async fn gateway_tx_task(
 
     // Start a signing session
     let (verification_session_tracker_pda, ..) =
-        axelar_solana_gateway::get_signature_verification_pda(&execute_data.payload_merkle_root);
+        axelar_solana_gateway::get_signature_verification_pda(
+            &execute_data.payload_merkle_root,
+            &execute_data.signing_verifier_set_merkle_root,
+        );
     let ix = axelar_solana_gateway::instructions::initialize_payload_verification_session(
         signer,
         gateway_root_pda,
         execute_data.payload_merkle_root,
+        execute_data.signing_verifier_set_merkle_root,
     )?;
     send_gateway_tx(solana_rpc_client, keypair, ix).await?;
 
@@ -792,6 +797,7 @@ async fn gateway_tx_task(
             let ix = axelar_solana_gateway::instructions::verify_signature(
                 gateway_root_pda,
                 verifier_set_tracker_pda,
+                verification_session_tracker_pda,
                 execute_data.payload_merkle_root,
                 verifier_info,
             )
@@ -856,23 +862,14 @@ async fn refund_task(
     keypair: &Keypair,
 ) -> eyre::Result<()> {
     let receiver = Pubkey::from_str(&task.refund_recipient_address)?;
-    let mut message_id_parts = task.message.message_id.0.split('-');
-    let tx_hash = Signature::from_str(message_id_parts.next().ok_or_eyre("missing tx hash")?)?
-        .as_ref()
-        .try_into()?;
-    let log_index = message_id_parts
-        .next()
-        .ok_or_eyre("missing log_index")?
-        .parse()?;
 
     if task.remaining_gas_balance.token_id.is_some() {
         eyre::bail!("non-native token refunds are not supported");
     } else {
-        let instruction = axelar_solana_gas_service::instructions::refund_native_fees_instruction(
+        let instruction = axelar_solana_gas_service::instructions::refund_fees_instruction(
             &keypair.pubkey(),
             &receiver,
-            tx_hash,
-            log_index,
+            task.message.message_id.0,
             task.remaining_gas_balance
                 .amount
                 .0
@@ -1142,7 +1139,7 @@ mod tests {
             Event, ExecuteTask, GatewayV2Message, MessageExecutedEvent, MessageExecutionStatus,
             MessageId, PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
         };
-        use axelar_solana_encoding::borsh;
+        use axelar_solana_encoding::borsh::{self, BorshDeserialize};
         use axelar_solana_encoding::types::messages::{CrossChainId, Message};
         use axelar_solana_gateway::executable::{
             AxelarMessagePayload, EncodingScheme, SolanaAccountRepr,
@@ -1157,7 +1154,6 @@ mod tests {
         use pretty_assertions::assert_eq;
         use relayer_amplifier_api_integration::AmplifierCommand;
         use solana_sdk::keccak;
-        use solana_sdk::program_pack::Pack as _;
         use solana_sdk::signature::Signature;
 
         use super::*;
@@ -1220,11 +1216,10 @@ mod tests {
                 .get_account_data(&token_manager_address)
                 .await
                 .unwrap();
-            let token_manager =
-                axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
-                    &token_manager_raw_data,
-                )
-                .unwrap();
+            let token_manager = axelar_solana_its::state::token_manager::TokenManager::deserialize(
+                &mut token_manager_raw_data.as_ref(),
+            )
+            .unwrap();
 
             assert_eq!(token_manager.token_id, token_id);
             assert_eq!(
@@ -1315,13 +1310,25 @@ mod tests {
                 memo: "🦖".to_owned(),
             };
 
+            let (its_root_pda, _) = axelar_solana_its::find_its_root_pda();
+            let (mint, _) = axelar_solana_its::find_interchain_token_pda(&its_root_pda, &token_id);
+            let (token_metadata_account, _) =
+                mpl_token_metadata::accounts::Metadata::find_pda(&mint);
+
             let data = AxelarMessagePayload::new(
                 &borsh::to_vec(&memo_instruction).unwrap(),
-                &[SolanaAccountRepr {
-                    pubkey: counter_pda.0.to_bytes().into(),
-                    is_signer: false,
-                    is_writable: true,
-                }],
+                &[
+                    SolanaAccountRepr {
+                        pubkey: token_metadata_account.to_bytes().into(),
+                        is_signer: false,
+                        is_writable: false,
+                    },
+                    SolanaAccountRepr {
+                        pubkey: counter_pda.0.to_bytes().into(),
+                        is_signer: false,
+                        is_writable: true,
+                    },
+                ],
                 EncodingScheme::AbiEncoding,
             )
             .encode()
@@ -1373,11 +1380,10 @@ mod tests {
                 .await
                 .unwrap();
 
-            let token_manager =
-                axelar_solana_its::state::token_manager::TokenManager::unpack_unchecked(
-                    &token_manager_raw_data,
-                )
-                .unwrap();
+            let token_manager = axelar_solana_its::state::token_manager::TokenManager::deserialize(
+                &mut token_manager_raw_data.as_ref(),
+            )
+            .unwrap();
 
             assert_eq!(token_manager.token_id, token_id);
             assert_eq!(
@@ -1767,6 +1773,7 @@ mod tests {
         .unwrap();
 
         let set_trusted_chain_ix = axelar_solana_its::instruction::set_trusted_chain(
+            fixture.payer.pubkey(),
             fixture.upgrade_authority.pubkey(),
             "axelar".to_owned(),
         )
@@ -1774,7 +1781,8 @@ mod tests {
         let upgrade_authority = fixture.upgrade_authority.insecure_clone();
         let payer = fixture.payer.insecure_clone();
         let init_its_sig = fixture
-            .send_tx_with_custom_signers_and_signature(
+            .send_tx_with_custom(
+                &payer.pubkey(),
                 &[ix, set_trusted_chain_ix],
                 &[upgrade_authority.insecure_clone(), payer.insecure_clone()],
             )
@@ -1808,7 +1816,8 @@ mod tests {
             .build();
 
         assert!(!fixture
-            .send_tx_with_custom_signers_and_signature(
+            .send_tx_with_custom(
+                &payer.pubkey(),
                 &[ix],
                 &[upgrade_authority.insecure_clone(), payer.insecure_clone()],
             )
