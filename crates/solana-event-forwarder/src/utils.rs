@@ -22,14 +22,29 @@ pub fn convert_to_parser_transaction(tx: &ListenerTransaction) -> ParserTransact
 
 /// Convert a list of core (parser-produced) events into Amplifier API events
 #[must_use]
-pub fn map_core_events_to_amplifier(core_events: Vec<core_types::Event>) -> Vec<amp_types::Event> {
+pub fn map_core_events_to_amplifier(
+    core_events: Vec<core_types::Event>,
+    total_cost: u64,
+) -> Vec<amp_types::Event> {
+    let price_per_event = total_cost
+        .checked_div(
+            core_events
+                .len()
+                .try_into()
+                .expect("number of events should fit into u64"),
+        )
+        .unwrap_or(0);
+
     core_events
         .into_iter()
-        .filter_map(convert_core_event_to_amp)
+        .filter_map(|e| convert_core_event_to_amp(e, price_per_event))
         .collect()
 }
 
-fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Event> {
+fn convert_core_event_to_amp(
+    event: core_types::Event,
+    adjusted_cost: u64,
+) -> Option<amp_types::Event> {
     match event {
         core_types::Event::Call {
             common,
@@ -55,29 +70,39 @@ fn convert_core_event_to_amp(event: core_types::Event) -> Option<amp_types::Even
             message_id,
             recipient_address,
             refunded_amount,
-            cost,
-        } => Some(amp_types::Event::GasRefunded(amp_types::GasRefundedEvent {
-            base: convert_base_meta(common.event_id, common.meta),
-            message_id: amp_types::TxEvent(message_id),
-            recipient_address,
-            refunded_amount: token_from_amount(refunded_amount),
-            cost: token_from_amount(cost),
-        })),
+            mut cost,
+        } => {
+            cost.amount = adjusted_cost.to_string();
+
+            Some(amp_types::Event::GasRefunded(amp_types::GasRefundedEvent {
+                base: convert_base_meta(common.event_id, common.meta),
+                message_id: amp_types::TxEvent(message_id),
+                recipient_address,
+                refunded_amount: token_from_amount(refunded_amount),
+                cost: token_from_amount(cost),
+            }))
+        }
 
         core_types::Event::MessageApproved {
             common,
             message,
-            cost,
-        } => convert_message_approved(common, message, cost).map(amp_types::Event::MessageApproved),
+            mut cost,
+        } => {
+            cost.amount = adjusted_cost.to_string();
+            convert_message_approved(common, message, cost).map(amp_types::Event::MessageApproved)
+        }
 
         core_types::Event::MessageExecuted {
             common,
             message_id,
             source_chain,
             status,
-            cost,
-        } => convert_message_executed(common, message_id, source_chain, status, cost)
-            .map(amp_types::Event::MessageExecuted),
+            mut cost,
+        } => {
+            cost.amount = adjusted_cost.to_string();
+            convert_message_executed(common, message_id, source_chain, status, cost)
+                .map(amp_types::Event::MessageExecuted)
+        }
 
         core_types::Event::SignersRotated { common, message_id } => {
             convert_signers_rotated(common, message_id).map(amp_types::Event::SignersRotated)
@@ -582,7 +607,7 @@ mod tests {
             },
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![core_event]);
+        let amp_events = map_core_events_to_amplifier(vec![core_event], 0);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::GasCredit(event) = &amp_events[0] {
@@ -630,7 +655,7 @@ mod tests {
             payload: payload_b64,
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![core_event]);
+        let amp_events = map_core_events_to_amplifier(vec![core_event], 0);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::Call(event) = &amp_events[0] {
@@ -681,7 +706,7 @@ mod tests {
             },
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![core_event]);
+        let amp_events = map_core_events_to_amplifier(vec![core_event], 500);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::MessageApproved(event) = &amp_events[0] {
@@ -723,7 +748,7 @@ mod tests {
             },
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![core_event]);
+        let amp_events = map_core_events_to_amplifier(vec![core_event], 550);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::MessageExecuted(event) = &amp_events[0] {
@@ -734,6 +759,7 @@ mod tests {
                 event.status,
                 amp_types::MessageExecutionStatus::Successful
             ));
+            assert_eq!(event.cost.amount.0.to_string(), "550");
             assert!(event.base.meta.is_some());
             let meta = event.base.meta.as_ref().unwrap();
             assert_eq!(meta.extra.command_id.as_ref().unwrap().0, "cmd-456");
@@ -763,7 +789,7 @@ mod tests {
             },
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![core_event]);
+        let amp_events = map_core_events_to_amplifier(vec![core_event], 30);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::GasRefunded(event) = &amp_events[0] {
@@ -772,7 +798,7 @@ mod tests {
             assert_eq!(event.recipient_address, "0xrecipient");
             assert_eq!(event.refunded_amount.amount.0.to_string(), "100");
             assert_eq!(event.refunded_amount.token_id.as_ref().unwrap().0, "USDC");
-            assert_eq!(event.cost.amount.0.to_string(), "10");
+            assert_eq!(event.cost.amount.0.to_string(), "30");
             assert!(event.base.meta.is_none());
         } else {
             panic!("Expected GasRefunded event");
@@ -799,7 +825,7 @@ mod tests {
             data_hash: "test".to_string(),
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![its_event_missing_token]);
+        let amp_events = map_core_events_to_amplifier(vec![its_event_missing_token], 0);
         assert_eq!(
             amp_events.len(),
             0,
@@ -831,7 +857,7 @@ mod tests {
             message_id: "0xrot-msg".to_string(),
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![core_event]);
+        let amp_events = map_core_events_to_amplifier(vec![core_event], 0);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::SignersRotated(event) = &amp_events[0] {
@@ -873,7 +899,7 @@ mod tests {
             data_hash: "0xhash".to_string(),
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        let amp_events = map_core_events_to_amplifier(vec![its_event], 0);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::ItsInterchainTransfer(event) = &amp_events[0] {
@@ -909,7 +935,7 @@ mod tests {
             decimals: 18,
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        let amp_events = map_core_events_to_amplifier(vec![its_event], 0);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::ItsTokenMetadataRegistered(event) = &amp_events[0] {
@@ -945,7 +971,7 @@ mod tests {
             token_manager_type: core_types::TokenManagerType::LockUnlock,
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        let amp_events = map_core_events_to_amplifier(vec![its_event], 0);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::ItsLinkTokenStarted(event) = &amp_events[0] {
@@ -989,7 +1015,7 @@ mod tests {
             },
         };
 
-        let amp_events = map_core_events_to_amplifier(vec![its_event]);
+        let amp_events = map_core_events_to_amplifier(vec![its_event], 0);
         assert_eq!(amp_events.len(), 1);
 
         if let amp_types::Event::ItsInterchainTokenDeploymentStarted(event) = &amp_events[0] {

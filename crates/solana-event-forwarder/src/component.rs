@@ -2,6 +2,7 @@ use core::future::Future;
 use core::pin::Pin;
 
 use futures::{SinkExt as _, StreamExt as _};
+use gateway_gas_computation::compute_total_gas;
 use relayer_amplifier_api_integration::amplifier_api::types::PublishEventsRequest;
 use relayer_amplifier_api_integration::AmplifierCommand;
 use solana_sdk::pubkey::Pubkey;
@@ -46,6 +47,13 @@ impl SolanaEventForwarder {
     #[tracing::instrument(skip_all, name = "Solana log forwarder")]
     pub(crate) async fn process_internal(mut self) -> eyre::Result<()> {
         while let Some(message) = self.solana_listener_client.log_receiver.next().await {
+            let total_cost = compute_total_gas(
+                self.config.gateway_program_id,
+                &message,
+                &self.config.rpc,
+                self.config.commitment,
+            )
+            .await?;
             let tx = convert_to_parser_transaction(&message);
 
             tracing::debug!(
@@ -69,7 +77,7 @@ impl SolanaEventForwarder {
 
             tracing::info!(count = ?events.len(), "sending solana events to amplifier component");
             let command = AmplifierCommand::PublishEvents(PublishEventsRequest {
-                events: map_core_events_to_amplifier(events),
+                events: map_core_events_to_amplifier(events, total_cost),
             });
             self.amplifier_client.sender.send(command).await?;
         }
@@ -121,7 +129,7 @@ mod tests {
     use crate::SolanaEventForwarder;
 
     #[test_log::test(tokio::test)]
-    async fn event_forwrding_only_call_contract() {
+    async fn event_forwarding_only_call_contract() {
         // setup
         let (mut fixture, rpc_client) = setup().await;
         let (_gas_config, _gas_init_sig, counter_pda, _init_memo_sig) =
