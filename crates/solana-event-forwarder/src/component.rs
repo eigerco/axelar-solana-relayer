@@ -6,8 +6,7 @@ use gateway_gas_computation::compute_total_gas;
 use relayer_amplifier_api_integration::amplifier_api::types::PublishEventsRequest;
 use relayer_amplifier_api_integration::AmplifierCommand;
 use solana_sdk::pubkey::Pubkey;
-use solana_transaction_parser::parser::TransactionParserTrait;
-use {serde_json, solana_transaction_parser};
+use solana_transaction_parser::parser::TransactionParserTrait as _;
 
 use crate::map_core_events_to_amplifier;
 use crate::utils::convert_to_parser_transaction;
@@ -173,7 +172,7 @@ mod tests {
 
         let expected_event = CallEvent {
             base: EventBase {
-                event_id: event_id.clone(),
+                event_id,
                 meta: Some(EventMetadata {
                     tx_id: Some(TxId(only_call_contract_sig.to_string())),
                     timestamp: tx.timestamp,

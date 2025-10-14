@@ -1,3 +1,8 @@
+#![allow(
+    clippy::min_ident_chars,
+    reason = "Short identifiers like 'e', 'p', 'm' are idiomatic in functional code"
+)]
+
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine as _;
 use chrono::{DateTime, Utc};
@@ -7,7 +12,13 @@ use solana_transaction_parser::gmp_types as core_types;
 use solana_transaction_parser::types::SolanaTransaction as ParserTransaction;
 use tracing::warn;
 
-/// Convert from the listener's SolanaTransaction to the parser's Transaction type
+/// Convert from the listener's `SolanaTransaction` to the parser's Transaction type
+#[must_use]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::as_conversions,
+    reason = "Slot conversion to i64 required by parser API, wrapping is acceptable for Solana slot numbers"
+)]
 pub fn convert_to_parser_transaction(tx: &ListenerTransaction) -> ParserTransaction {
     ParserTransaction {
         signature: tx.signature,
@@ -15,12 +26,19 @@ pub fn convert_to_parser_transaction(tx: &ListenerTransaction) -> ParserTransact
         logs: tx.logs.clone(),
         slot: tx.slot as i64,
         cost_units: tx.cost_in_lamports,
-        account_keys: tx.account_keys.iter().map(|k| k.to_string()).collect(),
+        account_keys: tx
+            .account_keys
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         ixs: tx.inner_ixs.clone(),
     }
 }
 
 /// Convert a list of core (parser-produced) events into Amplifier API events
+///
+/// # Panics
+/// Panics if the number of events cannot be converted to u64 (extremely unlikely in practice)
 #[must_use]
 pub fn map_core_events_to_amplifier(
     core_events: Vec<core_types::Event>,
@@ -41,6 +59,10 @@ pub fn map_core_events_to_amplifier(
         .collect()
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "Comprehensive event conversion logic best kept together for maintainability"
+)]
 fn convert_core_event_to_amp(
     event: core_types::Event,
     adjusted_cost: u64,
@@ -100,8 +122,13 @@ fn convert_core_event_to_amp(
             mut cost,
         } => {
             cost.amount = adjusted_cost.to_string();
-            convert_message_executed(common, message_id, source_chain, status, cost)
-                .map(amp_types::Event::MessageExecuted)
+            Some(amp_types::Event::MessageExecuted(convert_message_executed(
+                common,
+                message_id,
+                source_chain,
+                &status,
+                cost,
+            )))
         }
 
         core_types::Event::SignersRotated { common, message_id } => {
@@ -132,8 +159,9 @@ fn convert_core_event_to_amp(
             message_id,
             address,
             decimals,
-        } => convert_its_token_metadata_registered(common, message_id, address, decimals)
-            .map(amp_types::Event::ItsTokenMetadataRegistered),
+        } => Some(amp_types::Event::ItsTokenMetadataRegistered(
+            convert_its_token_metadata_registered(common, message_id, address, decimals),
+        )),
 
         core_types::Event::ITSLinkTokenStarted {
             common,
@@ -143,29 +171,31 @@ fn convert_core_event_to_amp(
             source_token_address,
             destination_token_address,
             token_manager_type,
-        } => convert_its_link_token_started(
-            common,
-            message_id,
-            token_id,
-            destination_chain,
-            source_token_address,
-            destination_token_address,
-            token_manager_type,
-        )
-        .map(amp_types::Event::ItsLinkTokenStarted),
+        } => Some(amp_types::Event::ItsLinkTokenStarted(
+            convert_its_link_token_started(
+                common,
+                message_id,
+                token_id,
+                destination_chain,
+                source_token_address,
+                destination_token_address,
+                &token_manager_type,
+            ),
+        )),
 
         core_types::Event::ITSInterchainTokenDeploymentStarted {
             common,
             message_id,
             destination_chain,
             token,
-        } => convert_its_interchain_token_deployment_started(
-            common,
-            message_id,
-            destination_chain,
-            token,
-        )
-        .map(amp_types::Event::ItsInterchainTokenDeploymentStarted),
+        } => Some(amp_types::Event::ItsInterchainTokenDeploymentStarted(
+            convert_its_interchain_token_deployment_started(
+                common,
+                message_id,
+                destination_chain,
+                token,
+            ),
+        )),
 
         core_types::Event::CannotExecuteMessageV2 { .. } => {
             warn!("Skipping CannotExecuteMessageV2, not part of the Programs");
@@ -246,9 +276,9 @@ fn convert_message_executed(
     common: core_types::CommonEventFields<core_types::MessageExecutedEventMetadata>,
     message_id: String,
     source_chain: String,
-    status: core_types::MessageExecutionStatus,
+    status: &core_types::MessageExecutionStatus,
     cost: core_types::Amount,
-) -> Option<amp_types::MessageExecutedEvent> {
+) -> amp_types::MessageExecutedEvent {
     let (meta_common, command_id, child_message_ids) = match common.meta {
         Some(m) => (Some(m.common_meta), m.command_id, m.child_message_ids),
         None => (None, None, None),
@@ -258,24 +288,24 @@ fn convert_message_executed(
     let cmd = command_id.map(amp_types::CommandId);
     let child = child_message_ids.map(|v| v.into_iter().map(amp_types::TxEvent).collect());
 
-    let meta = convert_event_metadata(meta_common).map(|m| amp_types::EventMetadata::<
+    let meta = convert_event_metadata(meta_common).map(|meta_data| amp_types::EventMetadata::<
         amp_types::MessageExecutedEventMetadata,
     > {
-        tx_id: m.tx_id,
-        timestamp: m.timestamp,
-        from_address: m.from_address,
-        finalized: m.finalized,
+        tx_id: meta_data.tx_id,
+        timestamp: meta_data.timestamp,
+        from_address: meta_data.from_address,
+        finalized: meta_data.finalized,
         extra: amp_types::MessageExecutedEventMetadata {
             command_id: cmd,
             child_message_ids: child,
         },
     });
 
-    Some(amp_types::MessageExecutedEvent {
+    amp_types::MessageExecutedEvent {
         base: amp_types::EventBase { event_id, meta },
         message_id: amp_types::TxEvent(message_id),
         source_chain,
-        status: match status {
+        status: match *status {
             core_types::MessageExecutionStatus::SUCCESSFUL => {
                 amp_types::MessageExecutionStatus::Successful
             }
@@ -284,7 +314,7 @@ fn convert_message_executed(
             }
         },
         cost: token_from_amount(cost),
-    })
+    }
 }
 
 fn convert_signers_rotated(
@@ -298,8 +328,8 @@ fn convert_signers_rotated(
 
     let event_id = amp_types::TxEvent(common.event_id);
 
-    let signer_hash = match signers_hash {
-        Some(hash_b64) => match BASE64_STANDARD.decode(hash_b64) {
+    let decoded_hash = if let Some(hash_b64) = signers_hash {
+        match BASE64_STANDARD.decode(hash_b64) {
             Ok(hash) => hash,
             Err(err) => {
                 warn!(
@@ -308,29 +338,28 @@ fn convert_signers_rotated(
                 );
                 return None;
             }
-        },
-        None => {
-            warn!("missing signers_hash in SignersRotated event; skipping");
-            return None;
         }
+    } else {
+        warn!("missing signers_hash in SignersRotated event; skipping");
+        return None;
     };
 
-    let epoch = match epoch {
-        Some(e) => e,
-        None => {
-            warn!("missing epoch in SignersRotated event; skipping");
-            return None;
-        }
+    let Some(epoch) = epoch else {
+        warn!("missing epoch in SignersRotated event; skipping");
+        return None;
     };
 
-    let meta = convert_event_metadata(meta_common).map(|m| amp_types::EventMetadata::<
+    let meta = convert_event_metadata(meta_common).map(|meta_data| amp_types::EventMetadata::<
         amp_types::SignersRotatedMetadata,
     > {
-        tx_id: m.tx_id,
-        timestamp: m.timestamp,
-        from_address: m.from_address,
-        finalized: m.finalized,
-        extra: amp_types::SignersRotatedMetadata { signer_hash, epoch },
+        tx_id: meta_data.tx_id,
+        timestamp: meta_data.timestamp,
+        from_address: meta_data.from_address,
+        finalized: meta_data.finalized,
+        extra: amp_types::SignersRotatedMetadata {
+            signer_hash: decoded_hash,
+            epoch,
+        },
     });
 
     Some(amp_types::SignersRotatedEvent {
@@ -348,12 +377,11 @@ fn convert_its_interchain_transfer(
     destination_address: String,
     data_hash: String,
 ) -> Option<amp_types::ItsInterchainTransferEvent> {
-    let token_id = match &token_spent.token_id {
-        Some(id) => amp_types::TokenId(id.clone()),
-        None => {
-            warn!("missing token_id in ITSInterchainTransfer event; skipping");
-            return None;
-        }
+    let token_id = if let Some(id) = &token_spent.token_id {
+        amp_types::TokenId(id.clone())
+    } else {
+        warn!("missing token_id in ITSInterchainTransfer event; skipping");
+        return None;
     };
 
     let token = token_from_amount(token_spent);
@@ -377,13 +405,13 @@ fn convert_its_token_metadata_registered(
     message_id: String,
     address: String,
     decimals: u8,
-) -> Option<amp_types::ItsTokenMetadataRegisteredEvent> {
-    Some(amp_types::ItsTokenMetadataRegisteredEvent {
+) -> amp_types::ItsTokenMetadataRegisteredEvent {
+    amp_types::ItsTokenMetadataRegisteredEvent {
         base: convert_base_meta(common.event_id, common.meta),
         message_id: amp_types::TxEvent(message_id),
         address,
         decimals,
-    })
+    }
 }
 
 fn convert_its_link_token_started(
@@ -393,9 +421,9 @@ fn convert_its_link_token_started(
     destination_chain: String,
     source_token_address: String,
     destination_token_address: String,
-    token_manager_type: core_types::TokenManagerType,
-) -> Option<amp_types::ItsLinkTokenStartedEvent> {
-    Some(amp_types::ItsLinkTokenStartedEvent {
+    token_manager_type: &core_types::TokenManagerType,
+) -> amp_types::ItsLinkTokenStartedEvent {
+    amp_types::ItsLinkTokenStartedEvent {
         base: convert_base_meta(common.event_id, common.meta),
         message_id: amp_types::TxEvent(message_id),
         token_id: amp_types::TokenId(token_id),
@@ -403,7 +431,7 @@ fn convert_its_link_token_started(
         source_token_address,
         destination_token_address,
         token_manager_type: convert_token_manager_type(token_manager_type),
-    })
+    }
 }
 
 fn convert_its_interchain_token_deployment_started(
@@ -411,8 +439,8 @@ fn convert_its_interchain_token_deployment_started(
     message_id: String,
     destination_chain: String,
     token: core_types::InterchainTokenDefinition,
-) -> Option<amp_types::ItsInterchainTokenDeploymentStartedEvent> {
-    Some(amp_types::ItsInterchainTokenDeploymentStartedEvent {
+) -> amp_types::ItsInterchainTokenDeploymentStartedEvent {
+    amp_types::ItsInterchainTokenDeploymentStartedEvent {
         base: convert_base_meta(common.event_id, common.meta),
         message_id: amp_types::TxEvent(message_id),
         destination_chain,
@@ -422,13 +450,13 @@ fn convert_its_interchain_token_deployment_started(
             symbol: token.symbol,
             decimals: token.decimals,
         },
-    })
+    }
 }
 
-fn convert_token_manager_type(
-    token_manager_type: core_types::TokenManagerType,
+const fn convert_token_manager_type(
+    token_manager_type: &core_types::TokenManagerType,
 ) -> amp_types::TokenManagerType {
-    match token_manager_type {
+    match *token_manager_type {
         core_types::TokenManagerType::NativeInterchainToken => {
             amp_types::TokenManagerType::NativeInterchainToken
         }
@@ -461,7 +489,7 @@ fn convert_gateway_message(
     })
 }
 
-/// Helper to create base event metadata with event_id
+/// Helper to create base event metadata with `event_id`
 fn convert_base_meta(
     event_id: String,
     meta: Option<core_types::EventMetadata>,
@@ -516,9 +544,9 @@ mod tests {
     fn test_transaction_conversion() {
         let sig = Signature::default();
         let timestamp = DateTime::<Utc>::from_timestamp(1678886400, 0);
-        let logs = vec!["log1".to_string(), "log2".to_string()];
-        let slot = 12345u64;
-        let cost = 5000u64;
+        let logs = vec!["log1".to_owned(), "log2".to_owned()];
+        let slot = 12345_u64;
+        let cost = 5000_u64;
         let account_keys = vec![Pubkey::new_unique(), Pubkey::new_unique()];
 
         let inner_ixs = vec![UiInnerInstructions {
@@ -526,7 +554,7 @@ mod tests {
             instructions: vec![UiInstruction::Compiled(UiCompiledInstruction {
                 program_id_index: 1,
                 accounts: vec![0, 1],
-                data: "test_data".to_string(),
+                data: "test_data".to_owned(),
                 stack_height: None,
             })],
         }];
@@ -589,21 +617,21 @@ mod tests {
     fn test_gas_credit_event_conversion() {
         let core_event = core_types::Event::GasCredit {
             common: core_types::CommonEventFields {
-                r#type: "GAS_CREDIT".to_string(),
-                event_id: "0xabc-1".to_string(),
+                r#type: "GAS_CREDIT".to_owned(),
+                event_id: "0xabc-1".to_owned(),
                 meta: Some(core_types::EventMetadata {
-                    tx_id: Some("0xabc".to_string()),
-                    from_address: Some("0x123".to_string()),
+                    tx_id: Some("0xabc".to_owned()),
+                    from_address: Some("0x123".to_owned()),
                     finalized: Some(true),
                     source_context: None,
-                    timestamp: "2024-01-01T00:00:00Z".to_string(),
+                    timestamp: "2024-01-01T00:00:00Z".to_owned(),
                 }),
             },
-            message_id: "0xabc-2".to_string(),
-            refund_address: "0xrefund".to_string(),
+            message_id: "0xabc-2".to_owned(),
+            refund_address: "0xrefund".to_owned(),
             payment: core_types::Amount {
                 token_id: None,
-                amount: "1000".to_string(),
+                amount: "1000".to_owned(),
             },
         };
 
@@ -634,24 +662,24 @@ mod tests {
 
         let core_event = core_types::Event::Call {
             common: core_types::CommonEventFields {
-                r#type: "CALL".to_string(),
-                event_id: "0xdef-3".to_string(),
+                r#type: "CALL".to_owned(),
+                event_id: "0xdef-3".to_owned(),
                 meta: Some(core_types::EventMetadata {
-                    tx_id: Some("0xdef".to_string()),
-                    from_address: Some("0x456".to_string()),
+                    tx_id: Some("0xdef".to_owned()),
+                    from_address: Some("0x456".to_owned()),
                     finalized: Some(true),
                     source_context: None,
-                    timestamp: "2024-01-02T00:00:00Z".to_string(),
+                    timestamp: "2024-01-02T00:00:00Z".to_owned(),
                 }),
             },
             message: core_types::GatewayV2Message {
-                message_id: "0xdef-3".to_string(),
-                source_chain: "ethereum".to_string(),
-                source_address: "0xsource".to_string(),
-                destination_address: "0xdest".to_string(),
+                message_id: "0xdef-3".to_owned(),
+                source_chain: "ethereum".to_owned(),
+                source_address: "0xsource".to_owned(),
+                destination_address: "0xdest".to_owned(),
                 payload_hash: payload_hash_b64,
             },
-            destination_chain: "avalanche".to_string(),
+            destination_chain: "avalanche".to_owned(),
             payload: payload_b64,
         };
 
@@ -680,29 +708,29 @@ mod tests {
 
         let core_event = core_types::Event::MessageApproved {
             common: core_types::CommonEventFields {
-                r#type: "MESSAGE_APPROVED".to_string(),
-                event_id: "0xghi-4".to_string(),
+                r#type: "MESSAGE_APPROVED".to_owned(),
+                event_id: "0xghi-4".to_owned(),
                 meta: Some(core_types::MessageApprovedEventMetadata {
                     common_meta: core_types::EventMetadata {
-                        tx_id: Some("0xghi".to_string()),
-                        from_address: Some("0x789".to_string()),
+                        tx_id: Some("0xghi".to_owned()),
+                        from_address: Some("0x789".to_owned()),
                         finalized: Some(false),
                         source_context: None,
-                        timestamp: "2024-01-03T00:00:00Z".to_string(),
+                        timestamp: "2024-01-03T00:00:00Z".to_owned(),
                     },
-                    command_id: Some("cmd-123".to_string()),
+                    command_id: Some("cmd-123".to_owned()),
                 }),
             },
             message: core_types::GatewayV2Message {
-                message_id: "0xghi-4".to_string(),
-                source_chain: "polygon".to_string(),
-                source_address: "0xpoly".to_string(),
-                destination_address: "0xsol".to_string(),
+                message_id: "0xghi-4".to_owned(),
+                source_chain: "polygon".to_owned(),
+                source_address: "0xpoly".to_owned(),
+                destination_address: "0xsol".to_owned(),
                 payload_hash: payload_hash_b64,
             },
             cost: core_types::Amount {
                 token_id: None,
-                amount: "500".to_string(),
+                amount: "500".to_owned(),
             },
         };
 
@@ -724,27 +752,27 @@ mod tests {
     fn test_message_executed_event_conversion() {
         let core_event = core_types::Event::MessageExecuted {
             common: core_types::CommonEventFields {
-                r#type: "MESSAGE_EXECUTED".to_string(),
-                event_id: "0xjkl-5".to_string(),
+                r#type: "MESSAGE_EXECUTED".to_owned(),
+                event_id: "0xjkl-5".to_owned(),
                 meta: Some(core_types::MessageExecutedEventMetadata {
                     common_meta: core_types::EventMetadata {
-                        tx_id: Some("0xjkl".to_string()),
-                        from_address: Some("0xabc".to_string()),
+                        tx_id: Some("0xjkl".to_owned()),
+                        from_address: Some("0xabc".to_owned()),
                         finalized: Some(true),
                         source_context: None,
-                        timestamp: "2024-01-04T00:00:00Z".to_string(),
+                        timestamp: "2024-01-04T00:00:00Z".to_owned(),
                     },
-                    command_id: Some("cmd-456".to_string()),
-                    child_message_ids: Some(vec!["child-1".to_string(), "child-2".to_string()]),
+                    command_id: Some("cmd-456".to_owned()),
+                    child_message_ids: Some(vec!["child-1".to_owned(), "child-2".to_owned()]),
                     revert_reason: None,
                 }),
             },
-            message_id: "0xjkl-5".to_string(),
-            source_chain: "arbitrum".to_string(),
+            message_id: "0xjkl-5".to_owned(),
+            source_chain: "arbitrum".to_owned(),
             status: core_types::MessageExecutionStatus::SUCCESSFUL,
             cost: core_types::Amount {
                 token_id: None,
-                amount: "250".to_string(),
+                amount: "250".to_owned(),
             },
         };
 
@@ -773,19 +801,19 @@ mod tests {
     fn test_gas_refunded_event_conversion() {
         let core_event = core_types::Event::GasRefunded {
             common: core_types::CommonEventFields {
-                r#type: "GAS_REFUNDED".to_string(),
-                event_id: "0xmno-6".to_string(),
+                r#type: "GAS_REFUNDED".to_owned(),
+                event_id: "0xmno-6".to_owned(),
                 meta: None,
             },
-            message_id: "0xmno-7".to_string(),
-            recipient_address: "0xrecipient".to_string(),
+            message_id: "0xmno-7".to_owned(),
+            recipient_address: "0xrecipient".to_owned(),
             refunded_amount: core_types::Amount {
-                token_id: Some("USDC".to_string()),
-                amount: "100".to_string(),
+                token_id: Some("USDC".to_owned()),
+                amount: "100".to_owned(),
             },
             cost: core_types::Amount {
                 token_id: None,
-                amount: "10".to_string(),
+                amount: "10".to_owned(),
             },
         };
 
@@ -810,19 +838,19 @@ mod tests {
         // ITS event without token_id should be skipped
         let its_event_missing_token = core_types::Event::ITSInterchainTransfer {
             common: core_types::CommonEventFields {
-                r#type: "ITS_INTERCHAIN_TRANSFER".to_string(),
-                event_id: "test".to_string(),
+                r#type: "ITS_INTERCHAIN_TRANSFER".to_owned(),
+                event_id: "test".to_owned(),
                 meta: None,
             },
-            message_id: "test".to_string(),
-            destination_chain: "test".to_string(),
+            message_id: "test".to_owned(),
+            destination_chain: "test".to_owned(),
             token_spent: core_types::Amount {
                 token_id: None,
-                amount: "0".to_string(),
+                amount: "0".to_owned(),
             },
-            source_address: "test".to_string(),
-            destination_address: "test".to_string(),
-            data_hash: "test".to_string(),
+            source_address: "test".to_owned(),
+            destination_address: "test".to_owned(),
+            data_hash: "test".to_owned(),
         };
 
         let amp_events = map_core_events_to_amplifier(vec![its_event_missing_token], 0);
@@ -840,21 +868,21 @@ mod tests {
 
         let core_event = core_types::Event::SignersRotated {
             common: core_types::CommonEventFields {
-                r#type: "SIGNERS_ROTATED".to_string(),
-                event_id: "0xrot-1".to_string(),
+                r#type: "SIGNERS_ROTATED".to_owned(),
+                event_id: "0xrot-1".to_owned(),
                 meta: Some(core_types::SignersRotatedEventMetadata {
                     common_meta: core_types::EventMetadata {
-                        tx_id: Some("0xrot".to_string()),
-                        from_address: Some("0xrotator".to_string()),
+                        tx_id: Some("0xrot".to_owned()),
+                        from_address: Some("0xrotator".to_owned()),
                         finalized: Some(true),
                         source_context: None,
-                        timestamp: "2024-01-09T00:00:00Z".to_string(),
+                        timestamp: "2024-01-09T00:00:00Z".to_owned(),
                     },
                     signers_hash: Some(signer_hash_b64),
                     epoch: Some(42),
                 }),
             },
-            message_id: "0xrot-msg".to_string(),
+            message_id: "0xrot-msg".to_owned(),
         };
 
         let amp_events = map_core_events_to_amplifier(vec![core_event], 0);
@@ -878,25 +906,25 @@ mod tests {
     fn test_its_interchain_transfer_event_conversion() {
         let its_event = core_types::Event::ITSInterchainTransfer {
             common: core_types::CommonEventFields {
-                r#type: "ITS_INTERCHAIN_TRANSFER".to_string(),
-                event_id: "0xits-1".to_string(),
+                r#type: "ITS_INTERCHAIN_TRANSFER".to_owned(),
+                event_id: "0xits-1".to_owned(),
                 meta: Some(core_types::EventMetadata {
-                    tx_id: Some("0xits".to_string()),
-                    from_address: Some("0xsender".to_string()),
+                    tx_id: Some("0xits".to_owned()),
+                    from_address: Some("0xsender".to_owned()),
                     finalized: Some(true),
                     source_context: None,
-                    timestamp: "2024-01-05T00:00:00Z".to_string(),
+                    timestamp: "2024-01-05T00:00:00Z".to_owned(),
                 }),
             },
-            message_id: "0xits-msg".to_string(),
-            destination_chain: "avalanche".to_string(),
+            message_id: "0xits-msg".to_owned(),
+            destination_chain: "avalanche".to_owned(),
             token_spent: core_types::Amount {
-                token_id: Some("token123".to_string()),
-                amount: "1000".to_string(),
+                token_id: Some("token123".to_owned()),
+                amount: "1000".to_owned(),
             },
-            source_address: "0xsrc".to_string(),
-            destination_address: "0xdest".to_string(),
-            data_hash: "0xhash".to_string(),
+            source_address: "0xsrc".to_owned(),
+            destination_address: "0xdest".to_owned(),
+            data_hash: "0xhash".to_owned(),
         };
 
         let amp_events = map_core_events_to_amplifier(vec![its_event], 0);
@@ -920,18 +948,18 @@ mod tests {
     fn test_its_token_metadata_registered_event_conversion() {
         let its_event = core_types::Event::ITSTokenMetadataRegistered {
             common: core_types::CommonEventFields {
-                r#type: "ITS_TOKEN_METADATA_REGISTERED".to_string(),
-                event_id: "0xits-2".to_string(),
+                r#type: "ITS_TOKEN_METADATA_REGISTERED".to_owned(),
+                event_id: "0xits-2".to_owned(),
                 meta: Some(core_types::EventMetadata {
-                    tx_id: Some("0xits2".to_string()),
-                    from_address: Some("0xregistrar".to_string()),
+                    tx_id: Some("0xits2".to_owned()),
+                    from_address: Some("0xregistrar".to_owned()),
                     finalized: Some(true),
                     source_context: None,
-                    timestamp: "2024-01-06T00:00:00Z".to_string(),
+                    timestamp: "2024-01-06T00:00:00Z".to_owned(),
                 }),
             },
-            message_id: "0xits-msg-2".to_string(),
-            address: "0xtokenaddr".to_string(),
+            message_id: "0xits-msg-2".to_owned(),
+            address: "0xtokenaddr".to_owned(),
             decimals: 18,
         };
 
@@ -953,21 +981,21 @@ mod tests {
     fn test_its_link_token_started_event_conversion() {
         let its_event = core_types::Event::ITSLinkTokenStarted {
             common: core_types::CommonEventFields {
-                r#type: "ITS_LINK_TOKEN_STARTED".to_string(),
-                event_id: "0xits-3".to_string(),
+                r#type: "ITS_LINK_TOKEN_STARTED".to_owned(),
+                event_id: "0xits-3".to_owned(),
                 meta: Some(core_types::EventMetadata {
-                    tx_id: Some("0xits3".to_string()),
-                    from_address: Some("0xlinker".to_string()),
+                    tx_id: Some("0xits3".to_owned()),
+                    from_address: Some("0xlinker".to_owned()),
                     finalized: Some(false),
                     source_context: None,
-                    timestamp: "2024-01-07T00:00:00Z".to_string(),
+                    timestamp: "2024-01-07T00:00:00Z".to_owned(),
                 }),
             },
-            message_id: "0xits-msg-3".to_string(),
-            token_id: "token-id-123".to_string(),
-            destination_chain: "polygon".to_string(),
-            source_token_address: "0xsrctoken".to_string(),
-            destination_token_address: "0xdesttoken".to_string(),
+            message_id: "0xits-msg-3".to_owned(),
+            token_id: "token-id-123".to_owned(),
+            destination_chain: "polygon".to_owned(),
+            source_token_address: "0xsrctoken".to_owned(),
+            destination_token_address: "0xdesttoken".to_owned(),
             token_manager_type: core_types::TokenManagerType::LockUnlock,
         };
 
@@ -995,22 +1023,22 @@ mod tests {
     fn test_its_interchain_token_deployment_started_event_conversion() {
         let its_event = core_types::Event::ITSInterchainTokenDeploymentStarted {
             common: core_types::CommonEventFields {
-                r#type: "ITS_INTERCHAIN_TOKEN_DEPLOYMENT_STARTED".to_string(),
-                event_id: "0xits-4".to_string(),
+                r#type: "ITS_INTERCHAIN_TOKEN_DEPLOYMENT_STARTED".to_owned(),
+                event_id: "0xits-4".to_owned(),
                 meta: Some(core_types::EventMetadata {
-                    tx_id: Some("0xits4".to_string()),
-                    from_address: Some("0xdeployer".to_string()),
+                    tx_id: Some("0xits4".to_owned()),
+                    from_address: Some("0xdeployer".to_owned()),
                     finalized: Some(true),
                     source_context: None,
-                    timestamp: "2024-01-08T00:00:00Z".to_string(),
+                    timestamp: "2024-01-08T00:00:00Z".to_owned(),
                 }),
             },
-            message_id: "0xits-msg-4".to_string(),
-            destination_chain: "arbitrum".to_string(),
+            message_id: "0xits-msg-4".to_owned(),
+            destination_chain: "arbitrum".to_owned(),
             token: core_types::InterchainTokenDefinition {
-                id: "token-def-456".to_string(),
-                name: "Test Token".to_string(),
-                symbol: "TEST".to_string(),
+                id: "token-def-456".to_owned(),
+                name: "Test Token".to_owned(),
+                symbol: "TEST".to_owned(),
                 decimals: 6,
             },
         };

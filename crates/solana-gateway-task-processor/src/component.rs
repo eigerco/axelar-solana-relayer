@@ -1139,7 +1139,7 @@ mod tests {
             Event, ExecuteTask, GatewayV2Message, MessageExecutedEvent, MessageExecutionStatus,
             MessageId, PublishEventsRequest, Task, TaskItem, TaskItemId, Token,
         };
-        use axelar_solana_encoding::borsh::{self, BorshDeserialize};
+        use axelar_solana_encoding::borsh::{self, BorshDeserialize as _};
         use axelar_solana_encoding::types::messages::{CrossChainId, Message};
         use axelar_solana_gateway::executable::{
             AxelarMessagePayload, EncodingScheme, SolanaAccountRepr,
