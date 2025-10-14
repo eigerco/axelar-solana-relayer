@@ -10372,7 +10372,6 @@ dependencies = [
  "eyre",
  "futures 0.3.31",
  "gateway-gas-computation",
- "itertools 0.13.0",
  "pretty_assertions",
  "relayer-amplifier-api-integration",
  "relayer-engine",
