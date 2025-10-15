@@ -511,17 +511,15 @@ pub(crate) mod test {
                 &axelar_solana_gateway::id(),
             )
             .unwrap();
-            let gas_ix =
-                axelar_solana_gas_service::instructions::pay_native_for_contract_call_instruction(
-                    &fixture.payer.pubkey(),
-                    "evm".to_owned(),
-                    destination_address.clone(),
-                    payload_hash,
-                    Pubkey::new_unique(),
-                    vec![],
-                    5000,
-                )
-                .unwrap();
+            let gas_ix = axelar_solana_gas_service::instructions::pay_gas_instruction(
+                &fixture.payer.pubkey(),
+                "evm".to_owned(),
+                destination_address.clone(),
+                payload_hash,
+                Pubkey::new_unique(),
+                5000,
+            )
+            .unwrap();
             let sig = fixture
                 .send_tx_with_signatures(&[ix, gas_ix])
                 .await
@@ -532,10 +530,11 @@ pub(crate) mod test {
         // gas service to fund some arbitrary events from the past (2 logs)
         let mut gas_signatures = vec![];
         for i in 0_u8..2 {
-            let gas_ix = axelar_solana_gas_service::instructions::add_native_gas_instruction(
+            let signature = Signature::from([i.saturating_add(42); 64]);
+            let message_id = format!("{signature}-0.0");
+            let gas_ix = axelar_solana_gas_service::instructions::add_gas_instruction(
                 &fixture.payer.pubkey(),
-                [i.saturating_add(42); 64],
-                123,
+                message_id,
                 5000,
                 Pubkey::new_unique(),
             )
@@ -574,7 +573,8 @@ pub(crate) mod test {
         .unwrap();
         let payer = fixture.payer.insecure_clone();
         let gas_init_sig = *fixture
-            .send_tx_with_custom_signers_and_signature(
+            .send_tx_with_custom(
+                &payer.pubkey(),
                 &[ix],
                 &[payer, gas_config.operator.insecure_clone()],
             )

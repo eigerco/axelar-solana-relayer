@@ -83,7 +83,11 @@ ignore = [
   { id = "RUSTSEC-2024-0388", reason = "updating `derivative` is not feasible" },
   { id = "RUSTSEC-2024-0436", reason = "dependency of solana lib" },
   { id = "RUSTSEC-2025-0012", reason = "dependency of solana lib" },
-  { id = "RUSTSEC-2024-0344", reason = "ed25519-dalek: need to wait for solana to upgrade internally" },
+  { id = "RUSTSEC-2024-0344", reason = "ed25519-dalek: need to wait for solana to upgrade internally" }, 
+  { id = "RUSTSEC-2025-0052", reason = "dependency of relayer-core" },
+  { id = "RUSTSEC-2021-0141", reason = "dependency of relayer-core" },
+  { id = "RUSTSEC-2025-0056", reason = "dependency of solana lib" },
+
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
 ]
@@ -196,6 +200,54 @@ expression = "MIT"
 license-files = []
 [[licenses.clarify]]
 crate = "axelar-solana-gateway-test-fixtures"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "solana-transaction-parser"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "anchor-discriminators"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "anchor-discriminators-macros"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelar-core-std"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "axelarnet-gateway"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "event-cpi"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "event-cpi-macros"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "event-cpi-test-utils"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "interchain-token-service"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "msgs-derive"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "relayer-core"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "report"
 expression = "MIT"
 license-files = []
 

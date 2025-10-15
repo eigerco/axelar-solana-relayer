@@ -77,28 +77,30 @@ effective-tx-sender = { path = "crates/effective-tx-sender" }
 gateway-gas-computation = { path = "crates/gateway-gas-computation", default-features = false }
 
 # Relayer core
-amplifier-api = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-relayer-engine = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-relayer-amplifier-api-integration = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6" }
-core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core", rev = "0d917f6", package = "common-serde-utils" }
+amplifier-api = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+relayer-engine = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+relayer-amplifier-api-integration = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+relayer-amplifier-state = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana" }
+core-common-serde-utils = { git = "https://github.com/eigerco/axelar-relayer-core", branch = "solana", package = "common-serde-utils" }
+
+# External crates
+solana-transaction-parser = { git = "https://github.com/commonprefix/solana-transaction-parser.git", rev = "6b9e996" }
 
 # Solana Gateway
 # ⚠️ If you change the revision here make sure to also update the *.so files.
 # Have them built in the amplifier then copy them:
 # `cp ../axelar-amplifier-solana/target/deploy/*.so ./tests/fixtures`
-axelar-solana-gateway = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", features = ["no-entrypoint"], default-features = false }
-axelar-solana-its = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", features = ["no-entrypoint"], default-features = false }
-axelar-solana-governance = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", features = ["no-entrypoint"], default-features = false }
-gateway-event-stack = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", default-features = false }
-axelar-solana-encoding = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", default-features = false }
-axelar-solana-gas-service = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", features = ["no-entrypoint"], default-features = false }
-axelar-solana-gas-service-events = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", default-features = false }
-axelar-solana-memo-program = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", features = ["no-entrypoint"], default-features = false }
-axelar-solana-gateway-test-fixtures = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", default-features = false }
-axelar-message-primitives = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", default-features = false }
-its-instruction-builder = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", default-features = false }
-interchain-token-transfer-gmp = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "517ced5b", default-features = false }
+axelar-solana-gateway = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", features = ["no-entrypoint"], default-features = false }
+axelar-solana-its = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", features = ["no-entrypoint"], default-features = false }
+axelar-solana-governance = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", features = ["no-entrypoint"], default-features = false }
+axelar-solana-encoding = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", default-features = false }
+axelar-solana-gas-service = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", features = ["no-entrypoint"], default-features = false }
+axelar-solana-gas-service-events = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", default-features = false }
+axelar-solana-memo-program = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", features = ["no-entrypoint"], default-features = false }
+axelar-solana-gateway-test-fixtures = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", default-features = false }
+axelar-message-primitives = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", default-features = false }
+its-instruction-builder = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", default-features = false }
+interchain-token-transfer-gmp = { git = "https://github.com/eigerco/axelar-amplifier-solana.git", rev = "4311a71", default-features = false }
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
@@ -114,7 +116,11 @@ base64 = "0.22"
 bs58 = "0.5"
 redact = { version = "0.1", features = ["serde"] }
 thiserror = "1"
-uuid = { version = "1.2", features = ["v4", "serde"] }
+uuid = { version = "=1.18.1", features = ["v4", "serde"] }
+ruint = "=1.16.0"
+libc = "=0.2.176"
+base64ct = "=1.6.0"
+udigest = "=0.2.2"
 typed-builder = "0.2"
 derive_builder = "0.20"
 bnum = "0.12"
@@ -137,6 +143,7 @@ simd-json = "0.14"
 
 # Tests
 mockall = "0.13"
+mpl-token-metadata = "5.1.0"
 pretty_assertions = "1"
 rstest = { version = "0.23" }
 serial_test = "3.2"

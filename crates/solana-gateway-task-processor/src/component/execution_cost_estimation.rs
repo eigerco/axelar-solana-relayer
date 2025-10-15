@@ -293,7 +293,7 @@ async fn build_execute_instruction(
         axelar_solana_gateway::find_message_payload_pda(gateway_incoming_message_pda, signer);
 
     match destination_address {
-        axelar_solana_its::ID => Ok(its_instruction_builder::build_its_gmp_instruction(
+        axelar_solana_its::ID => Ok(its_instruction_builder::build_execute_instruction(
             signer,
             gateway_incoming_message_pda,
             gateway_message_payload_pda,
@@ -313,6 +313,7 @@ async fn build_execute_instruction(
             )?,
         ),
         _ => Ok(construct_axelar_executable_ix(
+            signer,
             message,
             payload,
             gateway_incoming_message_pda,
