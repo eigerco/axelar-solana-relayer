@@ -1,10 +1,9 @@
-use core::fmt;
 use core::future::Future;
 use core::pin::Pin;
 use core::str::FromStr as _;
 use core::task::Poll;
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 use amplifier_api::chrono::{DateTime, Utc};
 use amplifier_api::types::{
@@ -17,14 +16,13 @@ use axelar_solana_encoding::borsh::BorshDeserialize as _;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
-use axelar_solana_gateway::executable::{construct_axelar_executable_ix, AxelarMessagePayload};
+use axelar_solana_gateway::executable::construct_axelar_executable_ix;
 use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage};
 use axelar_solana_gateway::{get_verifier_set_tracker_pda, BytemuckedPda as _};
 use effective_tx_sender::ComputeBudgetError;
 use eyre::{eyre, Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
 use futures::{SinkExt as _, StreamExt as _};
-use message_payload::message_to_command_id;
 use num_traits::FromPrimitive as _;
 use relayer_amplifier_api_integration::AmplifierCommand;
 use relayer_amplifier_state::State;
@@ -32,139 +30,19 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
 use solana_listener::fetch_transaction;
 use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::{Instruction, InstructionError};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
 use solana_sdk::transaction::TransactionError;
-use thiserror::Error;
 use tracing::{info_span, instrument, Instrument as _};
 
+use crate::component::gas_estimator::{GasEstimator, InsufficientGasBalance};
+pub use crate::component::gas_estimator::{PriorityFeeGasEstimator, MAX_COMPUTE_UNITS};
 use crate::config;
 
-mod execution_cost_estimation;
-mod message_payload;
-
-use execution_cost_estimation::ExecuteTaskConsumptionBreakdown;
-
-#[derive(Error, Debug)]
-struct InsufficientGasBalance {
-    cost: BigInt,
-    available: BigInt,
-}
-
-impl fmt::Display for InsufficientGasBalance {
-    #[expect(
-        clippy::min_ident_chars,
-        reason = "either this or clippy::renamed_function_params"
-    )]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Insifficient Gas Balance. Required: {}. Available: {}",
-            self.cost.0, self.available.0
-        )
-    }
-}
-
-/// Trait for gas estimation to allow mocking in tests
-#[cfg_attr(test, mockall::automock)]
-#[async_trait::async_trait]
-pub trait GasEstimator: Send + Sync {
-    /// Gets the simnet RPC client for gas estimation
-    async fn update_program_accounts(&self, address: &Pubkey);
-
-    /// Estimates the total cost of executing a gateway transaction
-    #[expect(clippy::too_many_arguments, reason = "necessary")]
-    async fn ensure_enough_gas(
-        &self,
-        rpc_client: &RpcClient,
-        keypair: &Keypair,
-        gateway_root_pda: Pubkey,
-        message: &Message,
-        payload: &[u8],
-        destination_address: Pubkey,
-        incoming_message_pda: Pubkey,
-        available_gas: BigInt,
-    ) -> eyre::Result<()>;
-}
-
-/// Actual implementation of `GasEstimator`
-pub struct RealGasEstimator {
-    rpc_client: Arc<RpcClient>,
-    cache: Arc<Mutex<HashMap<Pubkey, ExecuteTaskConsumptionBreakdown>>>,
-}
-
-impl RealGasEstimator {
-    /// Creates a new `RealGasEstimator` with the specified RPC URL
-    #[must_use]
-    pub fn new(rpc_url: String) -> Self {
-        let rpc_client = Arc::new(RpcClient::new_with_commitment(
-            rpc_url,
-            CommitmentConfig::processed(),
-        ));
-        Self {
-            rpc_client,
-            cache: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl GasEstimator for RealGasEstimator {
-    async fn update_program_accounts(&self, address: &Pubkey) {
-        let _account = self.rpc_client.get_account(address).await;
-        let _accounts = self.rpc_client.get_program_accounts(address).await;
-    }
-    #[expect(clippy::unwrap_used, reason = "Poisoned lock, just panic")]
-    async fn ensure_enough_gas(
-        &self,
-        rpc_client: &RpcClient,
-        keypair: &Keypair,
-        gateway_root_pda: Pubkey,
-        message: &Message,
-        payload: &[u8],
-        destination_address: Pubkey,
-        incoming_message_pda: Pubkey,
-        available_gas: BigInt,
-    ) -> eyre::Result<()> {
-        let maybe_cached = self.cache.lock().unwrap().remove(&incoming_message_pda);
-
-        let (cost, breakdown) = if let Some(consumption_breakdown) = maybe_cached {
-            (
-                consumption_breakdown.calculate_cost(rpc_client).await?,
-                consumption_breakdown,
-            )
-        } else {
-            execution_cost_estimation::estimate_total_execute_cost(
-                Arc::clone(&self.rpc_client),
-                rpc_client,
-                keypair,
-                gateway_root_pda,
-                message,
-                payload,
-                destination_address,
-            )
-            .await?
-        };
-
-        let cost = BigInt::from_u64(cost);
-        if cost.0 > available_gas.0 {
-            self.cache
-                .lock()
-                .unwrap()
-                .insert(incoming_message_pda, breakdown);
-
-            return Err(InsufficientGasBalance {
-                cost,
-                available: available_gas,
-            }
-            .into());
-        }
-
-        Ok(())
-    }
-}
+mod gas_estimator;
 
 /// A component that pushes transactions over to the Solana blockchain.
 /// The transactions to push are dependant on the events that the Amplifier API will provide
@@ -217,11 +95,6 @@ impl<S: State, G: GasEstimator> SolanaTxPusher<S, G> {
         let keypair = Arc::new(self.config.signing_keypair());
 
         ensure_gas_service_authority(&keypair.pubkey(), &self.rpc_client, &config_metadata).await?;
-
-        // Make sure we have the gateway loaded locally
-        self.gas_estimator
-            .update_program_accounts(&axelar_solana_gateway::id())
-            .await;
 
         let mut futures_ordered = FuturesOrdered::new();
         let mut rx = self.task_receiver.receiver.fuse();
@@ -594,46 +467,89 @@ async fn execute_task_with_estimator<G: GasEstimator>(
     // Verify destination and communicate with the destination program
     verify_destination(destination_address, config.allow_third_party_contract_calls)?;
 
-    gas_estimator
-        .ensure_enough_gas(
-            solana_rpc_client,
-            keypair,
-            metadata.gateway_root_pda,
-            &message,
-            &payload,
-            destination_address,
-            gateway_incoming_message_pda,
-            available_gas_balance,
-        )
-        .await?;
+    // Collect all instructions () to be sent in a single transaction
+    let mut all_ixs: Vec<Instruction> = Vec::with_capacity(3);
 
-    // Upload the message payload to a Gateway-owned PDA account and get its address back.
-    let gateway_message_payload_pda = message_payload::upload(
-        solana_rpc_client,
-        keypair,
-        metadata.gateway_root_pda,
+    let execute_ix = build_execute_instruction(
+        signer,
         &message,
         &payload,
+        destination_address,
+        solana_rpc_client,
     )
     .await?;
 
-    let execute_call_status = send_to_destination_program(
-        destination_address,
-        signer,
-        gateway_incoming_message_pda,
-        gateway_message_payload_pda,
-        metadata.gateway_root_pda,
-        &message,
-        payload,
-        solana_rpc_client,
-        keypair,
-    )
-    .await;
+    // Estimate gas cost and ensure enough gas balance
+    let gas_result = gas_estimator
+        .ensure_enough_gas(
+            vec![execute_ix.clone()],
+            available_gas_balance.0.try_into().map_err(|_err| {
+                eyre::eyre!("available gas balance is too large to fit into u64")
+            })?,
+        )
+        .await?;
 
-    // propagate the execute err if there was any
-    execute_call_status?;
+    all_ixs.push(execute_ix);
+
+    // Add priority fee compute budget instruction
+    all_ixs.insert(
+        0,
+        ComputeBudgetInstruction::set_compute_unit_price(
+            gas_result.average_piority_fee_micro_lamports,
+        ),
+    );
+
+    all_ixs.insert(
+        0,
+        ComputeBudgetInstruction::set_compute_unit_limit(gas_estimator::MAX_COMPUTE_UNITS),
+    );
+
+    send_transaction(solana_rpc_client, keypair, all_ixs.into()).await?;
 
     Ok(())
+}
+
+pub(crate) async fn build_execute_instruction(
+    signer: Pubkey,
+    message: &Message,
+    payload: &[u8],
+    destination_address: Pubkey,
+    rpc_client: &RpcClient,
+) -> eyre::Result<Instruction> {
+    let (gateway_incoming_message_pda, _) = axelar_solana_gateway::get_incoming_message_pda(
+        &command_id(&message.cc_id.chain, &message.cc_id.id),
+    );
+    let (gateway_message_payload_pda, _) =
+        axelar_solana_gateway::find_message_payload_pda(gateway_incoming_message_pda, signer);
+
+    match destination_address {
+        axelar_solana_its::ID => Ok(its_instruction_builder::build_execute_instruction(
+            signer,
+            gateway_incoming_message_pda,
+            gateway_message_payload_pda,
+            message.clone(),
+            payload.to_vec(),
+            rpc_client,
+        )
+        .await
+        .map_err(|err| eyre::eyre!("Failed to build ITS instruction: {:?}", err))?),
+        axelar_solana_governance::ID => Ok(
+            axelar_solana_governance::instructions::builder::calculate_gmp_ix(
+                signer,
+                gateway_incoming_message_pda,
+                gateway_message_payload_pda,
+                message,
+                payload,
+            )?,
+        ),
+        _ => Ok(construct_axelar_executable_ix(
+            signer,
+            message,
+            payload,
+            gateway_incoming_message_pda,
+            gateway_message_payload_pda,
+        )?),
+    }
 }
 
 fn verify_destination(
@@ -661,65 +577,6 @@ fn verify_destination(
     Ok(())
 }
 
-#[expect(clippy::too_many_arguments, reason = "necessary")]
-async fn send_to_destination_program(
-    destination_address: Pubkey,
-    signer: Pubkey,
-    gateway_incoming_message_pda: Pubkey,
-    gateway_message_payload_pda: Pubkey,
-    gateway_root_pda: Pubkey,
-    message: &Message,
-    payload: Vec<u8>,
-    solana_rpc_client: &RpcClient,
-    keypair: &Keypair,
-) -> eyre::Result<Signature> {
-    // For compatibility reasons with the rest of the Axelar protocol we need add custom handling
-    // for ITS & Governance programs
-    let ix = match destination_address {
-        axelar_solana_its::ID => {
-            its_instruction_builder::build_execute_instruction(
-                signer,
-                gateway_incoming_message_pda,
-                gateway_message_payload_pda,
-                message.clone(),
-                payload,
-                solana_rpc_client,
-            )
-            .await?
-        }
-        axelar_solana_governance::ID => {
-            axelar_solana_governance::instructions::builder::calculate_gmp_ix(
-                signer,
-                gateway_incoming_message_pda,
-                gateway_message_payload_pda,
-                message,
-                &payload,
-            )?
-        }
-        _ => {
-            validate_relayer_not_in_payload(&payload, signer)?;
-            // if security passed, we broadcast the tx
-            construct_axelar_executable_ix(
-                signer,
-                message,
-                &payload,
-                gateway_incoming_message_pda,
-                gateway_message_payload_pda,
-            )?
-        }
-    };
-    let msg_command_id = message_to_command_id(message);
-    let ix_close = axelar_solana_gateway::instructions::close_message_payload(
-        gateway_root_pda,
-        keypair.pubkey(),
-        msg_command_id,
-    )
-    .context("failed to construct an instruction to close the message payload pda")?;
-    let execute_call_status =
-        send_transaction(solana_rpc_client, keypair, VecDeque::from([ix, ix_close])).await?;
-    Ok(execute_call_status)
-}
-
 /// Checks if the incoming message has already been executed.
 async fn incoming_message_already_executed(
     solana_rpc_client: &RpcClient,
@@ -732,32 +589,6 @@ async fn incoming_message_already_executed(
         .ok_or_eyre("failed to read incoming message")?;
 
     Ok(incoming_message.status.is_executed())
-}
-
-/// Validates that the relayer's signing account is not included in the transaction payload.
-///
-/// This is a critical security check to prevent potential account draining attacks. Since the
-/// relayer acts as a transaction signer, and `AxelarMessagePayload` allows dynamic account
-/// appending, a malicious actors could include an instruction to transfer relayer's funds in the
-/// transaction.
-///
-/// # Errors
-/// Returns an error if the relayer's signing account is detected in the payload's account metadata.
-/// Decoding errors are ignored, as they are considered non-critical.
-fn validate_relayer_not_in_payload(payload: &[u8], signer: Pubkey) -> eyre::Result<()> {
-    if let Ok(decoded_payload) = AxelarMessagePayload::decode(payload) {
-        let relayer_acc_is_included = decoded_payload
-            .account_meta()
-            .iter()
-            .any(|acc| acc.pubkey == signer);
-
-        if relayer_acc_is_included {
-            return Err(eyre::eyre!(
-                "relayer will not execute a transaction where its own key is included"
-            ));
-        }
-    }
-    Ok(())
 }
 
 async fn gateway_tx_task(
@@ -975,7 +806,9 @@ mod tests {
     };
     use tokio::task::JoinHandle;
 
-    use super::{MockGasEstimator, SolanaTxPusher};
+    use super::gas_estimator::MockGasEstimator;
+    use super::SolanaTxPusher;
+    use crate::component::gas_estimator::GasEstimatorResult;
     use crate::config;
 
     mod unit_tests {
@@ -1014,14 +847,15 @@ mod tests {
 
     mod integration_tests {
 
-        use amplifier_api::types::{ExecuteTask, GatewayV2Message, MessageId, Token};
+        use amplifier_api::types::{BigInt, ExecuteTask, GatewayV2Message, MessageId, Token};
         use axelar_solana_encoding::types::messages::{CrossChainId, Message};
         use pretty_assertions::assert_eq;
         use solana_sdk::signature::Signature;
 
         use super::*;
+        use crate::component::gas_estimator::{GasEstimatorResult, MockGasEstimator};
         use crate::component::tests::{setup, setup_aux_contracts};
-        use crate::component::{execute_task_with_estimator, ConfigMetadata, MockGasEstimator};
+        use crate::component::{config, execute_task_with_estimator, ConfigMetadata};
 
         #[test_log::test(tokio::test)]
         async fn test_allow_third_party_contract_calls_config() {
@@ -1100,14 +934,14 @@ mod tests {
 
             // Create a mock gas estimator that returns a low cost
             let mut mock_estimator = MockGasEstimator::new();
-            mock_estimator
-                .expect_update_program_accounts()
-                .withf(|_| true) // Accept any arguments
-                .times(..)
-                .returning(|_| ());
-            mock_estimator
-                .expect_ensure_enough_gas()
-                .returning(|_, _, _, _, _, _, _, _| Ok(()));
+
+            mock_estimator.expect_ensure_enough_gas().returning(|_, _| {
+                Ok(GasEstimatorResult {
+                    required_gas: 50,
+                    available_gas: 100,
+                    average_piority_fee_micro_lamports: 2,
+                })
+            });
 
             let result = execute_task_with_estimator(
                 task,
@@ -1701,14 +1535,13 @@ mod tests {
 
         // Create a mock gas estimator for tests
         let mut mock_estimator = MockGasEstimator::new();
-        mock_estimator
-            .expect_update_program_accounts()
-            .withf(|_| true) // Accept any arguments
-            .times(..)
-            .returning(|_| ());
-        mock_estimator
-            .expect_ensure_enough_gas()
-            .returning(|_, _, _, _, _, _, _, _| Ok(()));
+        mock_estimator.expect_ensure_enough_gas().returning(|_, _| {
+            Ok(GasEstimatorResult {
+                required_gas: 100_000,
+                available_gas: 1_000_000,
+                average_piority_fee_micro_lamports: 10,
+            })
+        });
 
         let solana_tx_pusher = SolanaTxPusher::new(
             Arc::new(config),
