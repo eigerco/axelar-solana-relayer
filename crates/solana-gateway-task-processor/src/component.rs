@@ -30,16 +30,15 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
 use solana_listener::fetch_transaction;
 use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::{Instruction, InstructionError};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
-use solana_sdk::transaction::TransactionError;
+use solana_sdk::transaction::{Transaction, TransactionError};
 use tracing::{info_span, instrument, Instrument as _};
 
+pub use crate::component::gas_estimator::PriorityFeeGasEstimator;
 use crate::component::gas_estimator::{GasEstimator, InsufficientGasBalance};
-pub use crate::component::gas_estimator::{PriorityFeeGasEstimator, MAX_COMPUTE_UNITS};
 use crate::config;
 
 mod gas_estimator;
@@ -467,9 +466,6 @@ async fn execute_task_with_estimator<G: GasEstimator>(
     // Verify destination and communicate with the destination program
     verify_destination(destination_address, config.allow_third_party_contract_calls)?;
 
-    // Collect all instructions () to be sent in a single transaction
-    let mut all_ixs: Vec<Instruction> = Vec::with_capacity(3);
-
     let execute_ix = build_execute_instruction(
         signer,
         &message,
@@ -483,28 +479,34 @@ async fn execute_task_with_estimator<G: GasEstimator>(
     let gas_result = gas_estimator
         .ensure_enough_gas(
             vec![execute_ix.clone()],
+            keypair,
             available_gas_balance.0.try_into().map_err(|_err| {
                 eyre::eyre!("available gas balance is too large to fit into u64")
             })?,
         )
         .await?;
 
+    let mut all_ixs = Vec::with_capacity(3);
+
+    all_ixs.extend(gas_result.priority_fee_ixs);
     all_ixs.push(execute_ix);
 
-    // Add priority fee compute budget instruction
-    all_ixs.insert(
-        0,
-        ComputeBudgetInstruction::set_compute_unit_price(
-            gas_result.average_piority_fee_micro_lamports,
-        ),
+    let blockhash = solana_rpc_client
+        .get_latest_blockhash()
+        .await
+        .map_err(|err| eyre::eyre!("Failed to get blockhash: {}", err))?;
+
+    let tx = Transaction::new_signed_with_payer(
+        &all_ixs,
+        Some(&keypair.pubkey()),
+        &[keypair],
+        blockhash,
     );
 
-    all_ixs.insert(
-        0,
-        ComputeBudgetInstruction::set_compute_unit_limit(gas_estimator::MAX_COMPUTE_UNITS),
-    );
-
-    send_transaction(solana_rpc_client, keypair, all_ixs.into()).await?;
+    solana_rpc_client
+        .send_and_confirm_transaction(&tx)
+        .await
+        .map_err(|err| eyre::eyre!("Failed to send and confirm transaction: {}", err))?;
 
     Ok(())
 }
@@ -847,7 +849,7 @@ mod tests {
 
     mod integration_tests {
 
-        use amplifier_api::types::{BigInt, ExecuteTask, GatewayV2Message, MessageId, Token};
+        use amplifier_api::types::{ExecuteTask, GatewayV2Message, MessageId, Token};
         use axelar_solana_encoding::types::messages::{CrossChainId, Message};
         use pretty_assertions::assert_eq;
         use solana_sdk::signature::Signature;
@@ -935,13 +937,15 @@ mod tests {
             // Create a mock gas estimator that returns a low cost
             let mut mock_estimator = MockGasEstimator::new();
 
-            mock_estimator.expect_ensure_enough_gas().returning(|_, _| {
-                Ok(GasEstimatorResult {
-                    required_gas: 50,
-                    available_gas: 100,
-                    average_piority_fee_micro_lamports: 2,
-                })
-            });
+            mock_estimator
+                .expect_ensure_enough_gas()
+                .returning(|_, _, _| {
+                    Ok(GasEstimatorResult {
+                        required_gas: 50,
+                        available_gas: 100,
+                        priority_fee_ixs: vec![],
+                    })
+                });
 
             let result = execute_task_with_estimator(
                 task,
@@ -1535,13 +1539,15 @@ mod tests {
 
         // Create a mock gas estimator for tests
         let mut mock_estimator = MockGasEstimator::new();
-        mock_estimator.expect_ensure_enough_gas().returning(|_, _| {
-            Ok(GasEstimatorResult {
-                required_gas: 100_000,
-                available_gas: 1_000_000,
-                average_piority_fee_micro_lamports: 10,
-            })
-        });
+        mock_estimator
+            .expect_ensure_enough_gas()
+            .returning(|_, _, _| {
+                Ok(GasEstimatorResult {
+                    required_gas: 100_000,
+                    available_gas: 1_000_000,
+                    priority_fee_ixs: vec![],
+                })
+            });
 
         let solana_tx_pusher = SolanaTxPusher::new(
             Arc::new(config),

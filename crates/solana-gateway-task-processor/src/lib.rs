@@ -3,5 +3,5 @@
 
 mod component;
 mod config;
-pub use component::{PriorityFeeGasEstimator, SolanaTxPusher, MAX_COMPUTE_UNITS};
+pub use component::{PriorityFeeGasEstimator, SolanaTxPusher};
 pub use config::Config;

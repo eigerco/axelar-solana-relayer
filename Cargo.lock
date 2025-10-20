@@ -10488,6 +10488,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-client",
+ "solana-compute-budget",
  "solana-listener",
  "solana-rpc",
  "solana-rpc-client-api",
