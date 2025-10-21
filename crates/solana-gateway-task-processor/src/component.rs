@@ -284,49 +284,20 @@ async fn process_task<G: GasEstimator>(
                 // error building an instruction, parsing pubkey, rpc transport error,
                 // etc.
                 //
-                // In this case, check if the payload was uploaded. If so, we need to get
-                // refunded for that. The amplifier API is being updated to accept a list of
+                // The amplifier API is being updated to accept a list of
                 // the transactions hashes with their aggregated costs, but for now we just use
                 // meta.txID = null and pass the costs.
                 //
                 // In case no lamports were spent, no transaction could actually be executed in
                 // the execute_task flow.
-                let (incoming_message_pda, _bump) = axelar_solana_gateway::get_incoming_message_pda(
-                    &command_id(&source_chain, &message_id.0),
-                );
-                let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
-                    incoming_message_pda,
-                    keypair.pubkey(),
-                );
 
-                let maybe_some_fee = gateway_gas_computation::cost_of_payload_uploading(
-                    solana_rpc_client,
-                    metadata.commitment,
-                    message_payload_pda,
-                    axelar_solana_gateway::id(),
+                cannot_execute_message_event(
+                    task_item.id,
+                    source_chain,
+                    message_id,
+                    CannotExecuteMessageReason::Error,
+                    error.to_string(),
                 )
-                .await;
-
-                match maybe_some_fee {
-                    Ok(fee) if fee > 0 => message_executed_event(
-                        &task_item.id.0.to_string(),
-                        source_chain,
-                        message_id,
-                        MessageExecutionStatus::Reverted,
-                        None,
-                        Token {
-                            token_id: None,
-                            amount: BigInt::from_u64(fee),
-                        },
-                    ),
-                    _ => cannot_execute_message_event(
-                        task_item.id,
-                        source_chain,
-                        message_id,
-                        CannotExecuteMessageReason::Error,
-                        error.to_string(),
-                    ),
-                }
             };
 
             let command = AmplifierCommand::PublishEvents(PublishEventsRequest {
@@ -521,14 +492,11 @@ pub(crate) async fn build_execute_instruction(
     let (gateway_incoming_message_pda, _) = axelar_solana_gateway::get_incoming_message_pda(
         &command_id(&message.cc_id.chain, &message.cc_id.id),
     );
-    let (gateway_message_payload_pda, _) =
-        axelar_solana_gateway::find_message_payload_pda(gateway_incoming_message_pda, signer);
 
     match destination_address {
         axelar_solana_its::ID => Ok(its_instruction_builder::build_execute_instruction(
             signer,
             gateway_incoming_message_pda,
-            gateway_message_payload_pda,
             message.clone(),
             payload.to_vec(),
             rpc_client,
@@ -539,17 +507,14 @@ pub(crate) async fn build_execute_instruction(
             axelar_solana_governance::instructions::builder::calculate_gmp_ix(
                 signer,
                 gateway_incoming_message_pda,
-                gateway_message_payload_pda,
                 message,
                 payload,
             )?,
         ),
         _ => Ok(construct_axelar_executable_ix(
-            signer,
-            message,
+            message.clone(),
             payload,
             gateway_incoming_message_pda,
-            gateway_message_payload_pda,
         )?),
     }
 }

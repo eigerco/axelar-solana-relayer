@@ -101,10 +101,6 @@ pub async fn compute_total_gas(
                     GatewayInstruction::InitializeConfig(_) |
                     GatewayInstruction::InitializePayloadVerificationSession { .. } |
                     GatewayInstruction::VerifySignature { .. } |
-                    GatewayInstruction::InitializeMessagePayload { .. } |
-                    GatewayInstruction::WriteMessagePayload { .. } |
-                    GatewayInstruction::CommitMessagePayload { .. } |
-                    GatewayInstruction::CloseMessagePayload { .. } |
                     GatewayInstruction::ValidateMessage { .. } |
                     GatewayInstruction::TransferOperatorship => {
                         continue;
@@ -112,27 +108,7 @@ pub async fn compute_total_gas(
                 }
             }
             _other => {
-                const MESSAGE_PAYLOAD_PDA_IDX: usize = 1;
-                // check if this is `axelar_executable` call
-                let Some(Ok(_message)) =
-                    axelar_solana_gateway::executable::parse_axelar_message(payload)
-                else {
-                    continue;
-                };
-
-                let Some(message_payload_pda) = accounts.get(MESSAGE_PAYLOAD_PDA_IDX).copied()
-                else {
-                    continue;
-                };
-                let upload_payload_costs = cost_of_payload_uploading(
-                    rpc,
-                    commitment,
-                    message_payload_pda,
-                    gateway_program_id,
-                )
-                .await?;
-
-                total_gas_cost = total_gas_cost.saturating_add(upload_payload_costs);
+                continue;
             }
         }
     }
@@ -176,70 +152,12 @@ async fn cost_of_signature_verification(
                 GatewayInstruction::RotateSigners { .. } |
                 GatewayInstruction::CallContract { .. } |
                 GatewayInstruction::InitializeConfig(_) |
-                GatewayInstruction::InitializeMessagePayload { .. } |
-                GatewayInstruction::WriteMessagePayload { .. } |
-                GatewayInstruction::CommitMessagePayload { .. } |
-                GatewayInstruction::CloseMessagePayload { .. } |
                 GatewayInstruction::ValidateMessage { .. } |
                 GatewayInstruction::TransferOperatorship => (),
             }
         }
     }
     Ok(verify_signatures_costs)
-}
-
-/// Computes the cost of uploading the message payload.
-///
-/// # Errors
-///
-/// - if no transactions are found.
-/// - if no logs are found for a transaction.
-pub async fn cost_of_payload_uploading(
-    rpc: &RpcClient,
-    commitment: CommitmentConfig,
-    message_payload_pda: Pubkey,
-    gateway_program_id: Pubkey,
-) -> Result<u64, eyre::Error> {
-    let signatures = fetch_signatures(rpc, commitment, &message_payload_pda).await?;
-    let tx_logs = signatures
-        .into_iter()
-        .map(|x| fetch_transaction(commitment, x, rpc))
-        .collect::<FuturesUnordered<_>>();
-    let tx_logs = tx_logs.try_collect::<Vec<_>>().await?;
-    let mut total_gas_costs = 0_u64;
-    for tx in tx_logs {
-        let TxStatus::Successful(tx) = tx else {
-            continue;
-        };
-        for (program_id, _accounts, payload) in tx.ixs {
-            let Ok(instruction_data) = borsh::from_slice::<GatewayInstruction>(&payload) else {
-                continue;
-            };
-
-            if program_id != gateway_program_id {
-                continue;
-            }
-
-            match instruction_data {
-                GatewayInstruction::InitializeMessagePayload { .. } |
-                GatewayInstruction::WriteMessagePayload { .. } |
-                GatewayInstruction::CommitMessagePayload { .. } |
-                GatewayInstruction::CloseMessagePayload { .. } => {
-                    total_gas_costs = total_gas_costs.saturating_add(tx.cost_in_lamports);
-                }
-                // no actoin to take
-                GatewayInstruction::ApproveMessage { .. } |
-                GatewayInstruction::RotateSigners { .. } |
-                GatewayInstruction::CallContract { .. } |
-                GatewayInstruction::InitializeConfig(_) |
-                GatewayInstruction::InitializePayloadVerificationSession { .. } |
-                GatewayInstruction::VerifySignature { .. } |
-                GatewayInstruction::ValidateMessage { .. } |
-                GatewayInstruction::TransferOperatorship => {}
-            }
-        }
-    }
-    Ok(total_gas_costs)
 }
 
 async fn fetch_signatures(
