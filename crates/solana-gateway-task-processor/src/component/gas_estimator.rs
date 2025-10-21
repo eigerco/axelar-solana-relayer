@@ -91,7 +91,7 @@ impl GasEstimator for PriorityFeeGasEstimator {
         // Get average prioritization fee for involved accounts, this will be used to calculate CU
         // unit price
         let accounts = ix_unique_account_addreses(&ixs);
-        let average_piority_fee_micro_lamports =
+        let average_priority_fee_micro_lamports =
             average_priorization_fee_micro_lamports(&accounts, &self.rpc_client).await?;
 
         // Simulate transaction to estimate compute unit consumption, so we can set appropriate
@@ -126,7 +126,7 @@ impl GasEstimator for PriorityFeeGasEstimator {
             .units_consumed
             .ok_or_eyre("Failed to get consumed compute units from simulation result")?;
 
-        // Add Solana refcommended 10 % margin to CU unit consumption
+        // Add Solana recommended 10 % margin to CU unit consumption
         let effective_limit_cu_units = consumed_cu_units
             .checked_mul(110)
             .ok_or_eyre("Overflow when calculating CU margin")?
@@ -136,7 +136,7 @@ impl GasEstimator for PriorityFeeGasEstimator {
         // With all the data gathered, calculate total fees
         let cost = calculate_fees(
             ixs,
-            average_piority_fee_micro_lamports,
+            average_priority_fee_micro_lamports,
             effective_limit_cu_units,
         )?;
 
@@ -151,7 +151,7 @@ impl GasEstimator for PriorityFeeGasEstimator {
 
         // Prepare priority fee instructions, so the caller can add these to the transaction.
         let priority_fee_ixs = vec![
-            ComputeBudgetInstruction::set_compute_unit_price(average_piority_fee_micro_lamports),
+            ComputeBudgetInstruction::set_compute_unit_price(average_priority_fee_micro_lamports),
             ComputeBudgetInstruction::set_compute_unit_limit(
                 effective_limit_cu_units.try_into().map_err(|err| {
                     eyre::eyre!("Effective compute units exceed u32 max value: {}", err) // Weird case. This is a mismatch in Solana API.
