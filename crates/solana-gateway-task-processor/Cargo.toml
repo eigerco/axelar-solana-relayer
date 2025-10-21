@@ -16,7 +16,6 @@ axelar-solana-gateway.workspace = true
 axelar-solana-governance.workspace = true
 axelar-solana-its.workspace = true
 axelar-solana-memo-program.workspace = true
-bincode.workspace = true
 bs58.workspace = true
 clap.workspace = true
 common-serde-utils = { workspace = true }

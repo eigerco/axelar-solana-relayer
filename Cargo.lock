@@ -10469,7 +10469,6 @@ dependencies = [
  "axelar-solana-its",
  "axelar-solana-memo-program",
  "base64 0.22.1",
- "bincode",
  "bs58",
  "clap 4.5.36",
  "common-serde-utils 0.1.0",
