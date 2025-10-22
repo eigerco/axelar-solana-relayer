@@ -188,15 +188,9 @@ fn calculate_fees(
         .ok_or_eyre("Overflow when calculating basic fee")?;
 
     // Add priority compute units fee.
-    // Convert from micro-lamports to lamports using fixed-point arithmetic (round-half-up)
-    let average_priority_fee_cu_cost_lamports = average_priority_fee_cu_cost_micro_lamports
-        .saturating_add(
-            MICRO_LAMPORTS_PER_LAMPORT
-                .checked_div(2)
-                .ok_or_eyre("Overflow when calculating average priority fee in lamports")?,
-        )
-        .checked_div(MICRO_LAMPORTS_PER_LAMPORT)
-        .ok_or_eyre("Overflow when calculating average priority fee in lamports")?;
+    // Convert from micro-lamports to lamports rounding up.
+    let average_priority_fee_cu_cost_lamports =
+        average_priority_fee_cu_cost_micro_lamports.div_ceil(MICRO_LAMPORTS_PER_LAMPORT);
 
     Ok(fee.saturating_add(
         effective_limit_cu_units.saturating_mul(average_priority_fee_cu_cost_lamports),
@@ -353,8 +347,8 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_fees_rounding_half_up_priority_fee() {
-        // No signers, priority fee rounds from 500_000 micro to 1 lamport per CU
+    fn test_calculate_fees_rounding_up_priority_fee_half_micro() {
+        // No signers, priority fee rounds up from 500_000 micro to 1 lamport per CU
         let effective_limit_cu_units = 1_000u64;
         let avg_priority_micro = MICRO_LAMPORTS_PER_LAMPORT / 2; // 500_000
         let expected = effective_limit_cu_units * 1; // 1 lamport/CU
@@ -364,13 +358,14 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_fees_rounding_down_priority_fee() {
-        // 499_999 micro-lamports should round down to 0 lamports per CU
+    fn test_calculate_fees_rounding_up_priority_fee_below_half() {
+        // 499_999 micro-lamports should round UP to 1 lamport per CU with ceil division
         let effective_limit_cu_units = 2_000u64;
         let avg_priority_micro = (MICRO_LAMPORTS_PER_LAMPORT / 2) - 1; // 499_999
 
+        let expected = effective_limit_cu_units * 1; // rounds up to 1 lamport/CU
         let res = calculate_fees(vec![], avg_priority_micro, effective_limit_cu_units).unwrap();
-        assert_eq!(res, 0);
+        assert_eq!(res, expected);
     }
 
     #[test]
