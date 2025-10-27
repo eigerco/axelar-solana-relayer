@@ -1755,4 +1755,278 @@ mod tests {
         fixture.payer = init_payer;
         fixture
     }
+
+    mod tx_size_tests {
+
+        use axelar_solana_encoding::borsh::to_vec;
+        use axelar_solana_encoding::types::messages::{CrossChainId, Message};
+        use axelar_solana_gateway::state::incoming_message::command_id;
+        use axelar_solana_its::state::token_manager::{TokenManager, Type};
+        use interchain_token_transfer_gmp::alloy_primitives::hex::FromHex;
+        use interchain_token_transfer_gmp::alloy_primitives::{Bytes, FixedBytes, U256};
+        use interchain_token_transfer_gmp::{DeployInterchainToken, GMPPayload, LinkToken};
+        use its_instruction_builder::build_execute_instruction;
+        use solana_sdk::account::Account;
+        use solana_sdk::address_lookup_table::instruction::{
+            create_lookup_table, extend_lookup_table, freeze_lookup_table,
+        };
+        use solana_sdk::address_lookup_table::state::AddressLookupTable;
+        use solana_sdk::address_lookup_table::AddressLookupTableAccount;
+        use solana_sdk::compute_budget::ComputeBudgetInstruction;
+        use solana_sdk::message::{v0, VersionedMessage};
+        use solana_sdk::transaction::{Transaction, VersionedTransaction};
+
+        use super::*;
+        use crate::component::tests::setup;
+
+        fn setup_test_rpc_client(fixture: &SolanaAxelarIntegrationMetadata) -> Arc<RpcClient> {
+            let rpc_client_url = match fixture.fixture.test_node {
+                axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                    ref validator,
+                    ..
+                } => validator.rpc_url(),
+                axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                    unimplemented!()
+                }
+            };
+
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 10,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            })
+        }
+
+        #[tokio::test]
+        async fn test_tx_size_enough_for_its_deploy() {
+            let fixture = setup().await;
+            let rpc_client = setup_test_rpc_client(&fixture);
+            let mut all_ixs = Vec::with_capacity(3);
+
+            // Prepare the ALT with all required accounts
+
+            // This accounts were captured from a real ITS deploy transaction directly by
+            // printing them.
+            let alt_accounts = vec![
+                Pubkey::from_str("8BSUmYuqLy9isRz95rwjdaBRm2mSonEokAv9qZSs1F4f").unwrap(),
+                Pubkey::from_str("11111112cMQwSC9qirWGjZM6gLGwW69X22mqwLLGP").unwrap(),
+                Pubkey::from_str("K6f6cwsxLNF8NZSDaGQik5ooLvhaUtosV7YSd4CCaGA").unwrap(),
+                Pubkey::from_str("5ix2rAC3KpL56XDLDNXgbhSWAK5KT7AY1TmYBXYhzP2e").unwrap(),
+                Pubkey::from_str("6PuxZdewLVhjZ6tqS4gJAizezGtQjZncC2wUqrp1tX36").unwrap(),
+                Pubkey::from_str("gtwi5T9x6rTWPtuuz6DA7ia1VmH8bdazm9QfDdi6DVp").unwrap(),
+                Pubkey::from_str("11111111111111111111111111111111").unwrap(),
+                Pubkey::from_str("8JYHzvaw7EQdck2xus8rqxELRSfD5iqi4aQx7UMFkswZ").unwrap(),
+                Pubkey::from_str("3Z384uzqzXDRLmZwCTqLVDPoE1fbqEzNLhk5zSHVKWQA").unwrap(),
+                Pubkey::from_str("4xjq8awEhxepX5qzBPpuEaysDDUR6vqrKXfSmPJyfDtx").unwrap(),
+                Pubkey::from_str("BRrxYcCjKXHr8LK2E3JQ7zoKxKAJvSqvvYYvEh5JeXW3").unwrap(),
+                Pubkey::from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb").unwrap(),
+                Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap(),
+                Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
+                Pubkey::from_str("HGzJLRNJWf4yYeD2UKqr9Tniyx1or2JJngPVMu8pQUvp").unwrap(),
+                Pubkey::from_str("itsqybuNsChBo3LgVhCWWnTJVJdoVTUJaodmqQcG6z7").unwrap(),
+                Pubkey::from_str("Sysvar1nstructions1111111111111111111111111").unwrap(),
+                Pubkey::from_str("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").unwrap(),
+                Pubkey::from_str("2keFQFp8LXxgPitpffGHnfmP6Ga66DkAhcE9xUBuuViZ").unwrap(),
+                Pubkey::from_str("itsqybuNsChBo3LgVhCWWnTJVJdoVTUJaodmqQcG6z7").unwrap(),
+                Pubkey::from_str("11111112D1oxKts8YPdTJRG5FzxTNpMtWmq8hkVx3").unwrap(),
+                Pubkey::from_str("AxbALk7DT9rDaRE1H8ptxSrFNZQNe5V7WrXinHijnkQy").unwrap(),
+            ];
+
+            // Create the LUT
+            let recent_slot = rpc_client.get_slot().await.unwrap();
+            let (ix_alt_create, alt_pubkey) =
+                create_lookup_table(fixture.payer.pubkey(), fixture.payer.pubkey(), recent_slot);
+            // Extend the LUT
+            let ix_alt_extend = extend_lookup_table(
+                alt_pubkey,
+                fixture.payer.pubkey(),
+                Some(fixture.payer.pubkey()),
+                alt_accounts.clone(),
+            );
+            // Freeze the LUT
+            let ix_alt_freeze = freeze_lookup_table(alt_pubkey, fixture.payer.pubkey());
+
+            // Send all LUT instructions in a single transaction
+            rpc_client
+                .send_and_confirm_transaction(&Transaction::new_signed_with_payer(
+                    &[ix_alt_create, ix_alt_extend, ix_alt_freeze],
+                    Some(&fixture.payer.pubkey()),
+                    &[&fixture.payer],
+                    rpc_client.get_latest_blockhash().await.unwrap(),
+                ))
+                .await
+                .unwrap();
+
+            // Prepare ITS deploy ABI payload
+            let abi_payload = GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                selector: U256::from(DeployInterchainToken::MESSAGE_TYPE_ID),
+                token_id: FixedBytes::from_hex(
+                    "0xcccdb55f29bb017269049e59732c01ac41239e7b61e8a83be5c0ae1143ed8064",
+                )
+                .unwrap(),
+                name: "test".to_owned(),
+                symbol: "TOK".to_owned(),
+                decimals: 8,
+                minter: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+            })
+            .encode();
+
+            // Prepare ITS message
+            let message = Message {
+                cc_id: CrossChainId {
+                    chain: "solana".to_owned(),
+                    id: "message-id".to_owned(),
+                },
+                source_address: "source-address".to_owned(),
+                destination_chain: "solana".to_owned(),
+                destination_address: axelar_solana_its::ID.to_string(),
+                payload_hash: [1u8; 32],
+            };
+
+            // Build execute instruction
+            let ix: solana_sdk::instruction::Instruction = build_execute_instruction(
+                fixture.payer.pubkey(),
+                Pubkey::new_unique(),
+                message,
+                abi_payload,
+                rpc_client.clone(),
+            )
+            .await
+            .unwrap();
+
+            // Add execute ix to all_ixs
+            all_ixs.push(ix);
+
+            // Prepare priority fee ixa in a vec
+            // all_ixs.extend([
+            //     ComputeBudgetInstruction::set_compute_unit_price(10000),
+            //     ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+            // ]);
+
+            // Build the V0 transaction, so we can use the LUT
+            let blockhash = rpc_client.get_latest_blockhash().await.unwrap();
+            let alt_account_data = rpc_client.get_account_data(&alt_pubkey).await.unwrap();
+            let alt_fetch = AddressLookupTable::deserialize(&alt_account_data).unwrap();
+            let alt_reference = AddressLookupTableAccount {
+                key: alt_pubkey,
+                addresses: alt_fetch.addresses.to_vec(),
+            };
+
+            let v0_msg = v0::Message::try_compile(
+                &fixture.payer.pubkey(),
+                &all_ixs,
+                &[alt_reference],
+                blockhash,
+            )
+            .unwrap();
+
+            let message = VersionedMessage::V0(v0_msg);
+            let tx = VersionedTransaction::try_new(message, &[&fixture.payer]).unwrap();
+
+            // Send the transaction, it should pass
+            rpc_client.send_and_confirm_transaction(&tx).await.unwrap();
+
+            // Currently results in:
+            // base64 encoded solana_sdk::transaction::versioned::VersionedTransaction
+            // too large: 1840 bytes (max: encoded/raw 1644/1232)
+        }
+
+        #[tokio::test]
+        async fn test_tx_size_enough_for_its_token_linking() {
+            let mut fixture = setup().await;
+            let rpc_client = setup_test_rpc_client(&fixture);
+            let mut all_ixs = Vec::with_capacity(3);
+
+            // Prepare ITS deploy interchain token linking payload
+
+            let abi_payload = GMPPayload::LinkToken(LinkToken {
+                selector: U256::from(LinkToken::MESSAGE_TYPE_ID),
+                token_id: FixedBytes::from_hex(
+                    "0xcccdb55f29bb017269049e59732c01ac41239e7b61e8a83be5c0ae1143ed8064",
+                )
+                .unwrap(),
+                token_manager_type: U256::from(Type::LockUnlock as u8),
+                source_token_address: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+                destination_token_address: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+                link_params: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+            });
+
+            // Prepare ITS message
+            let message = Message {
+                cc_id: CrossChainId {
+                    chain: "solana".to_owned(),
+                    id: "message-id".to_owned(),
+                },
+                source_address: "source-address".to_owned(),
+                destination_chain: "solana".to_owned(),
+                destination_address: axelar_solana_its::ID.to_string(),
+                payload_hash: [1u8; 32],
+            };
+
+            // Set the token manager account in state, so the test can run.
+            let cmd = command_id(&message.cc_id.chain, &message.cc_id.id);
+            let (gateway_incoming_message_pda, _) =
+                axelar_solana_gateway::get_incoming_message_pda(&cmd);
+
+            let token_manager = TokenManager::new(
+                Type::LockUnlock,
+                abi_payload.token_id().unwrap(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                2,
+            );
+
+            let (token_manager_pda, _) = axelar_solana_its::find_token_manager_pda(
+                &axelar_solana_its::find_its_root_pda().0,
+                &abi_payload.token_id().unwrap(),
+            );
+
+            fixture.fixture.set_account_state(
+                &token_manager_pda,
+                Account {
+                    lamports: 1_000_000,
+                    data: to_vec(&token_manager).unwrap(),
+                    owner: axelar_solana_its::id(),
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            );
+
+            // Build execute instruction
+            let ix: solana_sdk::instruction::Instruction = build_execute_instruction(
+                fixture.payer.pubkey(),
+                gateway_incoming_message_pda,
+                message,
+                abi_payload.encode(),
+                rpc_client.clone(),
+            )
+            .await
+            .unwrap();
+
+            // Add execute ix to all_ixs
+            all_ixs.push(ix);
+
+            // Prepare priority fee ixa in a vec
+            all_ixs.extend([
+                ComputeBudgetInstruction::set_compute_unit_price(1),
+                ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+            ]);
+
+            // Build the transaction
+            let blockhash = rpc_client.get_latest_blockhash().await.unwrap();
+            let tx = Transaction::new_signed_with_payer(
+                &all_ixs,
+                Some(&fixture.payer.pubkey()),
+                &[&fixture.payer],
+                blockhash,
+            );
+
+            // Send the transaction, it should pass
+            rpc_client.send_and_confirm_transaction(&tx).await.unwrap();
+
+            // Currently results in:
+            // base64 encoded solana_sdk::transaction::versioned::VersionedTransaction
+            // too large: 1840 bytes (max: encoded/raw 1644/1232)
+        }
+    }
 }
