@@ -611,7 +611,7 @@ pub(crate) mod test {
         let upgrade_authority = Keypair::new();
         validator.add_account(
             upgrade_authority.pubkey(),
-            AccountSharedData::new(u64::MAX, 0, &system_program::ID),
+            AccountSharedData::new(u64::MAX - 1_000_000, 0, &system_program::ID),
         );
         validator.add_upgradeable_programs_with_path(&[
             UpgradeableProgramInfo {
