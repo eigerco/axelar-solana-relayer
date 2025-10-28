@@ -581,7 +581,7 @@ dependencies = [
 [[package]]
 name = "anchor-discriminators"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "borsh 1.5.7",
  "bs58",
@@ -606,9 +606,9 @@ dependencies = [
 [[package]]
 name = "anchor-discriminators-macros"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
- "anchor-discriminators 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "borsh 1.5.7",
  "convert_case 0.8.0",
  "proc-macro2 1.0.94",
@@ -1419,7 +1419,7 @@ dependencies = [
 [[package]]
 name = "axelar-message-primitives"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -1449,7 +1449,7 @@ dependencies = [
 [[package]]
 name = "axelar-solana-encoding"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "arrayref",
  "borsh 1.5.7",
@@ -1480,15 +1480,15 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gas-service"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
- "anchor-discriminators 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "anchor-discriminators-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "anchor-discriminators-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "borsh 1.5.7",
  "bytemuck",
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "event-cpi-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "program-utils 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "event-cpi-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "solana-program",
 ]
 
@@ -1523,27 +1523,27 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "alloy-sol-types",
- "anchor-discriminators 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "anchor-discriminators-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-message-primitives 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "anchor-discriminators-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-message-primitives 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "bincode",
  "bitvec",
  "borsh 1.5.7",
  "bytemuck",
  "ed25519-dalek 2.1.1",
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "event-cpi-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "event-cpi-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "hex",
  "itertools 0.12.1",
  "libsecp256k1 0.6.0",
  "num-derive 0.4.2",
  "num-traits",
- "program-utils 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "role-management 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "role-management 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "solana-program",
  "thiserror 1.0.69",
 ]
@@ -1551,14 +1551,14 @@ dependencies = [
 [[package]]
 name = "axelar-solana-gateway-test-fixtures"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gas-service 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "bincode",
  "ed25519-dalek 2.1.1",
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "event-cpi-test-utils",
  "libsecp256k1 0.6.0",
  "rand 0.7.3",
@@ -1578,43 +1578,43 @@ dependencies = [
 [[package]]
 name = "axelar-solana-governance"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "alloy-sol-types",
- "anchor-discriminators 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "anchor-discriminators-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "anchor-discriminators-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "borsh 1.5.7",
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "event-cpi-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "event-cpi-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "governance-gmp",
- "program-utils 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "role-management 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "role-management 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "solana-program",
 ]
 
 [[package]]
 name = "axelar-solana-its"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "alloy-primitives",
- "anchor-discriminators 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "anchor-discriminators-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-message-primitives 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gas-service 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "anchor-discriminators-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-message-primitives 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "bitflags 2.9.0",
  "borsh 1.5.7",
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "event-cpi-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "event-cpi-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "interchain-token-transfer-gmp",
  "itertools 0.12.1",
  "mpl-token-metadata",
- "program-utils 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "role-management 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "role-management 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "solana-program",
  "spl-associated-token-account 6.0.0",
  "spl-token-2022 6.0.0",
@@ -1625,18 +1625,19 @@ dependencies = [
 [[package]]
 name = "axelar-solana-memo-program"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
- "anchor-discriminators-macros 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gas-service 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "anchor-discriminators-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "axelar-solana-its",
  "borsh 1.5.7",
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "hex",
  "mpl-token-metadata",
- "program-utils 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "solana-program",
  "spl-associated-token-account 6.0.0",
 ]
@@ -3748,9 +3749,9 @@ dependencies = [
 [[package]]
 name = "event-cpi"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
- "anchor-discriminators 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "borsh 1.5.7",
  "solana-program",
 ]
@@ -3770,10 +3771,10 @@ dependencies = [
 [[package]]
 name = "event-cpi-macros"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
- "anchor-discriminators 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "proc-macro2 1.0.94",
  "quote 1.0.40",
  "syn 1.0.109",
@@ -3782,9 +3783,9 @@ dependencies = [
 [[package]]
 name = "event-cpi-test-utils"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
- "event-cpi 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "event-cpi 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "solana-sdk",
 ]
 
@@ -4244,7 +4245,7 @@ dependencies = [
 name = "gateway-gas-computation"
 version = "0.1.0"
 dependencies = [
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "borsh 1.5.7",
  "eyre",
  "futures 0.3.31",
@@ -4387,7 +4388,7 @@ dependencies = [
 [[package]]
 name = "governance-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -5320,7 +5321,7 @@ dependencies = [
 [[package]]
 name = "interchain-token-transfer-gmp"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -5416,11 +5417,11 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 [[package]]
 name = "its-instruction-builder"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
  "async-recursion",
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "axelar-solana-its",
  "borsh 1.5.7",
  "interchain-token-transfer-gmp",
@@ -7447,8 +7448,9 @@ dependencies = [
 [[package]]
 name = "program-utils"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "borsh 1.5.7",
  "bytemuck",
  "mpl-token-metadata",
@@ -8327,7 +8329,7 @@ dependencies = [
 name = "rest-service"
 version = "0.1.0"
 dependencies = [
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "axum 0.7.9",
  "clap 4.5.36",
  "eyre",
@@ -8511,12 +8513,14 @@ dependencies = [
 [[package]]
 name = "role-management"
 version = "0.1.0"
-source = "git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71#4311a716ab5af435d337d330c53c0a287c357034"
+source = "git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641#fbde641ccc7c38d2b514a366e651ebf2c0c3511c"
 dependencies = [
+ "anchor-discriminators 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "anchor-discriminators-macros 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "bincode",
  "bitflags 2.9.0",
  "borsh 1.5.7",
- "program-utils 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "program-utils 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "solana-program",
 ]
 
@@ -10361,9 +10365,9 @@ dependencies = [
 name = "solana-event-forwarder"
 version = "0.1.0"
 dependencies = [
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gas-service 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "axelar-solana-gateway-test-fixtures",
  "axelar-solana-memo-program",
  "base64 0.22.1",
@@ -10457,15 +10461,14 @@ version = "0.1.0"
 dependencies = [
  "amplifier-api",
  "async-trait",
- "axelar-solana-encoding 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gas-service 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "axelar-solana-encoding 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "axelar-solana-gateway-test-fixtures",
  "axelar-solana-governance",
  "axelar-solana-its",
  "axelar-solana-memo-program",
  "base64 0.22.1",
- "bincode",
  "bs58",
  "clap 4.5.36",
  "common-serde-utils 0.1.0",
@@ -10488,6 +10491,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-client",
+ "solana-compute-budget",
  "solana-listener",
  "solana-rpc",
  "solana-rpc-client-api",
@@ -10738,8 +10742,8 @@ dependencies = [
 name = "solana-listener"
 version = "0.1.0"
 dependencies = [
- "axelar-solana-gas-service 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
- "axelar-solana-gateway 0.1.0 (git+https://github.com/eigerco/axelar-amplifier-solana.git?rev=4311a71)",
+ "axelar-solana-gas-service 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
+ "axelar-solana-gateway 0.1.0 (git+https://github.com/axelarnetwork/axelar-amplifier-solana.git?rev=fbde641)",
  "axelar-solana-gateway-test-fixtures",
  "axelar-solana-memo-program",
  "backoff",

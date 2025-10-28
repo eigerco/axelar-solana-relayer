@@ -459,86 +459,19 @@ mod tests {
         };
 
         let command_id = command_id(&message.cc_id.chain, &message.cc_id.id);
-        let gateway_root_pda = fixture.gateway_root_pda;
-        let payer = fixture.payer.pubkey();
 
         fixture
             .sign_session_and_approve_messages(&fixture.signers.clone(), &[message.clone()])
             .await
             .unwrap();
-        let init_payload_sig = fixture
-            .send_tx_with_signatures(&[
-                axelar_solana_gateway::instructions::initialize_message_payload(
-                    gateway_root_pda,
-                    payer,
-                    command_id,
-                    encoded_payload
-                        .len()
-                        .try_into()
-                        .expect("Unexpected u64 overflow in buffer size"),
-                )
-                .unwrap(),
-            ])
-            .await
-            .unwrap()
-            .0[0];
-
-        let write_sig_1 = fixture
-            .send_tx_with_signatures(
-                &[axelar_solana_gateway::instructions::write_message_payload(
-                    gateway_root_pda,
-                    payer,
-                    command_id,
-                    &(encoded_payload[0..10]),
-                    0,
-                )
-                .unwrap()],
-            )
-            .await
-            .unwrap()
-            .0[0];
-        let write_sig_2 = fixture
-            .send_tx_with_signatures(
-                &[axelar_solana_gateway::instructions::write_message_payload(
-                    gateway_root_pda,
-                    payer,
-                    command_id,
-                    &(encoded_payload[10..]),
-                    10,
-                )
-                .unwrap()],
-            )
-            .await
-            .unwrap()
-            .0[0];
-
-        let commit_sig = fixture
-            .send_tx_with_signatures(&[
-                axelar_solana_gateway::instructions::commit_message_payload(
-                    gateway_root_pda,
-                    payer,
-                    command_id,
-                )
-                .unwrap(),
-            ])
-            .await
-            .unwrap()
-            .0[0];
-
-        let (incoming_message_pda, _bump) =
-            axelar_solana_gateway::get_incoming_message_pda(&command_id);
-        let (message_payload_pda, _bump) =
-            axelar_solana_gateway::find_message_payload_pda(incoming_message_pda, payer);
 
         let (incoming_message_pda, _bump) = get_incoming_message_pda(&command_id);
         let (execute_sigs, _execute_tx) = fixture
             .send_tx_with_signatures(&[
                 axelar_solana_gateway::executable::construct_axelar_executable_ix(
-                    payer,
-                    &message,
+                    message,
                     &encoded_payload,
                     incoming_message_pda,
-                    message_payload_pda,
                 )
                 .unwrap(),
             ])
@@ -546,28 +479,7 @@ mod tests {
             .unwrap();
         let execute_sig = execute_sigs[0];
 
-        // Close message payload and reclaim lamports
-        let close_sig = fixture
-            .send_tx_with_signatures(
-                &[axelar_solana_gateway::instructions::close_message_payload(
-                    gateway_root_pda,
-                    payer,
-                    command_id,
-                )
-                .unwrap()],
-            )
-            .await
-            .unwrap()
-            .0[0];
-
-        let signatures = [
-            close_sig,
-            execute_sig,
-            commit_sig,
-            write_sig_1,
-            write_sig_2,
-            init_payload_sig,
-        ];
+        let signatures = [execute_sig];
 
         let total_cost = stream::iter(signatures)
             .then(|sig| fetch_transaction(CommitmentConfig::confirmed(), sig, &rpc_client))
@@ -1032,7 +944,7 @@ mod tests {
         let upgrade_authority = Keypair::new();
         validator.add_account(
             upgrade_authority.pubkey(),
-            AccountSharedData::new(u64::MAX, 0, &system_program::ID),
+            AccountSharedData::new(u64::MAX - 1_000_000, 0, &system_program::ID),
         );
         validator.add_upgradeable_programs_with_path(&[
             UpgradeableProgramInfo {

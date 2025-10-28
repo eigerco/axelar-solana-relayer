@@ -1,10 +1,9 @@
-use core::fmt;
 use core::future::Future;
 use core::pin::Pin;
 use core::str::FromStr as _;
 use core::task::Poll;
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 use amplifier_api::chrono::{DateTime, Utc};
 use amplifier_api::types::{
@@ -17,14 +16,13 @@ use axelar_solana_encoding::borsh::BorshDeserialize as _;
 use axelar_solana_encoding::types::execute_data::{ExecuteData, MerkleisedPayload};
 use axelar_solana_encoding::types::messages::{CrossChainId, Message};
 use axelar_solana_gateway::error::GatewayError;
-use axelar_solana_gateway::executable::{construct_axelar_executable_ix, AxelarMessagePayload};
+use axelar_solana_gateway::executable::construct_axelar_executable_ix;
 use axelar_solana_gateway::state::incoming_message::{command_id, IncomingMessage};
 use axelar_solana_gateway::{get_verifier_set_tracker_pda, BytemuckedPda as _};
 use effective_tx_sender::ComputeBudgetError;
 use eyre::{eyre, Context as _, OptionExt as _};
 use futures::stream::{FusedStream as _, FuturesOrdered, FuturesUnordered};
 use futures::{SinkExt as _, StreamExt as _};
-use message_payload::message_to_command_id;
 use num_traits::FromPrimitive as _;
 use relayer_amplifier_api_integration::AmplifierCommand;
 use relayer_amplifier_state::State;
@@ -36,135 +34,14 @@ use solana_sdk::instruction::{Instruction, InstructionError};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer as _;
-use solana_sdk::transaction::TransactionError;
-use thiserror::Error;
+use solana_sdk::transaction::{Transaction, TransactionError};
 use tracing::{info_span, instrument, Instrument as _};
 
+pub use crate::component::gas_estimator::PriorityFeeGasEstimator;
+use crate::component::gas_estimator::{GasEstimator, InsufficientGasBalance};
 use crate::config;
 
-mod execution_cost_estimation;
-mod message_payload;
-
-use execution_cost_estimation::ExecuteTaskConsumptionBreakdown;
-
-#[derive(Error, Debug)]
-struct InsufficientGasBalance {
-    cost: BigInt,
-    available: BigInt,
-}
-
-impl fmt::Display for InsufficientGasBalance {
-    #[expect(
-        clippy::min_ident_chars,
-        reason = "either this or clippy::renamed_function_params"
-    )]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Insifficient Gas Balance. Required: {}. Available: {}",
-            self.cost.0, self.available.0
-        )
-    }
-}
-
-/// Trait for gas estimation to allow mocking in tests
-#[cfg_attr(test, mockall::automock)]
-#[async_trait::async_trait]
-pub trait GasEstimator: Send + Sync {
-    /// Gets the simnet RPC client for gas estimation
-    async fn update_program_accounts(&self, address: &Pubkey);
-
-    /// Estimates the total cost of executing a gateway transaction
-    #[expect(clippy::too_many_arguments, reason = "necessary")]
-    async fn ensure_enough_gas(
-        &self,
-        rpc_client: &RpcClient,
-        keypair: &Keypair,
-        gateway_root_pda: Pubkey,
-        message: &Message,
-        payload: &[u8],
-        destination_address: Pubkey,
-        incoming_message_pda: Pubkey,
-        available_gas: BigInt,
-    ) -> eyre::Result<()>;
-}
-
-/// Actual implementation of `GasEstimator`
-pub struct RealGasEstimator {
-    rpc_client: Arc<RpcClient>,
-    cache: Arc<Mutex<HashMap<Pubkey, ExecuteTaskConsumptionBreakdown>>>,
-}
-
-impl RealGasEstimator {
-    /// Creates a new `RealGasEstimator` with the specified RPC URL
-    #[must_use]
-    pub fn new(rpc_url: String) -> Self {
-        let rpc_client = Arc::new(RpcClient::new_with_commitment(
-            rpc_url,
-            CommitmentConfig::processed(),
-        ));
-        Self {
-            rpc_client,
-            cache: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl GasEstimator for RealGasEstimator {
-    async fn update_program_accounts(&self, address: &Pubkey) {
-        let _account = self.rpc_client.get_account(address).await;
-        let _accounts = self.rpc_client.get_program_accounts(address).await;
-    }
-    #[expect(clippy::unwrap_used, reason = "Poisoned lock, just panic")]
-    async fn ensure_enough_gas(
-        &self,
-        rpc_client: &RpcClient,
-        keypair: &Keypair,
-        gateway_root_pda: Pubkey,
-        message: &Message,
-        payload: &[u8],
-        destination_address: Pubkey,
-        incoming_message_pda: Pubkey,
-        available_gas: BigInt,
-    ) -> eyre::Result<()> {
-        let maybe_cached = self.cache.lock().unwrap().remove(&incoming_message_pda);
-
-        let (cost, breakdown) = if let Some(consumption_breakdown) = maybe_cached {
-            (
-                consumption_breakdown.calculate_cost(rpc_client).await?,
-                consumption_breakdown,
-            )
-        } else {
-            execution_cost_estimation::estimate_total_execute_cost(
-                Arc::clone(&self.rpc_client),
-                rpc_client,
-                keypair,
-                gateway_root_pda,
-                message,
-                payload,
-                destination_address,
-            )
-            .await?
-        };
-
-        let cost = BigInt::from_u64(cost);
-        if cost.0 > available_gas.0 {
-            self.cache
-                .lock()
-                .unwrap()
-                .insert(incoming_message_pda, breakdown);
-
-            return Err(InsufficientGasBalance {
-                cost,
-                available: available_gas,
-            }
-            .into());
-        }
-
-        Ok(())
-    }
-}
+mod gas_estimator;
 
 /// A component that pushes transactions over to the Solana blockchain.
 /// The transactions to push are dependant on the events that the Amplifier API will provide
@@ -217,11 +94,6 @@ impl<S: State, G: GasEstimator> SolanaTxPusher<S, G> {
         let keypair = Arc::new(self.config.signing_keypair());
 
         ensure_gas_service_authority(&keypair.pubkey(), &self.rpc_client, &config_metadata).await?;
-
-        // Make sure we have the gateway loaded locally
-        self.gas_estimator
-            .update_program_accounts(&axelar_solana_gateway::id())
-            .await;
 
         let mut futures_ordered = FuturesOrdered::new();
         let mut rx = self.task_receiver.receiver.fuse();
@@ -412,49 +284,20 @@ async fn process_task<G: GasEstimator>(
                 // error building an instruction, parsing pubkey, rpc transport error,
                 // etc.
                 //
-                // In this case, check if the payload was uploaded. If so, we need to get
-                // refunded for that. The amplifier API is being updated to accept a list of
+                // The amplifier API is being updated to accept a list of
                 // the transactions hashes with their aggregated costs, but for now we just use
                 // meta.txID = null and pass the costs.
                 //
                 // In case no lamports were spent, no transaction could actually be executed in
                 // the execute_task flow.
-                let (incoming_message_pda, _bump) = axelar_solana_gateway::get_incoming_message_pda(
-                    &command_id(&source_chain, &message_id.0),
-                );
-                let (message_payload_pda, _bump) = axelar_solana_gateway::find_message_payload_pda(
-                    incoming_message_pda,
-                    keypair.pubkey(),
-                );
 
-                let maybe_some_fee = gateway_gas_computation::cost_of_payload_uploading(
-                    solana_rpc_client,
-                    metadata.commitment,
-                    message_payload_pda,
-                    axelar_solana_gateway::id(),
+                cannot_execute_message_event(
+                    task_item.id,
+                    source_chain,
+                    message_id,
+                    CannotExecuteMessageReason::Error,
+                    error.to_string(),
                 )
-                .await;
-
-                match maybe_some_fee {
-                    Ok(fee) if fee > 0 => message_executed_event(
-                        &task_item.id.0.to_string(),
-                        source_chain,
-                        message_id,
-                        MessageExecutionStatus::Reverted,
-                        None,
-                        Token {
-                            token_id: None,
-                            amount: BigInt::from_u64(fee),
-                        },
-                    ),
-                    _ => cannot_execute_message_event(
-                        task_item.id,
-                        source_chain,
-                        message_id,
-                        CannotExecuteMessageReason::Error,
-                        error.to_string(),
-                    ),
-                }
             };
 
             let command = AmplifierCommand::PublishEvents(PublishEventsRequest {
@@ -594,46 +437,86 @@ async fn execute_task_with_estimator<G: GasEstimator>(
     // Verify destination and communicate with the destination program
     verify_destination(destination_address, config.allow_third_party_contract_calls)?;
 
-    gas_estimator
-        .ensure_enough_gas(
-            solana_rpc_client,
-            keypair,
-            metadata.gateway_root_pda,
-            &message,
-            &payload,
-            destination_address,
-            gateway_incoming_message_pda,
-            available_gas_balance,
-        )
-        .await?;
-
-    // Upload the message payload to a Gateway-owned PDA account and get its address back.
-    let gateway_message_payload_pda = message_payload::upload(
-        solana_rpc_client,
-        keypair,
-        metadata.gateway_root_pda,
+    let execute_ix = build_execute_instruction(
+        signer,
         &message,
         &payload,
+        destination_address,
+        solana_rpc_client,
     )
     .await?;
 
-    let execute_call_status = send_to_destination_program(
-        destination_address,
-        signer,
-        gateway_incoming_message_pda,
-        gateway_message_payload_pda,
-        metadata.gateway_root_pda,
-        &message,
-        payload,
-        solana_rpc_client,
-        keypair,
-    )
-    .await;
+    // Estimate gas cost and ensure enough gas balance
+    let gas_result = gas_estimator
+        .ensure_enough_gas(
+            vec![execute_ix.clone()],
+            keypair,
+            available_gas_balance.0.try_into().map_err(|_err| {
+                eyre::eyre!("available gas balance is too large to fit into u64")
+            })?,
+        )
+        .await?;
 
-    // propagate the execute err if there was any
-    execute_call_status?;
+    let mut all_ixs = Vec::with_capacity(3);
+
+    all_ixs.extend(gas_result.priority_fee_ixs);
+    all_ixs.push(execute_ix);
+
+    let blockhash = solana_rpc_client
+        .get_latest_blockhash()
+        .await
+        .map_err(|err| eyre::eyre!("Failed to get blockhash: {}", err))?;
+
+    let tx = Transaction::new_signed_with_payer(
+        &all_ixs,
+        Some(&keypair.pubkey()),
+        &[keypair],
+        blockhash,
+    );
+
+    solana_rpc_client
+        .send_and_confirm_transaction(&tx)
+        .await
+        .map_err(|err| eyre::eyre!("Failed to send and confirm transaction: {}", err))?;
 
     Ok(())
+}
+
+pub(crate) async fn build_execute_instruction(
+    signer: Pubkey,
+    message: &Message,
+    payload: &[u8],
+    destination_address: Pubkey,
+    rpc_client: &RpcClient,
+) -> eyre::Result<Instruction> {
+    let (gateway_incoming_message_pda, _) = axelar_solana_gateway::get_incoming_message_pda(
+        &command_id(&message.cc_id.chain, &message.cc_id.id),
+    );
+
+    match destination_address {
+        axelar_solana_its::ID => Ok(its_instruction_builder::build_execute_instruction(
+            signer,
+            gateway_incoming_message_pda,
+            message.clone(),
+            payload.to_vec(),
+            rpc_client,
+        )
+        .await
+        .map_err(|err| eyre::eyre!("Failed to build ITS instruction: {:?}", err))?),
+        axelar_solana_governance::ID => Ok(
+            axelar_solana_governance::instructions::builder::calculate_gmp_ix(
+                signer,
+                gateway_incoming_message_pda,
+                message,
+                payload,
+            )?,
+        ),
+        _ => Ok(construct_axelar_executable_ix(
+            message.clone(),
+            payload,
+            gateway_incoming_message_pda,
+        )?),
+    }
 }
 
 fn verify_destination(
@@ -661,65 +544,6 @@ fn verify_destination(
     Ok(())
 }
 
-#[expect(clippy::too_many_arguments, reason = "necessary")]
-async fn send_to_destination_program(
-    destination_address: Pubkey,
-    signer: Pubkey,
-    gateway_incoming_message_pda: Pubkey,
-    gateway_message_payload_pda: Pubkey,
-    gateway_root_pda: Pubkey,
-    message: &Message,
-    payload: Vec<u8>,
-    solana_rpc_client: &RpcClient,
-    keypair: &Keypair,
-) -> eyre::Result<Signature> {
-    // For compatibility reasons with the rest of the Axelar protocol we need add custom handling
-    // for ITS & Governance programs
-    let ix = match destination_address {
-        axelar_solana_its::ID => {
-            its_instruction_builder::build_execute_instruction(
-                signer,
-                gateway_incoming_message_pda,
-                gateway_message_payload_pda,
-                message.clone(),
-                payload,
-                solana_rpc_client,
-            )
-            .await?
-        }
-        axelar_solana_governance::ID => {
-            axelar_solana_governance::instructions::builder::calculate_gmp_ix(
-                signer,
-                gateway_incoming_message_pda,
-                gateway_message_payload_pda,
-                message,
-                &payload,
-            )?
-        }
-        _ => {
-            validate_relayer_not_in_payload(&payload, signer)?;
-            // if security passed, we broadcast the tx
-            construct_axelar_executable_ix(
-                signer,
-                message,
-                &payload,
-                gateway_incoming_message_pda,
-                gateway_message_payload_pda,
-            )?
-        }
-    };
-    let msg_command_id = message_to_command_id(message);
-    let ix_close = axelar_solana_gateway::instructions::close_message_payload(
-        gateway_root_pda,
-        keypair.pubkey(),
-        msg_command_id,
-    )
-    .context("failed to construct an instruction to close the message payload pda")?;
-    let execute_call_status =
-        send_transaction(solana_rpc_client, keypair, VecDeque::from([ix, ix_close])).await?;
-    Ok(execute_call_status)
-}
-
 /// Checks if the incoming message has already been executed.
 async fn incoming_message_already_executed(
     solana_rpc_client: &RpcClient,
@@ -732,32 +556,6 @@ async fn incoming_message_already_executed(
         .ok_or_eyre("failed to read incoming message")?;
 
     Ok(incoming_message.status.is_executed())
-}
-
-/// Validates that the relayer's signing account is not included in the transaction payload.
-///
-/// This is a critical security check to prevent potential account draining attacks. Since the
-/// relayer acts as a transaction signer, and `AxelarMessagePayload` allows dynamic account
-/// appending, a malicious actors could include an instruction to transfer relayer's funds in the
-/// transaction.
-///
-/// # Errors
-/// Returns an error if the relayer's signing account is detected in the payload's account metadata.
-/// Decoding errors are ignored, as they are considered non-critical.
-fn validate_relayer_not_in_payload(payload: &[u8], signer: Pubkey) -> eyre::Result<()> {
-    if let Ok(decoded_payload) = AxelarMessagePayload::decode(payload) {
-        let relayer_acc_is_included = decoded_payload
-            .account_meta()
-            .iter()
-            .any(|acc| acc.pubkey == signer);
-
-        if relayer_acc_is_included {
-            return Err(eyre::eyre!(
-                "relayer will not execute a transaction where its own key is included"
-            ));
-        }
-    }
-    Ok(())
 }
 
 async fn gateway_tx_task(
@@ -975,7 +773,9 @@ mod tests {
     };
     use tokio::task::JoinHandle;
 
-    use super::{MockGasEstimator, SolanaTxPusher};
+    use super::gas_estimator::MockGasEstimator;
+    use super::SolanaTxPusher;
+    use crate::component::gas_estimator::GasEstimatorResult;
     use crate::config;
 
     mod unit_tests {
@@ -1020,8 +820,9 @@ mod tests {
         use solana_sdk::signature::Signature;
 
         use super::*;
+        use crate::component::gas_estimator::{GasEstimatorResult, MockGasEstimator};
         use crate::component::tests::{setup, setup_aux_contracts};
-        use crate::component::{execute_task_with_estimator, ConfigMetadata, MockGasEstimator};
+        use crate::component::{config, execute_task_with_estimator, ConfigMetadata};
 
         #[test_log::test(tokio::test)]
         async fn test_allow_third_party_contract_calls_config() {
@@ -1100,14 +901,16 @@ mod tests {
 
             // Create a mock gas estimator that returns a low cost
             let mut mock_estimator = MockGasEstimator::new();
-            mock_estimator
-                .expect_update_program_accounts()
-                .withf(|_| true) // Accept any arguments
-                .times(..)
-                .returning(|_| ());
+
             mock_estimator
                 .expect_ensure_enough_gas()
-                .returning(|_, _, _, _, _, _, _, _| Ok(()));
+                .returning(|_, _, _| {
+                    Ok(GasEstimatorResult {
+                        required_gas: 50,
+                        available_gas: 100,
+                        priority_fee_ixs: vec![],
+                    })
+                });
 
             let result = execute_task_with_estimator(
                 task,
@@ -1702,13 +1505,14 @@ mod tests {
         // Create a mock gas estimator for tests
         let mut mock_estimator = MockGasEstimator::new();
         mock_estimator
-            .expect_update_program_accounts()
-            .withf(|_| true) // Accept any arguments
-            .times(..)
-            .returning(|_| ());
-        mock_estimator
             .expect_ensure_enough_gas()
-            .returning(|_, _, _, _, _, _, _, _| Ok(()));
+            .returning(|_, _, _| {
+                Ok(GasEstimatorResult {
+                    required_gas: 100_000,
+                    available_gas: 1_000_000,
+                    priority_fee_ixs: vec![],
+                })
+            });
 
         let solana_tx_pusher = SolanaTxPusher::new(
             Arc::new(config),
@@ -1864,7 +1668,7 @@ mod tests {
         let upgrade_authority = Keypair::new();
         validator.add_account(
             upgrade_authority.pubkey(),
-            AccountSharedData::new(u64::MAX, 0, &system_program::ID),
+            AccountSharedData::new(u64::MAX / 2, 0, &system_program::ID),
         );
         validator.add_upgradeable_programs_with_path(&[
             UpgradeableProgramInfo {
@@ -1950,5 +1754,468 @@ mod tests {
         fixture.initialize_gateway_config_account().await.unwrap();
         fixture.payer = init_payer;
         fixture
+    }
+
+    mod tx_size_tests {
+
+        use axelar_solana_encoding::types::messages::{CrossChainId, Message};
+        use axelar_solana_gateway::state::incoming_message::command_id;
+        use axelar_solana_its::state::token_manager::Type;
+        use interchain_token_transfer_gmp::alloy_primitives::hex::FromHex;
+        use interchain_token_transfer_gmp::alloy_primitives::{Bytes, FixedBytes, U256};
+        use interchain_token_transfer_gmp::{
+            DeployInterchainToken, GMPPayload, InterchainTransfer, LinkToken, ReceiveFromHub,
+        };
+        use its_instruction_builder::build_execute_instruction;
+        use solana_sdk::address_lookup_table::instruction::{
+            create_lookup_table, extend_lookup_table,
+        };
+        use solana_sdk::address_lookup_table::state::AddressLookupTable;
+        use solana_sdk::address_lookup_table::AddressLookupTableAccount;
+        use solana_sdk::compute_budget::ComputeBudgetInstruction;
+        use solana_sdk::message::{v0, VersionedMessage};
+        use solana_sdk::transaction::{Transaction, VersionedTransaction};
+
+        use super::*;
+        use crate::component::tests::setup;
+
+        fn setup_test_rpc_client(fixture: &SolanaAxelarIntegrationMetadata) -> Arc<RpcClient> {
+            let rpc_client_url = match fixture.fixture.test_node {
+                axelar_solana_gateway_test_fixtures::base::TestNodeMode::TestValidator {
+                    ref validator,
+                    ..
+                } => validator.rpc_url(),
+                axelar_solana_gateway_test_fixtures::base::TestNodeMode::ProgramTest { .. } => {
+                    unimplemented!()
+                }
+            };
+
+            retrying_solana_http_sender::new_client(&retrying_solana_http_sender::Config {
+                max_concurrent_rpc_requests: 10,
+                solana_http_rpc: rpc_client_url.parse().unwrap(),
+                commitment: CommitmentConfig::confirmed(),
+            })
+        }
+
+        // Helper: deploy an interchain token using ALT-backed v0 transaction.
+        // Parameters cover only the deployment-specific fields; chain/source are kept as in the
+        // tests.
+        async fn deploy_interchain_token_with_alt(
+            fixture: &mut SolanaAxelarIntegrationMetadata,
+            rpc_client: Arc<RpcClient>,
+            token_id: FixedBytes<32>,
+            name: String,
+            symbol: String,
+            decimals: u8,
+            minter: Bytes,
+        ) -> eyre::Result<()> {
+            // Build ITS deploy message payload
+            let deploy_token_payload = GMPPayload::DeployInterchainToken(DeployInterchainToken {
+                selector: U256::from(DeployInterchainToken::MESSAGE_TYPE_ID),
+                token_id,
+                name,
+                symbol,
+                decimals,
+                minter,
+            });
+
+            // Wrap in ReceiveFromHub since it comes from the ITS hub chain
+            let abi_payload = GMPPayload::ReceiveFromHub(ReceiveFromHub {
+                selector: U256::from(4),
+                source_chain: "axelar".to_owned(),
+                payload: deploy_token_payload.encode().into(),
+            })
+            .encode();
+
+            // Prepare ITS message (hash of the ReceiveFromHub payload)
+            let message = Message {
+                cc_id: CrossChainId {
+                    chain: "axelar".to_owned(),
+                    id: "message-id".to_owned(),
+                },
+                source_address: "axelar157hl7gpuknjmhtac2qnphuazv2yerfagva7lsu9vuj2pgn32z22qa26dk4"
+                    .to_owned(),
+                destination_chain: "solana".to_owned(),
+                destination_address: axelar_solana_its::ID.to_string(),
+                payload_hash: solana_sdk::keccak::hash(&abi_payload).to_bytes(),
+            };
+
+            // Approve the message through the gateway first
+            fixture
+                .sign_session_and_approve_messages(&fixture.signers.clone(), &[message.clone()])
+                .await
+                .map_err(|e| eyre::eyre!("Error apporaving message at gateway: {:?}", e))?;
+
+            // Derive the proper gateway incoming message PDA
+            let cmd = command_id(&message.cc_id.chain, &message.cc_id.id);
+            let (incoming_pda, _) = axelar_solana_gateway::get_incoming_message_pda(&cmd);
+
+            // Build execute instruction
+            let execute_ix: solana_sdk::instruction::Instruction = build_execute_instruction(
+                fixture.payer.pubkey(),
+                incoming_pda,
+                message,
+                abi_payload.clone(),
+                rpc_client.clone(),
+            )
+            .await?;
+
+            // Create ALT based on all accounts referenced by the execute instruction
+            let recent_slot = rpc_client.get_slot().await?;
+            let (ix_alt_create, alt_pubkey) =
+                create_lookup_table(fixture.payer.pubkey(), fixture.payer.pubkey(), recent_slot);
+
+            let alt_accounts: Vec<Pubkey> =
+                execute_ix.accounts.iter().map(|acc| acc.pubkey).collect();
+
+            let ix_alt_extend = extend_lookup_table(
+                alt_pubkey,
+                fixture.payer.pubkey(),
+                Some(fixture.payer.pubkey()),
+                alt_accounts,
+            );
+
+            // Send ALT create+extend in one tx
+            rpc_client
+                .send_and_confirm_transaction(&Transaction::new_signed_with_payer(
+                    &[ix_alt_create, ix_alt_extend],
+                    Some(&fixture.payer.pubkey()),
+                    &[&fixture.payer],
+                    rpc_client.get_latest_blockhash().await?,
+                ))
+                .await?;
+
+            // Compose compute budget + execute ix
+            let mut all_ixs = Vec::with_capacity(3);
+            all_ixs.extend([
+                ComputeBudgetInstruction::set_compute_unit_price(1),
+                ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+            ]);
+            all_ixs.push(execute_ix);
+
+            // Fetch ALT content and compile a V0 message that uses it
+            let blockhash = rpc_client.get_latest_blockhash().await?;
+            let alt_account_data = rpc_client.get_account_data(&alt_pubkey).await?;
+            let alt_state = AddressLookupTable::deserialize(&alt_account_data)?;
+            let alt_ref = AddressLookupTableAccount {
+                key: alt_pubkey,
+                addresses: alt_state.addresses.to_vec(),
+            };
+
+            let v0_msg =
+                v0::Message::try_compile(&fixture.payer.pubkey(), &all_ixs, &[alt_ref], blockhash)?;
+
+            let message = VersionedMessage::V0(v0_msg);
+            let tx = VersionedTransaction::try_new(message, &[&fixture.payer])?;
+
+            // panic!("Transaction deploy size: {}", tx.message.serialize().len());
+            // 1004 bytes out of 1232 bytes max for a single tx with ALT
+
+            assert!(
+                tx.message.serialize().len() <= 1232,
+                "Transaction size {} exceeds max allowed size {}",
+                tx.message.serialize().len(),
+                1232
+            );
+
+            // Send the transaction
+            rpc_client.send_and_confirm_transaction(&tx).await?;
+
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_tx_size_enough_for_its_deploy() {
+            let mut fixture = setup().await;
+            let (_gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig, _) =
+                setup_aux_contracts(&mut fixture).await;
+            let rpc_client = setup_test_rpc_client(&fixture);
+
+            let token_id: FixedBytes<32> = FixedBytes::from_hex(
+                "0xcccdb55f29bb017269049e59732c01ac41239e7b61e8a83be5c0ae1143ed8064",
+            )
+            .unwrap();
+            let name = "test".to_owned();
+            let symbol = "TOK".to_owned();
+            let decimals = 8;
+            let minter = Bytes::from(Pubkey::new_unique().to_bytes().to_vec());
+
+            deploy_interchain_token_with_alt(
+                &mut fixture,
+                rpc_client.clone(),
+                token_id,
+                name,
+                symbol,
+                decimals,
+                minter,
+            )
+            .await
+            .unwrap();
+        }
+
+        #[tokio::test]
+        async fn test_tx_size_enough_for_its_token_linking() {
+            let mut fixture = setup().await;
+            let (_gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig, _) =
+                setup_aux_contracts(&mut fixture).await;
+            let rpc_client = setup_test_rpc_client(&fixture);
+
+            let token_id: FixedBytes<32> = FixedBytes::from_hex(
+                "0xcccdb55f29bb017269049e59732c01ac41239e7b61e8a83be5c0ae1143ed8064",
+            )
+            .unwrap();
+            let name = "test".to_owned();
+            let symbol = "TOK".to_owned();
+            let decimals = 8;
+            let minter = Bytes::from(Pubkey::new_unique().to_bytes().to_vec());
+
+            deploy_interchain_token_with_alt(
+                &mut fixture,
+                rpc_client.clone(),
+                token_id,
+                name,
+                symbol,
+                decimals,
+                minter,
+            )
+            .await
+            .unwrap();
+
+            let mut all_ixs = Vec::with_capacity(3);
+
+            // Prepare ITS deploy interchain token linking payload
+            let destination_token_address = axelar_solana_gateway::ID;
+
+            let abi_payload = GMPPayload::LinkToken(LinkToken {
+                selector: U256::from(LinkToken::MESSAGE_TYPE_ID),
+                token_id,
+                token_manager_type: U256::from(Type::LockUnlock as u8),
+                source_token_address: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+                destination_token_address: destination_token_address.to_bytes().to_vec().into(),
+                link_params: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+            });
+
+            // Prepare ITS message
+            let message = Message {
+                cc_id: CrossChainId {
+                    chain: "solana".to_owned(),
+                    id: "message-id".to_owned(),
+                },
+                source_address: "source-address".to_owned(),
+                destination_chain: "solana".to_owned(),
+                destination_address: axelar_solana_its::ID.to_string(),
+                payload_hash: [1u8; 32],
+            };
+
+            // Approve the message through the gateway first
+            fixture
+                .sign_session_and_approve_messages(&fixture.signers.clone(), &[message.clone()])
+                .await
+                .unwrap();
+
+            // Derive the proper gateway incoming message PDA
+            let cmd = command_id(&message.cc_id.chain, &message.cc_id.id);
+            let (gateway_incoming_message_pda, _) =
+                axelar_solana_gateway::get_incoming_message_pda(&cmd);
+
+            // Build execute instruction
+            let ix = build_execute_instruction(
+                fixture.payer.pubkey(),
+                gateway_incoming_message_pda,
+                message,
+                abi_payload.encode(),
+                rpc_client.clone(),
+            )
+            .await
+            .unwrap();
+
+            // Create ALT based on all accounts referenced by the execute instruction
+            let recent_slot = rpc_client.get_slot().await.unwrap();
+            let (ix_alt_create, alt_pubkey) =
+                create_lookup_table(fixture.payer.pubkey(), fixture.payer.pubkey(), recent_slot);
+
+            let alt_accounts: Vec<Pubkey> = ix.accounts.iter().map(|acc| acc.pubkey).collect();
+
+            let ix_alt_extend = extend_lookup_table(
+                alt_pubkey,
+                fixture.payer.pubkey(),
+                Some(fixture.payer.pubkey()),
+                alt_accounts,
+            );
+
+            // Send ALT create+extend in one tx
+            rpc_client
+                .send_and_confirm_transaction(&Transaction::new_signed_with_payer(
+                    &[ix_alt_create, ix_alt_extend],
+                    Some(&fixture.payer.pubkey()),
+                    &[&fixture.payer],
+                    rpc_client.get_latest_blockhash().await.unwrap(),
+                ))
+                .await
+                .unwrap();
+
+            // Add execute ix to all_ixs
+            all_ixs.push(ix);
+
+            // Prepare priority fee ixa in a vec
+            all_ixs.extend([
+                ComputeBudgetInstruction::set_compute_unit_price(1),
+                ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+            ]);
+
+            // Build the transaction
+            let blockhash = rpc_client.get_latest_blockhash().await.unwrap();
+            let alt_account_data = rpc_client.get_account_data(&alt_pubkey).await.unwrap();
+            let alt_state = AddressLookupTable::deserialize(&alt_account_data).unwrap();
+            let alt_ref = AddressLookupTableAccount {
+                key: alt_pubkey,
+                addresses: alt_state.addresses.to_vec(),
+            };
+
+            let v0_msg =
+                v0::Message::try_compile(&fixture.payer.pubkey(), &all_ixs, &[alt_ref], blockhash)
+                    .unwrap();
+
+            let message = VersionedMessage::V0(v0_msg);
+            let tx = VersionedTransaction::try_new(message, &[&fixture.payer]).unwrap();
+
+            assert!(
+                tx.message.serialize().len() <= 1232,
+                "Transaction size {} exceeds max allowed size",
+                tx.message.serialize().len()
+            );
+        }
+
+        #[tokio::test]
+        async fn test_tx_size_enough_for_its_token_transfer() {
+            let mut fixture = setup().await;
+            let (_gas_config, _gas_init_sig, _counter_pda, _init_memo_sig, _init_its_sig, _) =
+                setup_aux_contracts(&mut fixture).await;
+            let rpc_client = setup_test_rpc_client(&fixture);
+
+            let token_id: FixedBytes<32> = FixedBytes::from_hex(
+                "0xcccdb55f29bb017269049e59732c01ac41239e7b61e8a83be5c0ae1143ed8064",
+            )
+            .unwrap();
+            let name = "test".to_owned();
+            let symbol = "TOK".to_owned();
+            let decimals = 8;
+            let minter = Bytes::from(Pubkey::new_unique().to_bytes().to_vec());
+
+            deploy_interchain_token_with_alt(
+                &mut fixture,
+                rpc_client.clone(),
+                token_id,
+                name,
+                symbol,
+                decimals,
+                minter,
+            )
+            .await
+            .unwrap();
+
+            let mut all_ixs = Vec::with_capacity(3);
+
+            // Prepare ITS deploy interchain token transfer
+
+            let abi_payload = GMPPayload::InterchainTransfer(InterchainTransfer {
+                selector: U256::from(InterchainTransfer::MESSAGE_TYPE_ID),
+                token_id,
+                source_address: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+                destination_address: Bytes::from(Pubkey::new_unique().to_bytes().to_vec()),
+                amount: U256::from(1_000_000u64),
+                data: Bytes::new(),
+            });
+
+            // Prepare ITS message
+            let message = Message {
+                cc_id: CrossChainId {
+                    chain: "solana".to_owned(),
+                    id: "message-id".to_owned(),
+                },
+                source_address: "source-address".to_owned(),
+                destination_chain: "solana".to_owned(),
+                destination_address: axelar_solana_its::ID.to_string(),
+                payload_hash: [1u8; 32],
+            };
+
+            // Approve the message through the gateway first
+            fixture
+                .sign_session_and_approve_messages(&fixture.signers.clone(), &[message.clone()])
+                .await
+                .unwrap();
+
+            // Derive the proper gateway incoming message PDA
+            let cmd = command_id(&message.cc_id.chain, &message.cc_id.id);
+            let (gateway_incoming_message_pda, _) =
+                axelar_solana_gateway::get_incoming_message_pda(&cmd);
+
+            // Build execute instruction
+            let ix = build_execute_instruction(
+                fixture.payer.pubkey(),
+                gateway_incoming_message_pda,
+                message,
+                abi_payload.encode(),
+                rpc_client.clone(),
+            )
+            .await
+            .unwrap();
+
+            // Create ALT based on all accounts referenced by the execute instruction
+            let recent_slot = rpc_client.get_slot().await.unwrap();
+            let (ix_alt_create, alt_pubkey) =
+                create_lookup_table(fixture.payer.pubkey(), fixture.payer.pubkey(), recent_slot);
+
+            let alt_accounts: Vec<Pubkey> = ix.accounts.iter().map(|acc| acc.pubkey).collect();
+
+            let ix_alt_extend = extend_lookup_table(
+                alt_pubkey,
+                fixture.payer.pubkey(),
+                Some(fixture.payer.pubkey()),
+                alt_accounts,
+            );
+
+            // Send ALT create+extend in one tx
+            rpc_client
+                .send_and_confirm_transaction(&Transaction::new_signed_with_payer(
+                    &[ix_alt_create, ix_alt_extend],
+                    Some(&fixture.payer.pubkey()),
+                    &[&fixture.payer],
+                    rpc_client.get_latest_blockhash().await.unwrap(),
+                ))
+                .await
+                .unwrap();
+
+            // Add execute ix to all_ixs
+            all_ixs.push(ix);
+
+            // Prepare priority fee ixa in a vec
+            all_ixs.extend([
+                ComputeBudgetInstruction::set_compute_unit_price(1),
+                ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+            ]);
+
+            // Build the transaction
+            let blockhash = rpc_client.get_latest_blockhash().await.unwrap();
+            let alt_account_data = rpc_client.get_account_data(&alt_pubkey).await.unwrap();
+            let alt_state = AddressLookupTable::deserialize(&alt_account_data).unwrap();
+            let alt_ref = AddressLookupTableAccount {
+                key: alt_pubkey,
+                addresses: alt_state.addresses.to_vec(),
+            };
+
+            let v0_msg =
+                v0::Message::try_compile(&fixture.payer.pubkey(), &all_ixs, &[alt_ref], blockhash)
+                    .unwrap();
+
+            let message = VersionedMessage::V0(v0_msg);
+            let tx = VersionedTransaction::try_new(message, &[&fixture.payer]).unwrap();
+
+            assert!(
+                tx.message.serialize().len() <= 1232,
+                "Transaction size {} exceeds max allowed size",
+                tx.message.serialize().len()
+            );
+        }
     }
 }
